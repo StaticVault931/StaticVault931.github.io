@@ -345,7 +345,7 @@
   <div class="section" id="sec-horror">
     <div class="sec-header">
       <div class="sec-title">
-        <span class="material-icons-round sec-icon">skull</span>Horror Picks
+        <span class="material-icons-round sec-icon">whatshot</span>Horror Picks
       </div>
       <button class="see-all-btn" data-see-all="genre-27" data-see-all-title="Horror" aria-label="See all horror">
         See all <span class="material-icons-round">chevron_right</span>
@@ -761,29 +761,39 @@
     <!-- Provider bar -->
     <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
 
-    <!-- Player -->
-    <div style="position:relative">
-      <div class="player-wrap">
-        <div class="player-loading" id="player-loading">
-          <div class="spin"></div>
-          <p>Loading player…</p>
+    <!-- Player + Episode sidebar -->
+    <div class="modal-media-row" id="modal-media-row">
+      <div class="modal-player-col">
+        <div style="position:relative">
+          <div class="player-wrap">
+            <div class="player-loading" id="player-loading">
+              <div class="spin"></div>
+              <p>Loading player…</p>
+            </div>
+            <iframe id="player-frame"
+              allowfullscreen
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              referrerpolicy="no-referrer"
+              title="Content player">
+            </iframe>
+          </div>
+          <div id="age-warn" style="display:none" role="alertdialog" aria-labelledby="age-warn-title">
+            <h2 id="age-warn-title">Age Restricted</h2>
+            <p id="age-warn-msg">This content may be above your selected age rating.</p>
+            <div class="warn-btns">
+              <button class="warn-proceed" id="warn-proceed-btn">Watch Anyway</button>
+              <button class="warn-back" id="warn-back-btn">Go Back</button>
+            </div>
+          </div>
         </div>
-        <iframe id="player-frame"
-          allowfullscreen
-          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-          referrerpolicy="no-referrer"
-          title="Content player">
-        </iframe>
-      </div>
-      <!-- Age warning (overlays player) -->
-      <div id="age-warn" style="display:none" role="alertdialog" aria-labelledby="age-warn-title">
-        <h2 id="age-warn-title">Age Restricted</h2>
-        <p id="age-warn-msg">This content may be above your selected age rating.</p>
-        <div class="warn-btns">
-          <button class="warn-proceed" id="warn-proceed-btn">Watch Anyway</button>
-          <button class="warn-back" id="warn-back-btn">Go Back</button>
+        <div class="player-disclaimer">
+          <span class="material-icons-round">info_outline</span>
+          Content is streamed via third-party providers. StaticVault931 does not host any media. Ads may appear and are outside our control.
         </div>
       </div>
+
+      <!-- Episode sidebar — shown by adding .has-episodes to .modal-media-row -->
+      <div class="modal-ep-sidebar" id="modal-ep-sidebar"></div>
     </div>
 
     <!-- Modal info -->
@@ -793,7 +803,7 @@
           <div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:6px;"></div>
         </div>
         <div class="modal-meta">
-          <div id="modal-title" class="sk" style="height:2.4rem;width:62%;border-radius:4px;margin-bottom:.55rem;"></div>
+          <div id="modal-title"></div>
           <div class="modal-tags" id="modal-tags"></div>
           <div class="modal-actions" id="modal-actions"></div>
           <div class="modal-ratings" id="modal-ratings"></div>
@@ -801,16 +811,14 @@
         </div>
       </div>
 
-      <!-- Two-column body -->
-      <div class="modal-columns">
-        <div class="modal-main-col" id="modal-main-col">
-          <!-- Episodes or More Like This rendered here -->
-        </div>
-        <div class="modal-side-col" id="modal-side-col">
-          <div class="cast-section-label">Cast</div>
-          <div class="cast-row" id="modal-cast-row"></div>
-        </div>
+      <!-- Cast (full width) -->
+      <div class="modal-cast-section" id="modal-cast-section">
+        <div class="cast-section-label">Cast</div>
+        <div class="cast-row" id="modal-cast-row"></div>
       </div>
+
+      <!-- More Like This (full width, movies only) -->
+      <div class="modal-related-section" id="modal-related-section"></div>
     </div>
 
   </div>
@@ -839,6 +847,19 @@
     </button>
   </div>
 </nav>
+
+<!-- ════ CONFIRM DIALOG ════ -->
+<div id="confirm-overlay" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div id="confirm-dialog">
+    <div class="confirm-icon"><span class="material-icons-round">warning_amber</span></div>
+    <div id="confirm-title">Are you sure?</div>
+    <div id="confirm-msg"></div>
+    <div class="confirm-btns">
+      <button class="confirm-btn-ok" id="confirm-ok">Confirm</button>
+      <button class="confirm-btn-cancel" id="confirm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="src/js/app.js"></script>
 </body>

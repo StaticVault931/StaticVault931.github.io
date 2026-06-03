@@ -14,7 +14,7 @@ export const GENRES = [
   { id: 28,    name: 'Action',      icon: 'sports_martial_arts' },
   { id: 35,    name: 'Comedy',      icon: 'sentiment_very_satisfied' },
   { id: 18,    name: 'Drama',       icon: 'theater_comedy' },
-  { id: 27,    name: 'Horror',      icon: 'skull' },
+  { id: 27,    name: 'Horror',      icon: 'whatshot' },
   { id: 878,   name: 'Sci-Fi',      icon: 'rocket_launch' },
   { id: 10749, name: 'Romance',     icon: 'favorite' },
   { id: 16,    name: 'Animation',   icon: 'animation' },

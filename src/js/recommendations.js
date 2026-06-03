@@ -9,47 +9,65 @@ export async function loadForYou() {
   rowEl.innerHTML = skelCards(8);
 
   try {
-    let items = [];
     const dislikedIds = new Set(state.disliked.map(x => x.id));
+    const likedIds = new Set([...state.liked, ...state.prefLikes].map(x => x.id));
 
-    // Start from preferred genres or popular genres
     const genreIds = state.prefGenres.length
-      ? state.prefGenres.slice(0, 3).join('|')
+      ? state.prefGenres.slice(0, 4).join('|')
       : '28|35|18|878|12';
 
-    const [discoverRes, trendRes] = await Promise.allSettled([
+    // Fetch liked-item recommendations + genre discover + trending in parallel
+    const candidates = [
+      ...state.prefLikes.filter(x => x.id && x.type !== 'anime').slice(0, 2),
+      ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 2),
+    ];
+    const dedupedCandidates = candidates.filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 3);
+
+    const recRequests = dedupedCandidates.map(item =>
+      tmdb(`/${item.type || 'movie'}/${item.id}/recommendations`).catch(() => ({ results: [] }))
+    );
+
+    const [discoverRes, trendRes, ...recResults] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'popularity.desc', with_genres: genreIds }),
       tmdb('/trending/all/week'),
+      ...recRequests,
     ]);
 
     const discover = discoverRes.status === 'fulfilled' ? discoverRes.value.results || [] : [];
     const trend = trendRes.status === 'fulfilled' ? trendRes.value.results || [] : [];
+    const recItems = recResults.flatMap(r => r.status === 'fulfilled' ? r.value.results || [] : []);
 
-    // Merge, prefer liked items, remove disliked
+    // Score: recommendation hit = 3pts, genre match = 1pt each, trending = 0.5pt
+    const trendIds = new Set(trend.map(x => x.id));
+    const recIdCounts = {};
+    recItems.forEach(m => { recIdCounts[m.id] = (recIdCounts[m.id] || 0) + 3; });
+
     const seen = new Set();
-    const merged = [...discover, ...trend].filter(m => {
-      if (seen.has(m.id)) return false;
+    const pool = [...recItems, ...discover, ...trend].filter(m => {
+      if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
-      return !dislikedIds.has(m.id);
+      return !dislikedIds.has(m.id) && !likedIds.has(m.id);
     });
 
-    // Boost items whose genres match preferred genres
-    if (state.prefGenres.length) {
-      merged.sort((a, b) => {
-        const aMatch = (a.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
-        const bMatch = (b.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
-        return bMatch - aMatch;
-      });
-    }
+    pool.sort((a, b) => {
+      const score = m => {
+        let s = recIdCounts[m.id] || 0;
+        if (trendIds.has(m.id)) s += 0.5;
+        if (state.prefGenres.length)
+          s += (m.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
+        return s;
+      };
+      return score(b) - score(a);
+    });
 
-    items = merged.slice(0, 16);
+    const items = pool.slice(0, 18);
 
     if (!items.length) {
       rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Adjust your preferences for better recommendations.</p>';
       return;
     }
     renderRow('row-foryou', items, null);
-  } catch (e) {
+  } catch {
     rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Could not load recommendations.</p>';
   }
 }

@@ -61,6 +61,17 @@ export async function aniQuery(query, variables = {}) {
   return data;
 }
 
+/* ── CACHE PATTERN CLEAR ─────────────────────────────────────────── */
+export function clearCachePattern(pattern) {
+  const prefix = 'svc_';
+  const lower = pattern.toLowerCase();
+  Object.keys(sessionStorage).forEach(k => {
+    if (k.startsWith(prefix) && k.toLowerCase().includes(lower)) {
+      sessionStorage.removeItem(k);
+    }
+  });
+}
+
 /* ── IMAGE HELPERS ───────────────────────────────────────────────── */
 export function imgUrl(path, size = 'w300') {
   if (!path) return null;

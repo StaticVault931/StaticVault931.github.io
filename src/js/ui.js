@@ -181,20 +181,23 @@ export function jumpHero(i) {
   showHero(i);
   state.heroTimer = setInterval(() => {
     showHero((state.heroIdx + 1) % state.heroItems.length);
-  }, 7000);
+  }, 10000);
 }
 
 /* ── MODAL SKELETON ──────────────────────────────────────────────── */
 export function resetModal() {
   const setHTML = (id, h) => { const el = document.getElementById(id); if (el) el.innerHTML = h; };
+  const castSkeletons = Array(8).fill(`<div class="cast-card"><div class="cast-ph sk" style="background:var(--s4)"></div><div class="sk" style="height:8px;margin:.3rem auto 0;width:60%;border-radius:4px;"></div></div>`).join('');
   setHTML('modal-poster', '<div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:8px;"></div>');
   setHTML('modal-title', '<div class="sk" style="height:2.4rem;width:60%;border-radius:6px;"></div>');
   setHTML('modal-tags', '');
   setHTML('modal-actions', '');
   setHTML('modal-ratings', '');
   setHTML('modal-plot', '<div class="sk" style="height:3rem;border-radius:6px;"></div>');
-  setHTML('modal-side-col', `<div class="cast-section-label">Cast</div><div class="cast-row" id="modal-cast-row">${Array(6).fill(`<div class="cast-card"><div class="cast-ph sk" style="background:var(--s4)"></div><div class="sk" style="height:8px;margin:.3rem auto 0;width:60%;border-radius:4px;"></div></div>`).join('')}</div>`);
-  setHTML('modal-main-col', '');
+  setHTML('modal-cast-row', castSkeletons);
+  setHTML('modal-ep-sidebar', '');
+  setHTML('modal-related-section', '');
+  document.getElementById('modal-media-row')?.classList.remove('has-episodes');
 
   const pf = document.getElementById('player-frame');
   if (pf) pf.removeAttribute('src');
@@ -227,9 +230,14 @@ export function renderModalInfo(details, type) {
       : `<div class="modal-ph"><span class="material-icons-round" style="font-size:2.5rem">${type === 'anime' ? 'auto_awesome' : type === 'tv' ? 'tv' : 'movie'}</span></div>`;
   }
 
-  // Title
+  // Title — clear skeleton, set text
   const titleEl = document.getElementById('modal-title');
-  if (titleEl) titleEl.textContent = title;
+  if (titleEl) {
+    titleEl.innerHTML = '';
+    titleEl.classList.remove('sk');
+    titleEl.style.cssText = '';
+    titleEl.textContent = title;
+  }
 
   // Tags
   const typeClass = type === 'anime' ? 'a' : type === 'tv' ? 'v' : 's';
@@ -313,7 +321,7 @@ export function renderCast(credits) {
 
 /* ── RELATED RENDER ──────────────────────────────────────────────── */
 export function renderRelated(items, type) {
-  const el = document.getElementById('modal-main-col');
+  const el = document.getElementById('modal-related-section');
   if (!el) return;
   if (!items || !items.length) {
     el.innerHTML = '<p class="muted-note">No recommendations available.</p>';
@@ -348,6 +356,37 @@ export function buildGenreChips(containerId, genres, onClick, selectedIds = []) 
   el.querySelectorAll('.genre-chip').forEach(chip => {
     chip.addEventListener('click', () => onClick(+chip.dataset.genreId, chip.dataset.genreName, chip));
     chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(+chip.dataset.genreId, chip.dataset.genreName, chip); } });
+  });
+}
+
+/* ── CONFIRM DIALOG ──────────────────────────────────────────────── */
+export function showConfirm(title, msg) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirm-overlay');
+    const titleEl = document.getElementById('confirm-title');
+    const msgEl = document.getElementById('confirm-msg');
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+    if (!overlay) { resolve(false); return; }
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = msg;
+    overlay.classList.add('open');
+
+    function cleanup(result) {
+      overlay.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlay(e) { if (e.target === overlay) cleanup(false); }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
   });
 }
 

@@ -1,8 +1,8 @@
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, toggleLike, toggleWatchlist, addDislike } from './state.js';
-import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating } from './api.js';
+import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
-import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection } from './ui.js';
+import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
@@ -35,13 +35,11 @@ function applyLoadingScreenState() {
   const ls = document.getElementById('loading-screen');
   if (!ls) return;
 
-  // Auto-dismiss after brief animation (1.8s), or on Enter button
-  const enterBtn = document.getElementById('ls-enter');
-  if (enterBtn) {
-    enterBtn.addEventListener('click', dismissLoadingScreen);
-  }
+  document.body.classList.add('ls-open');
 
-  // Auto-dismiss after 2.5s so the app feels responsive
+  const enterBtn = document.getElementById('ls-enter');
+  if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
+
   setTimeout(dismissLoadingScreen, 2500);
 }
 
@@ -49,6 +47,7 @@ function dismissLoadingScreen() {
   const ls = document.getElementById('loading-screen');
   if (!ls || ls.classList.contains('out')) return;
   ls.classList.add('out');
+  document.body.classList.remove('ls-open');
 }
 
 /* ── HEADER SCROLL ───────────────────────────────────────────────── */
@@ -106,7 +105,7 @@ async function loadHero() {
     clearInterval(state.heroTimer);
     state.heroTimer = setInterval(() => {
       showHero((state.heroIdx + 1) % state.heroItems.length);
-    }, 7000);
+    }, 10000);
   } catch {}
 }
 
@@ -444,11 +443,13 @@ function showAgeWarning(rating, useId, type) {
 
 /* ── TV EPISODES ─────────────────────────────────────────────────── */
 async function buildTvEpisodes(tmdbId, useId, details) {
-  const colRight = document.getElementById('modal-main-col');
-  if (!colRight) return;
+  const sidebar = document.getElementById('modal-ep-sidebar');
+  if (!sidebar) return;
+
+  document.getElementById('modal-media-row')?.classList.add('has-episodes');
 
   const total = details.number_of_seasons || 1;
-  colRight.innerHTML = `
+  sidebar.innerHTML = `
     <div class="ep-section">
       <div class="ep-header">
         <h3>Episodes</h3>
@@ -505,8 +506,10 @@ async function fetchEpisodes(tmdbId, useId, season, highlightEp) {
 
 /* ── ANIME EPISODES ──────────────────────────────────────────────── */
 function buildAnimeEpisodes(details) {
-  const colRight = document.getElementById('modal-main-col');
+  const colRight = document.getElementById('modal-ep-sidebar');
   if (!colRight) return;
+
+  document.getElementById('modal-media-row')?.classList.add('has-episodes');
 
   const total = details.number_of_episodes || 1;
   const cont = getContinue(details.id);
@@ -537,9 +540,9 @@ function buildAnimeEpisodes(details) {
 
 /* ── RELATED (movies) ────────────────────────────────────────────── */
 async function loadRelated(id, type, details) {
-  const colRight = document.getElementById('modal-main-col');
-  if (!colRight) return;
-  colRight.innerHTML = `<div class="section-label">More Like This</div><div class="related-grid" id="related-grid">${skelCards(6)}</div>`;
+  const section = document.getElementById('modal-related-section');
+  if (!section) return;
+  section.innerHTML = `<div class="section-label">More Like This</div><div class="related-grid" id="related-grid">${skelCards(6)}</div>`;
 
   try {
     let items = [];
@@ -560,6 +563,7 @@ async function loadRelated(id, type, details) {
 export function closeModal() {
   document.getElementById('modal-overlay')?.classList.remove('open');
   document.getElementById('player-frame')?.removeAttribute('src');
+  document.getElementById('modal-media-row')?.classList.remove('has-episodes');
   document.body.style.overflow = '';
   state.currentMedia = null;
   clearTimeout(window._providerTimer);
@@ -809,19 +813,35 @@ function initEventDelegation() {
 
   // Prefs apply
   document.getElementById('pref-apply-btn')?.addEventListener('click', () => {
+    clearCachePattern('discover');
+    clearCachePattern('trending');
+    // Clear stale "Because You Liked" sections
+    document.querySelectorAll('[id^="sec-because-"]').forEach(el => el.remove());
     toast('Feed updated!', 'check');
     loadForYou().catch(() => {});
     loadBecauseYouLiked().catch(() => {});
     goPage('home');
   });
 
-  // Data management
-  document.getElementById('btn-clear-watchlist')?.addEventListener('click', () => clearSection('watchlist', 'Watchlist'));
-  document.getElementById('btn-clear-liked')?.addEventListener('click', () => clearSection('liked', 'Liked'));
-  document.getElementById('btn-clear-recent')?.addEventListener('click', () => clearSection('recentlyViewed', 'Recently Viewed'));
-  document.getElementById('btn-clear-continue')?.addEventListener('click', () => clearSection('continueWatching', 'Continue Watching'));
-  document.getElementById('btn-clear-disliked')?.addEventListener('click', () => clearSection('disliked', 'Disliked'));
-  document.getElementById('btn-reset-all')?.addEventListener('click', clearAllData);
+  // Data management — use in-app confirm dialog
+  document.getElementById('btn-clear-watchlist')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Watchlist', 'Remove all saved titles? This cannot be undone.')) clearSection('watchlist', 'Watchlist');
+  });
+  document.getElementById('btn-clear-liked')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Liked', 'Remove all liked titles? This cannot be undone.')) clearSection('liked', 'Liked');
+  });
+  document.getElementById('btn-clear-recent')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear History', 'Remove all recently viewed titles? This cannot be undone.')) clearSection('recentlyViewed', 'Recently Viewed');
+  });
+  document.getElementById('btn-clear-continue')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Continue Watching', 'Remove all progress? This cannot be undone.')) clearSection('continueWatching', 'Continue Watching');
+  });
+  document.getElementById('btn-clear-disliked')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Disliked', 'Clear your disliked list? This cannot be undone.')) clearSection('disliked', 'Disliked');
+  });
+  document.getElementById('btn-reset-all')?.addEventListener('click', async () => {
+    if (await showConfirm('Reset All Data', 'This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) clearAllData();
+  });
 
   // Empty state actions
   document.addEventListener('click', e => {
@@ -921,14 +941,29 @@ function shareMedia() {
 /* ── KEYBOARD ────────────────────────────────────────────────────── */
 function initKeyboard() {
   document.addEventListener('keydown', e => {
-    // Escape closes modal
-    if (e.key === 'Escape') closeModal();
+    if (e.target.matches('input,textarea,select')) return;
 
-    // / opens search (if not in an input)
-    if (e.key === '/' && !e.target.matches('input,textarea,select')) {
+    // Escape closes modal
+    if (e.key === 'Escape') { closeModal(); return; }
+
+    // / opens search
+    if (e.key === '/') {
       e.preventDefault();
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 150);
+      return;
+    }
+
+    // WASD / Arrow keys — hero navigation and row scrolling
+    const modalOpen = document.getElementById('modal-overlay')?.classList.contains('open');
+    if (modalOpen) return;
+
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      jumpHero((state.heroIdx - 1 + state.heroItems.length) % state.heroItems.length);
+    } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+      e.preventDefault();
+      jumpHero((state.heroIdx + 1) % state.heroItems.length);
     }
   });
 }

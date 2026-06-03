@@ -12,13 +12,18 @@
 /* ── 1024px ───────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   :root { --card-w: 230px; }
-  .modal-columns { grid-template-columns: 1fr 260px; }
+  .modal-ep-sidebar { width: 280px; }
 }
 
 /* ── 860px ────────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
-  .modal-columns { grid-template-columns: 1fr; }
-  .modal-side-col { border-top: 1px solid var(--border); padding-top: 1rem; }
+  .modal-media-row { flex-direction: column; }
+  .modal-ep-sidebar {
+    width: 100% !important;
+    max-height: 320px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
   .cast-row { display: grid; grid-template-columns: repeat(auto-fill, 72px); }
 }
 
@@ -58,7 +63,7 @@
   .modal-info { padding: .85rem 1rem; gap: .9rem; }
   .modal-poster-wrap { width: 90px; }
   #modal-title { font-size: clamp(1.5rem, 5vw, 2.2rem); }
-  .modal-columns { padding: 0 1rem 1.2rem; }
+  .modal-cast-section, .modal-related-section { padding: .85rem 1rem; }
   .ma { padding: .44rem .8rem; font-size: .76rem; }
 
   .search-grid,
@@ -92,8 +97,6 @@
   #modal-overlay { overflow-y: auto; }
   .modal-info { flex-direction: column; }
   .modal-poster-wrap { display: none; }
-
-  .modal-columns { grid-template-columns: 1fr; }
 }
 
 /* ── HOVER MEDIA ─────────────────────────────────────────────────── */

@@ -154,7 +154,6 @@ export async function loadMoreSeeAll() {
 
 /* ── DATA MANAGEMENT ─────────────────────────────────────────────── */
 export function clearSection(key, label) {
-  if (!confirm(`Clear your ${label}? This cannot be undone.`)) return;
   state[key] = Array.isArray(state[key]) ? [] : {};
   persist(key);
   renderLibrary();
@@ -162,7 +161,6 @@ export function clearSection(key, label) {
 }
 
 export function clearAllData() {
-  if (!confirm('Reset ALL StaticVault931 data? This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) return;
   const keys = ['watchlist', 'liked', 'disliked', 'recentlyViewed', 'continueWatching',
     'prefLikes', 'prefDislikes', 'prefGenres'];
   keys.forEach(k => {
