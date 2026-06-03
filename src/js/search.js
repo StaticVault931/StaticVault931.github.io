@@ -1,6 +1,6 @@
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
-import { state } from './state.js';
+import { state, addRecentSearch, clearRecentSearches } from './state.js';
 
 let _debounce = null;
 let _sfActive = 'all';
@@ -54,8 +54,21 @@ export async function loadSearchDefault() {
   const area = document.getElementById('search-results-area');
   if (!area) return;
 
+  const recents = state.recentSearches || [];
+  const recentHtml = recents.length ? `
+    <div class="search-section-title" style="margin-bottom:.5rem">
+      <span class="material-icons-round">history</span> Recent Searches
+      <button class="search-clear-recent" id="clear-recent-searches" title="Clear recent searches">
+        <span class="material-icons-round">delete_sweep</span>
+      </button>
+    </div>
+    <div class="recent-searches-row" id="recent-searches-chips">
+      ${recents.map(q => `<button class="recent-chip" data-recent-q="${esc(q)}">${esc(q)}</button>`).join('')}
+    </div>` : '';
+
   area.innerHTML = `
-    <div class="search-section-title">
+    ${recentHtml}
+    <div class="search-section-title"${recents.length ? ' style="margin-top:1.5rem"' : ''}>
       <span class="material-icons-round">local_fire_department</span> Trending Now
     </div>
     <div class="search-grid" id="search-trending-grid">${skelCards(12)}</div>
@@ -63,6 +76,22 @@ export async function loadSearchDefault() {
       <span class="material-icons-round">category</span> Browse by Genre
     </div>
     <div class="genre-scroll" id="search-genre-scroll"></div>`;
+
+  // Wire up recent chip clicks
+  document.getElementById('recent-searches-chips')?.addEventListener('click', e => {
+    const chip = e.target.closest('[data-recent-q]');
+    if (chip) {
+      const q = chip.dataset.recentQ;
+      const inp = document.getElementById('search-input');
+      if (inp) { inp.value = q; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+  });
+
+  // Clear recent searches
+  document.getElementById('clear-recent-searches')?.addEventListener('click', () => {
+    clearRecentSearches();
+    loadSearchDefault();
+  });
 
   try {
     const d = await tmdb('/trending/all/week');
@@ -78,7 +107,6 @@ export async function loadSearchDefault() {
   const { GENRES } = await import('./state.js');
   const { buildGenreChips } = await import('./ui.js');
   buildGenreChips('search-genre-scroll', GENRES, (id, name) => {
-    // Navigate to genre results
     import('./router.js').then(({ goSeeAll }) => goSeeAll('genre-' + id, name));
   });
 }
@@ -87,6 +115,9 @@ export async function loadSearchDefault() {
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
+
+  // Save to recent searches
+  addRecentSearch(q);
 
   try {
     let movies = [], shows = [], anime = [];

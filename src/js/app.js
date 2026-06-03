@@ -93,6 +93,8 @@ function closeLegal() {
   initEventDelegation();
   initKeyboard();
   initHeader();
+  initHoverTrailer();
+  initModalPanelToggles();
   registerAllLoaders();
   registerAllSeeAll();
   initSearch();
@@ -115,11 +117,16 @@ function applyLoadingScreenState() {
   const ls = document.getElementById('loading-screen');
   if (!ls) return;
 
-  document.body.classList.add('ls-open');
+  // Skip loading screen entirely after first visit
+  if (localStorage.getItem('sv_visited')) {
+    ls.classList.add('instant-out');
+    return;
+  }
+  localStorage.setItem('sv_visited', '1');
 
+  document.body.classList.add('ls-open');
   const enterBtn = document.getElementById('ls-enter');
   if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
-
   setTimeout(dismissLoadingScreen, 2500);
 }
 
@@ -189,39 +196,77 @@ async function loadHero() {
   } catch {}
 }
 
+/* ── LAZY ROW HELPER ─────────────────────────────────────────────── */
+const _lazyObs = new Map();
+
+function lazyRow(rowId, secId, fetchFn, type, numbered = false) {
+  const row = document.getElementById(rowId);
+  const sec = secId ? document.getElementById(secId) : null;
+  if (!row) return;
+
+  // Disconnect any existing observer for this row
+  _lazyObs.get(rowId)?.disconnect();
+  _lazyObs.delete(rowId);
+
+  row.innerHTML = skelCards(6);
+
+  const target = sec || row;
+  const obs = new IntersectionObserver((entries, observer) => {
+    if (!entries[0].isIntersecting) return;
+    observer.disconnect();
+    _lazyObs.delete(rowId);
+
+    fetchFn()
+      .then(items => {
+        if (!items || !items.length) {
+          if (sec) sec.style.display = 'none'; else row.innerHTML = '';
+          return;
+        }
+        renderRow(rowId, items.slice(0, 14), type, numbered);
+      })
+      .catch(() => { if (sec) sec.style.display = 'none'; });
+  }, { rootMargin: '400px 0px' });
+
+  obs.observe(target);
+  _lazyObs.set(rowId, obs);
+}
+
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 async function loadHomeRows() {
-  const rowIds = ['row-trending', 'row-foryou', 'row-continue', 'row-recent',
-    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing', 'row-action', 'row-comedy', 'row-horror',
-    'row-drama', 'row-scifi', 'row-animated', 'row-home-anime'];
-  rowIds.forEach(id => {
+  // Show skeletons for above-fold rows immediately
+  ['row-trending', 'row-foryou', 'row-continue', 'row-recent'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = skelCards(8);
   });
 
-  // Continue watching from localStorage
+  // Continue watching and recently viewed — instant from localStorage
   renderContinueRow();
   renderRecentRow();
 
-  const animeQ = `query{Page(perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
-
+  // Above-fold: load immediately
   await Promise.allSettled([
-    tmdb('/trending/all/week').then(d => renderRow('row-trending', (d.results || []).slice(0, 14), null, true)).catch(() => hideSection('sec-trending')),
+    tmdb('/trending/all/week')
+      .then(d => renderRow('row-trending', (d.results || []).slice(0, 14), null, true))
+      .catch(() => hideSection('sec-trending')),
     loadForYou(),
-    tmdb('/movie/now_playing').then(d => renderRow('row-new', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-new')),
-    tmdb('/movie/top_rated').then(d => renderRow('row-toprated', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-toprated')),
-    tmdb('/tv/popular').then(d => renderRow('row-tv-pop', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-pop')),
-    tmdb('/tv/airing_today').then(d => renderRow('row-airing', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-airing')),
-    tmdb('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc' }).then(d => renderRow('row-action', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-action')),
-    tmdb('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc' }).then(d => renderRow('row-comedy', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-comedy')),
-    tmdb('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc' }).then(d => renderRow('row-horror', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-horror')),
-    tmdb('/discover/movie', { with_genres: 18, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }).then(d => renderRow('row-drama', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-drama')),
-    tmdb('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc' }).then(d => renderRow('row-scifi', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-scifi')),
-    tmdb('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc' }).then(d => renderRow('row-animated', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-animated')),
-    aniQuery(animeQ).then(d => renderRow('row-home-anime', (d?.data?.Page?.media || []).map(normalizeAnime).slice(0, 14), 'anime')).catch(() => hideSection('sec-home-anime')),
   ]);
 
-  // Because You Liked rows
+  // Below-fold: lazy load when scrolled near
+  const animeQ = `query{Page(perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
+
+  lazyRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing').then(d => d.results || []), 'movie');
+  lazyRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated').then(d => d.results || []), 'movie');
+  lazyRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular').then(d => d.results || []), 'tv');
+  lazyRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []), 'tv');
+  lazyRow('row-action',    'sec-action',    () => tmdb('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', { with_genres: 18, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }).then(d => d.results || []), 'movie');
+  lazyRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime');
+
+  // Because You Liked rows (load after above-fold settles)
   loadBecauseYouLiked().catch(() => {});
 }
 
@@ -459,6 +504,7 @@ export async function openMedia(id, type, hint = {}) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
 
+  clearHoverTrailer(); // stop any active hover preview
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   resetModal();
@@ -550,16 +596,17 @@ async function buildTvEpisodes(tmdbId, useId, details) {
     </div>`;
 
   const sel = document.getElementById('season-sel');
-  if (sel) sel.addEventListener('change', () => fetchEpisodes(tmdbId, useId, +sel.value));
+  // Season change: load episodes but do NOT auto-play — user is browsing
+  if (sel) sel.addEventListener('change', () => fetchEpisodes(tmdbId, useId, +sel.value, undefined, false));
 
-  // Restore last watched season
+  // Restore last watched season (auto-play on initial open)
   const cont = getContinue(tmdbId);
   const startSeason = cont?.season || 1;
   if (sel) sel.value = String(startSeason);
-  await fetchEpisodes(tmdbId, useId, startSeason, cont?.episode);
+  await fetchEpisodes(tmdbId, useId, startSeason, cont?.episode, true);
 }
 
-async function fetchEpisodes(tmdbId, useId, season, highlightEp) {
+async function fetchEpisodes(tmdbId, useId, season, highlightEp, autoLoad = true) {
   const grid = document.getElementById('ep-grid');
   if (!grid) return;
   grid.innerHTML = skelCards(4);
@@ -585,9 +632,9 @@ async function fetchEpisodes(tmdbId, useId, season, highlightEp) {
         </div>`;
     }).join('');
 
-    // Play first (or highlighted) episode
+    // Play first (or highlighted) episode only on initial open — not on season change
     const targetEp = highlightEp || 1;
-    if (eps.length) loadPlayer(useId, 'tv', season, targetEp);
+    if (eps.length && autoLoad) loadPlayer(useId, 'tv', season, targetEp);
   } catch {
     grid.innerHTML = '<p class="muted-note">Could not load episodes.</p>';
   }
@@ -653,6 +700,16 @@ export function closeModal() {
   document.body.style.overflow = '';
   state.currentMedia = null;
   cancelProviderTimer();
+
+  // Reset panel states for next open
+  document.getElementById('modal-left-panel')?.classList.remove('panel-collapsed');
+  document.getElementById('modal-right-panel')?.classList.remove('panel-collapsed');
+  document.getElementById('left-panel-toggle')?.classList.remove('panel-toggle-active');
+  document.getElementById('right-panel-toggle')?.classList.remove('panel-toggle-active');
+  const li = document.getElementById('left-panel-toggle')?.querySelector('.material-icons-round');
+  const ri = document.getElementById('right-panel-toggle')?.querySelector('.material-icons-round');
+  if (li) li.textContent = 'dock_to_right';
+  if (ri) ri.textContent = 'dock_to_left';
 }
 
 /* ── PLAY NOW ────────────────────────────────────────────────────── */
@@ -788,12 +845,18 @@ function initEventDelegation() {
     else if (action === 'modal-trailer') {
       const key = btn.dataset.key;
       if (key) {
+        cancelProviderTimer(); // stop any pending provider error timer
         const iframe = document.getElementById('player-frame');
         const loading = document.getElementById('player-loading');
         if (iframe) {
           if (loading) { loading.classList.remove('hidden'); loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`; }
-          iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
-          iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
+          iframe.removeAttribute('src');
+          setTimeout(() => {
+            iframe.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
+            iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
+            // Fallback: hide loading after 8s regardless
+            setTimeout(() => { if (loading) loading.classList.add('hidden'); }, 8000);
+          }, 50);
         }
       }
     }
@@ -980,6 +1043,23 @@ function initEventDelegation() {
     if (await showConfirm('Reset All Data', 'This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) clearAllData();
   });
 
+  // Provider auto-switch on timeout — try next provider after brief delay
+  document.addEventListener('sv:provider-timeout', () => {
+    if (!state.currentMedia) return;
+    setTimeout(() => {
+      // Only switch if player is still showing error (not loaded)
+      const loading = document.getElementById('player-loading');
+      if (!loading || loading.classList.contains('hidden')) return;
+      const { useId, id, type } = state.currentMedia;
+      const sel = document.getElementById('season-sel');
+      const s = sel ? +sel.value : 1;
+      const activeEp = document.querySelector('.ep-card.on');
+      const ep = activeEp ? +activeEp.dataset.ep : 1;
+      const next = nextProvider(useId || id, type, s, ep);
+      toast(`Auto-switching to ${next.label}…`, 'sync');
+    }, 3500);
+  });
+
   // Empty state actions
   document.addEventListener('click', e => {
     const act = e.target.closest('.empty-action');
@@ -1073,6 +1153,126 @@ function shareMedia() {
   } else {
     navigator.clipboard?.writeText(url).then(() => toast('Link copied!', 'link')).catch(() => toast('Copy failed', 'error'));
   }
+}
+
+/* ── HOVER TRAILER PREVIEW ───────────────────────────────────────── */
+const _hoverTrailerCache = new Map();
+let _hoverTimer = null;
+let _hoverActive = false;
+let _hoverCurrentCard = null;
+
+function initHoverTrailer() {
+  // Mouse enter on cards
+  document.addEventListener('mouseover', e => {
+    if (document.getElementById('modal-overlay')?.classList.contains('open')) return;
+
+    const card = e.target.closest('.card[data-id][data-type]');
+    if (!card || card.dataset.type === 'anime') {
+      if (!e.target.closest('#hover-preview') && !e.target.closest('.card')) {
+        clearHoverTrailer();
+      }
+      return;
+    }
+
+    if (card === _hoverCurrentCard) return; // same card, do nothing
+    clearHoverTrailer(); // reset timer if hovering new card
+    _hoverCurrentCard = card;
+    _hoverTimer = setTimeout(async () => {
+      if (_hoverCurrentCard === card) {
+        _hoverActive = true;
+        await triggerHoverTrailer(card);
+      }
+    }, 1500);
+  });
+
+  document.addEventListener('mouseleave', e => {
+    if (e.target === document.documentElement) clearHoverTrailer();
+  });
+
+  document.getElementById('hover-preview')?.addEventListener('mouseleave', clearHoverTrailer);
+}
+
+function clearHoverTrailer() {
+  clearTimeout(_hoverTimer);
+  _hoverTimer = null;
+  _hoverActive = false;
+  _hoverCurrentCard = null;
+  const preview = document.getElementById('hover-preview');
+  const frame = document.getElementById('hover-frame');
+  if (preview) preview.classList.remove('visible');
+  // Delay src removal to avoid flash when preview is reused quickly
+  setTimeout(() => { if (!_hoverActive && frame) frame.removeAttribute('src'); }, 300);
+}
+
+async function triggerHoverTrailer(card) {
+  const id = card.dataset.id;
+  const type = card.dataset.type;
+  if (!_hoverActive) return;
+
+  let key = _hoverTrailerCache.get(id);
+  if (!key) {
+    try {
+      const data = await tmdb(`/${type === 'tv' ? 'tv' : 'movie'}/${id}/videos`);
+      const vids = data.results || [];
+      const vid = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
+                  vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
+                  vids.find(v => v.site === 'YouTube');
+      key = vid?.key || '__none__';
+    } catch {
+      key = '__none__';
+    }
+    _hoverTrailerCache.set(id, key);
+  }
+
+  if (!_hoverActive || !key || key === '__none__') return;
+
+  const preview = document.getElementById('hover-preview');
+  const frame = document.getElementById('hover-frame');
+  if (!preview || !frame) return;
+
+  // Position relative to card
+  const rect = card.getBoundingClientRect();
+  const vpW = window.innerWidth;
+  const vpH = window.innerHeight;
+  const pW = 320, pH = 196;
+
+  let left = rect.right + 12;
+  let top = rect.top + (rect.height / 2) - (pH / 2);
+
+  if (left + pW > vpW - 12) left = rect.left - pW - 12;
+  if (left < 8) left = 8;
+  if (top + pH > vpH - 8) top = vpH - pH - 8;
+  if (top < 8) top = 8;
+
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+  frame.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${key}&modestbranding=1`;
+  preview.classList.add('visible');
+}
+
+/* ── COLLAPSIBLE MODAL SIDEBARS ──────────────────────────────────── */
+function initModalPanelToggles() {
+  document.getElementById('left-panel-toggle')?.addEventListener('click', () => {
+    const panel = document.getElementById('modal-left-panel');
+    const btn = document.getElementById('left-panel-toggle');
+    if (!panel) return;
+    const collapsed = panel.classList.toggle('panel-collapsed');
+    const icon = btn?.querySelector('.material-icons-round');
+    if (icon) icon.textContent = collapsed ? 'dock_to_right' : 'view_sidebar';
+    btn?.classList.toggle('panel-toggle-active', collapsed);
+    if (btn) btn.title = collapsed ? 'Show info panel' : 'Hide info panel';
+  });
+
+  document.getElementById('right-panel-toggle')?.addEventListener('click', () => {
+    const panel = document.getElementById('modal-right-panel');
+    const btn = document.getElementById('right-panel-toggle');
+    if (!panel) return;
+    const collapsed = panel.classList.toggle('panel-collapsed');
+    const icon = btn?.querySelector('.material-icons-round');
+    if (icon) icon.textContent = collapsed ? 'dock_to_left' : 'view_sidebar';
+    btn?.classList.toggle('panel-toggle-active', collapsed);
+    if (btn) btn.title = collapsed ? 'Show episodes panel' : 'Hide episodes panel';
+  });
 }
 
 /* ── KEYBOARD ────────────────────────────────────────────────────── */

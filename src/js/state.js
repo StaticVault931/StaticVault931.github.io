@@ -44,6 +44,7 @@ export const state = {
   disliked:         load('sv_disliked', []),
   recentlyViewed:   load('sv_recent', []),
   continueWatching: load('sv_continue', {}),
+  recentSearches:   load('sv_recent_searches', []),
 
   // Persisted preferences
   ageRating:    load('sv_age', 'PG'),
@@ -69,6 +70,7 @@ const PERSIST_MAP = {
   disliked:         'sv_disliked',
   recentlyViewed:   'sv_recent',
   continueWatching: 'sv_continue',
+  recentSearches:   'sv_recent_searches',
   ageRating:        'sv_age',
   prefLikes:        'sv_pref_likes',
   prefDislikes:     'sv_pref_dislikes',
@@ -128,4 +130,18 @@ export function addDislike(item) {
     state.disliked.push(item);
     persist('disliked');
   }
+}
+
+/* ── RECENT SEARCHES ─────────────────────────────────────────────── */
+export function addRecentSearch(q) {
+  if (!q || q.length < 2) return;
+  state.recentSearches = state.recentSearches.filter(s => s.toLowerCase() !== q.toLowerCase());
+  state.recentSearches.unshift(q);
+  if (state.recentSearches.length > 10) state.recentSearches = state.recentSearches.slice(0, 10);
+  persist('recentSearches');
+}
+
+export function clearRecentSearches() {
+  state.recentSearches = [];
+  persist('recentSearches');
 }

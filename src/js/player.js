@@ -144,7 +144,10 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
 
   iframe.onerror = () => showProviderError();
 
-  _providerTimer = setTimeout(() => showProviderError(), 10000);
+  _providerTimer = setTimeout(() => {
+    showProviderError();
+    document.dispatchEvent(new CustomEvent('sv:provider-timeout'));
+  }, 10000);
   setTimeout(() => { iframe.src = src; }, 80);
 }
 

@@ -82,6 +82,7 @@
           <span class="material-icons-round" style="font-size:.66rem">local_fire_department</span>Trending
         </span>
         <span class="hero-pill hp-type" id="h-type">Movie</span>
+        <span class="hero-pill hp-year" id="h-year" style="display:none"></span>
         <span class="hero-pill hp-score" id="h-score"></span>
       </div>
       <div id="hero-title">Loading…</div>
@@ -890,9 +891,18 @@
 <!-- ════ MODAL ════ -->
 <div id="modal-overlay" role="dialog" aria-modal="true" aria-label="Content details">
   <div id="modal">
-    <button id="modal-close" aria-label="Close">
-      <span class="material-icons-round">close</span>
-    </button>
+    <div class="modal-top-bar">
+      <button id="modal-close" aria-label="Close">
+        <span class="material-icons-round">close</span>
+      </button>
+      <div class="modal-top-spacer"></div>
+      <button class="modal-panel-toggle" id="left-panel-toggle" title="Toggle info panel" aria-label="Toggle info panel">
+        <span class="material-icons-round">dock_to_right</span>
+      </button>
+      <button class="modal-panel-toggle" id="right-panel-toggle" title="Toggle episodes panel" aria-label="Toggle episodes panel">
+        <span class="material-icons-round">dock_to_left</span>
+      </button>
+    </div>
     <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
     <div class="modal-body">
       <!-- LEFT: poster + meta + cast -->
@@ -951,6 +961,18 @@
 <div id="toast" role="status" aria-live="polite">
   <span class="material-icons-round" id="ti">info</span>
   <span id="tm"></span>
+</div>
+
+<!-- HOVER TRAILER PREVIEW -->
+<div id="hover-preview" aria-hidden="true">
+  <div class="hover-preview-inner">
+    <iframe id="hover-frame"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+      allow="autoplay; encrypted-media"
+      referrerpolicy="no-referrer"
+      title="Trailer preview">
+    </iframe>
+  </div>
 </div>
 
 <!-- BOTTOM NAV (mobile) -->

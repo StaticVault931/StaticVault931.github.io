@@ -35,9 +35,15 @@
   height: 100%;
   object-fit: cover;
   object-position: center top;
+  opacity: 0;
+  animation: imgFadeIn .5s var(--ease) forwards;
   transition: transform .4s var(--ease);
 }
 .card:hover .card-poster img { transform: scale(1.06); }
+@keyframes imgFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 
 .card-poster-ph {
   width: 100%;
@@ -153,8 +159,14 @@
   display: flex;
   align-items: center;
   gap: 3px;
+  transition: color .2s, background .2s;
 }
 .card-rating .material-icons-round { font-size: .64rem; }
+/* Rating color variants */
+.card-rating.rating-great { color: #22c55e; background: rgba(34,197,94,.18); }
+.card-rating.rating-good  { color: var(--gold); }
+.card-rating.rating-ok    { color: #f97316; background: rgba(249,115,22,.15); }
+.card-rating.rating-bad   { color: var(--red); background: rgba(229,9,20,.18); }
 
 /* Progress bar */
 .card-progress {
@@ -302,25 +314,59 @@
   position: relative;
 }
 
-#modal-close {
-  position: absolute;
-  top: .9rem;
-  right: .9rem;
+/* Modal top bar */
+.modal-top-bar {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .5rem .65rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--s1);
+  flex-shrink: 0;
   z-index: 30;
-  width: 38px;
-  height: 38px;
+}
+.modal-top-spacer { flex: 1; }
+
+#modal-close {
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgba(0,0,0,.76);
+  background: rgba(0,0,0,.3);
   border: 1px solid var(--border2);
-  color: #fff;
+  color: var(--text);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all .2s;
+  flex-shrink: 0;
 }
-#modal-close:hover { background: var(--red); transform: rotate(90deg); }
+#modal-close:hover { background: var(--red); border-color: var(--red); color: #fff; transform: rotate(90deg); }
 #modal-close .material-icons-round { font-size: 1rem; }
+
+/* Panel collapse toggle buttons */
+.modal-panel-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r);
+  background: var(--s3);
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .18s;
+  flex-shrink: 0;
+}
+.modal-panel-toggle:hover { color: var(--text); border-color: var(--border3); background: var(--s4); }
+.modal-panel-toggle.panel-toggle-active { background: var(--s4); border-color: var(--red); color: var(--red); }
+.modal-panel-toggle .material-icons-round { font-size: .9rem; }
+
+/* Collapsible panels */
+.modal-left-panel, .modal-right-panel { transition: width .3s var(--ease), min-width .3s var(--ease); }
+.modal-left-panel.panel-collapsed  { width: 0 !important; min-width: 0 !important; overflow: hidden; border: none; padding: 0; }
+.modal-right-panel.panel-collapsed { width: 0 !important; min-width: 0 !important; overflow: hidden; border: none; padding: 0; }
 
 /* Provider bar */
 .provider-bar {
@@ -433,6 +479,9 @@
   color: var(--muted);
 }
 .m-tag.gold  { background: rgba(245,197,24,.1); color: var(--gold); border-color: rgba(245,197,24,.2); }
+.m-tag.great { background: rgba(34,197,94,.1);  color: #22c55e;   border-color: rgba(34,197,94,.2); }
+.m-tag.ok    { background: rgba(249,115,22,.1); color: #f97316;   border-color: rgba(249,115,22,.2); }
+.m-tag.bad   { background: rgba(229,9,20,.1);   color: var(--red); border-color: rgba(229,9,20,.2); }
 .m-tag.v     { background: rgba(167,139,250,.1); color: #a78bfa;   border-color: rgba(167,139,250,.2); }
 .m-tag.s     { background: rgba(229,9,20,.1);    color: #f87171;   border-color: rgba(229,9,20,.2); }
 .m-tag.a     { background: rgba(251,146,60,.1);  color: #fb923c;   border-color: rgba(251,146,60,.2); }
@@ -787,3 +836,38 @@
   gap: 2px;
 }
 .ep-rt .material-icons-round { font-size: .62rem; }
+
+/* ── HOVER TRAILER PREVIEW ───────────────────────────────────────── */
+#hover-preview {
+  position: fixed;
+  z-index: 9000;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(.9) translateY(8px);
+  transition: opacity .25s var(--ease), transform .25s var(--ease);
+  width: 320px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,.9);
+  border: 1px solid rgba(255,255,255,.1);
+}
+#hover-preview.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateY(0);
+}
+.hover-preview-inner {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+  position: relative;
+}
+#hover-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+@media (hover: none) {
+  #hover-preview { display: none; }
+}

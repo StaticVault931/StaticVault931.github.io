@@ -55,6 +55,10 @@ export function makeCard(m, type, opts = {}) {
   const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV' : 'Film';
   const typeClass = type === 'anime' ? 'tp-a' : type === 'tv' ? 'tp-t' : 'tp-m';
 
+  // Rating color class
+  const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);
+  const ratingClass = ratingVal >= 9.0 ? ' rating-great' : ratingVal >= 7.0 ? ' rating-good' : ratingVal >= 5.0 ? ' rating-ok' : ratingVal > 0 ? ' rating-bad' : '';
+
   // Badges
   const badges = [];
   if (contData) badges.push(`<span class="card-badge badge-continue">Continue</span>`);
@@ -88,7 +92,7 @@ export function makeCard(m, type, opts = {}) {
            </div>`}
       <div class="type-pill ${typeClass}">${typeLabel}</div>
       ${badges.length ? `<div class="card-badges">${badges.join('')}</div>` : ''}
-      ${rating ? `<div class="card-rating"><span class="material-icons-round">star</span>${rating}</div>` : ''}
+      ${rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
       <div class="card-ov">
         <div class="card-ov-actions">
           <button class="card-like-btn${likedNow ? ' liked' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${likedNow ? 'Unlike' : 'Like'}">
@@ -168,7 +172,9 @@ export function showHero(idx) {
   const score = document.getElementById('h-score');
   if (score) {
     if (m.vote_average) {
-      score.innerHTML = `<span class="material-icons-round" style="font-size:.68rem">star</span>${m.vote_average.toFixed(1)}`;
+      const rv = m.vote_average;
+      const rColor = rv >= 9 ? '#22c55e' : rv >= 7 ? '#f5c518' : rv >= 5 ? '#f97316' : '#e50914';
+      score.innerHTML = `<span class="material-icons-round" style="font-size:.68rem;color:${rColor}">star</span><span style="color:${rColor}">${rv.toFixed(1)}</span>`;
       score.style.display = '';
     } else {
       score.style.display = 'none';
@@ -180,8 +186,16 @@ export function showHero(idx) {
     typePill.textContent = m.media_type === 'tv' ? 'TV Show' : 'Movie';
   }
 
+  // Year pill
+  const yearPill = document.getElementById('h-year');
+  if (yearPill) {
+    const year = String(m.release_date || m.first_air_date || '').slice(0, 4);
+    yearPill.textContent = year;
+    yearPill.style.display = year ? '' : 'none';
+  }
+
   const desc = document.getElementById('hero-desc');
-  if (desc) desc.textContent = m.overview || '';
+  if (desc) desc.textContent = (m.overview || '').slice(0, 200) + ((m.overview || '').length > 200 ? '…' : '');
 
   document.querySelectorAll('.hdot').forEach((d, j) => d.classList.toggle('on', j === idx));
 }
@@ -259,9 +273,10 @@ export function renderModalInfo(details, type) {
   // Tags
   const typeClass = type === 'anime' ? 'a' : type === 'tv' ? 'v' : 's';
   const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV Show' : 'Movie';
+  const ratingColorClass = rating >= 9.0 ? 'great' : rating >= 7.0 ? 'gold' : rating >= 5.0 ? 'ok' : rating > 0 ? 'bad' : 'gold';
   const tags = [
     year ? `<span class="m-tag">${year}</span>` : '',
-    rating ? `<span class="m-tag gold"><span class="material-icons-round" style="font-size:.72rem;vertical-align:middle">star</span> ${rating.toFixed(1)}</span>` : '',
+    rating ? `<span class="m-tag ${ratingColorClass}"><span class="material-icons-round" style="font-size:.72rem;vertical-align:middle">star</span> ${rating.toFixed(1)}</span>` : '',
     runtime ? `<span class="m-tag">${runtime}</span>` : '',
     `<span class="m-tag ${typeClass}">${typeLabel}</span>`,
     ...genres.map(g => `<span class="m-tag">${esc(g)}</span>`),
@@ -296,8 +311,13 @@ export function renderModalActions(media) {
   const el = document.getElementById('modal-actions');
   if (!el) return;
 
-  const trailerKey = details?.videos?.results?.find(
-    v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+  // Find best trailer: prefer official Trailer, then Teaser, then Clip/Featurette
+  const videos = details?.videos?.results || [];
+  const trailerKey = (
+    videos.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
+    videos.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
+    videos.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
+    videos.find(v => v.site === 'YouTube' && (v.type === 'Clip' || v.type === 'Featurette'))
   )?.key;
 
   el.innerHTML = `

@@ -23,6 +23,9 @@
   visibility: hidden;
   pointer-events: none;
 }
+#loading-screen.instant-out {
+  display: none;
+}
 .ls-logo {
   font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
   font-size: clamp(3.8rem, 12vw, 7rem);
@@ -242,6 +245,7 @@
 }
 .hp-fire { background: var(--red); color: #fff; }
 .hp-type { background: rgba(109,109,110,.72); color: #fff; }
+.hp-year { background: rgba(255,255,255,.12); color: rgba(255,255,255,.85); border: 1px solid rgba(255,255,255,.18); }
 .hp-score { background: rgba(0,0,0,.6); color: var(--gold); border: 1px solid rgba(255,255,255,.2); }
 .hp-score .material-icons-round { font-size: .66rem; }
 .hp-rated { background: rgba(0,0,0,.6); color: var(--muted); border: 1px solid rgba(255,255,255,.18); font-size: .62rem; letter-spacing: .04em; }
@@ -518,6 +522,41 @@
   margin-bottom: .75rem;
 }
 .search-section-title .material-icons-round { font-size: .9rem; color: var(--red); }
+.search-section-title .search-clear-recent {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  padding: .15rem;
+  border-radius: 3px;
+  transition: color .15s, background .15s;
+}
+.search-section-title .search-clear-recent:hover { color: var(--red); background: var(--red-glow); }
+.search-section-title .search-clear-recent .material-icons-round { font-size: 1rem; }
+.recent-searches-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: 1.25rem;
+}
+.recent-chip {
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  border-radius: 20px;
+  padding: .32rem .9rem;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.recent-chip:hover { background: var(--s3); border-color: var(--border3); transform: translateY(-1px); }
 .search-empty {
   text-align: center;
   padding: 5rem 2rem;
