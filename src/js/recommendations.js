@@ -34,7 +34,9 @@ export async function loadForYou() {
     ]);
 
     const discover = discoverRes.status === 'fulfilled' ? discoverRes.value.results || [] : [];
-    const discoverTv = discoverTvRes.status === 'fulfilled' ? discoverTvRes.value.results || [] : [];
+    const discoverTv = discoverTvRes.status === 'fulfilled'
+      ? (discoverTvRes.value.results || []).map(x => ({ ...x, media_type: 'tv' }))
+      : [];
     const recItems = recResults.flatMap(r => r.status === 'fulfilled' ? r.value.results || [] : []);
 
     // IDs currently shown in Trending row — exclude to avoid repeats

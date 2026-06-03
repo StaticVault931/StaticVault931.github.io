@@ -1,6 +1,11 @@
+/* ── 1600px ───────────────────────────────────────────────────────── */
+@media (max-width: 1600px) {
+  :root { --card-w: 320px; }
+}
+
 /* ── 1280px ───────────────────────────────────────────────────────── */
 @media (max-width: 1280px) {
-  :root { --card-w: 250px; }
+  :root { --card-w: 270px; }
   #header, .section, .genre-wrap, #hero-content,
   #page-search, #page-library, #page-prefs, #page-seeall {
     padding-left: 2.25rem;
@@ -70,7 +75,7 @@
 
   .genre-scroll { flex-wrap: nowrap; }
 
-  .card:hover { transform: scale(1.04) translateY(-5px); }
+  .card:hover { transform: scale(1.03) translateY(-4px); }
 
   .modal-meta { padding: .4rem .7rem .7rem; }
   .modal-poster-wrap { padding: .7rem .7rem .3rem; }

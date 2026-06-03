@@ -17,8 +17,8 @@
 .card:nth-child(4) { animation-delay: .12s; }
 .card:nth-child(5) { animation-delay: .16s; }
 .card:hover {
-  transform: scale(1.12) translateY(-10px);
-  box-shadow: 0 24px 64px rgba(0,0,0,.95);
+  transform: scale(1.06) translateY(-6px);
+  box-shadow: 0 20px 56px rgba(0,0,0,.9);
   z-index: 20;
 }
 
@@ -328,7 +328,7 @@
   align-items: center;
   gap: .4rem;
   padding: .55rem .9rem;
-  background: #080808;
+  background: var(--s1);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   scrollbar-width: none;

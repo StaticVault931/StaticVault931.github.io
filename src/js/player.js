@@ -162,6 +162,8 @@ export function showProviderError() {
     </button>`;
 }
 
+export function cancelProviderTimer() { clearTimeout(_providerTimer); _providerTimer = null; }
+
 export function nextProvider(mediaId, type, season, episode) {
   const list = providersFor(type);
   const cur = getActiveProvider();

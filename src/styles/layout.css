@@ -182,7 +182,7 @@
 
 /* ── PAGES ───────────────────────────────────────────────────────── */
 .page { display: none; }
-.page.active { display: block; animation: fadeIn .28s var(--ease); }
+.page.active { display: block; animation: fadeIn .28s var(--ease); flex: 1; }
 
 /* ── HERO ────────────────────────────────────────────────────────── */
 #hero {
@@ -253,6 +253,7 @@
   text-transform: uppercase;
   margin-bottom: .6rem;
   text-shadow: 0 8px 40px rgba(0,0,0,.9);
+  color: #ffffff;
 }
 #hero-desc {
   font-size: 1rem;
@@ -391,27 +392,27 @@
 .row-arrow.hidden { opacity: 0 !important; pointer-events: none !important; }
 .row-arrow-l {
   left: -3px;
-  background: linear-gradient(90deg, rgba(5,5,5,.97), transparent);
+  background: linear-gradient(90deg, var(--bg) 0%, transparent 100%);
 }
 .row-arrow-r {
   right: -3px;
-  background: linear-gradient(270deg, rgba(5,5,5,.97), transparent);
+  background: linear-gradient(270deg, var(--bg) 0%, transparent 100%);
 }
 .row-arrow button {
   width: 42px;
   height: 80px;
   border-radius: var(--r);
-  border: none;
-  background: rgba(20,20,20,.75);
+  border: 1px solid var(--border2);
+  background: var(--s2);
   color: var(--text);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background .18s, transform .18s;
+  transition: background .18s, transform .18s, border-color .18s;
   backdrop-filter: blur(6px);
 }
-.row-arrow button:hover { background: var(--red); transform: scale(1.08); }
+.row-arrow button:hover { background: var(--red); border-color: var(--red); color: #fff; transform: scale(1.08); }
 .row-arrow button .material-icons-round { font-size: 1.3rem; }
 
 /* ── GENRE RAIL ──────────────────────────────────────────────────── */

@@ -806,12 +806,23 @@
   </div><!-- end lib-tab-library -->
 
   <div id="lib-tab-prefs" style="display:none">
-    <div style="padding: 2rem 0 1rem;">
-      <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem">Customize what appears in your feed — choose genres, favorite titles, and content ratings.</p>
-      <button class="pref-apply-btn" data-page="prefs" style="display:inline-flex;align-items:center;gap:.4rem;">
-        <span class="material-icons-round">tune</span>Open Customize Feed
+    <div class="lib-section">
+      <div class="lib-section-header">
+        <div class="lib-section-title"><span class="material-icons-round">favorite</span>Liked Titles</div>
+      </div>
+      <p style="color:var(--muted);font-size:.83rem;margin-bottom:.85rem">Titles you've liked shape your For You row.</p>
+      <div class="lib-grid" id="lib-preftab-liked"></div>
+    </div>
+    <div class="lib-section">
+      <div class="lib-section-header">
+        <div class="lib-section-title"><span class="material-icons-round">tune</span>Feed Settings</div>
+      </div>
+      <p style="color:var(--muted);font-size:.83rem;margin-bottom:1rem">Fine-tune genres, ratings, and title preferences.</p>
+      <button class="pref-apply-btn" data-page="prefs" style="display:inline-flex;align-items:center;gap:.5rem;">
+        <span class="material-icons-round">settings</span>Open Feed Settings
       </button>
     </div>
+    <div style="height:2rem"></div>
   </div>
 
   <div style="height:3rem"></div>
@@ -824,37 +835,41 @@
   <h1>Customize Your Feed</h1>
   <p>Tell us what you love and hate. We'll use this to personalize what you see.</p>
 
-  <div class="pref-section">
-    <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
-    <div class="pref-input-wrap">
-      <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-      <div class="pref-ac-drop" id="pref-like-ac"></div>
+  <div class="pref-grid">
+    <div class="pref-section">
+      <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
+      <div class="pref-input-wrap">
+        <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+        <div class="pref-ac-drop" id="pref-like-ac"></div>
+      </div>
+      <div class="pref-tag-list" id="pref-likes-list"></div>
     </div>
-    <div class="pref-tag-list" id="pref-likes-list"></div>
-  </div>
 
-  <div class="pref-section">
-    <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
-    <div class="pref-input-wrap">
-      <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-      <div class="pref-ac-drop" id="pref-dis-ac"></div>
+    <div class="pref-section">
+      <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
+      <div class="pref-input-wrap">
+        <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+        <div class="pref-ac-drop" id="pref-dis-ac"></div>
+      </div>
+      <div class="pref-tag-list" id="pref-dislikes-list"></div>
     </div>
-    <div class="pref-tag-list" id="pref-dislikes-list"></div>
+
+    <div class="pref-section pref-section-full">
+      <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
+      <div class="pref-genres-wrap genre-scroll" id="pref-genres" style="flex-wrap:wrap"></div>
+    </div>
+
+    <div class="pref-section pref-section-full">
+      <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
+      <div id="pref-age-row"></div>
+    </div>
   </div>
 
-  <div class="pref-section">
-    <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
-    <div class="pref-genres-wrap genre-scroll" id="pref-genres" style="flex-wrap:wrap"></div>
+  <div style="margin-top:2rem">
+    <button class="pref-apply-btn" id="pref-apply-btn" aria-label="Apply preferences">
+      <span class="material-icons-round">check</span>Apply &amp; Refresh Feed
+    </button>
   </div>
-
-  <div class="pref-section">
-    <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
-    <div id="pref-age-row"></div>
-  </div>
-
-  <button class="pref-apply-btn" id="pref-apply-btn" aria-label="Apply preferences">
-    <span class="material-icons-round">check</span>Apply &amp; Refresh Feed
-  </button>
 
   <div style="height:3rem"></div>
 </main>
@@ -982,8 +997,8 @@
       </div>
       <div class="footer-col">
         <h4>Community</h4>
-        <a href="https://www.youtube.com/@StaticQuasar931" target="_blank" rel="noopener">
-          <span class="material-icons-round">smart_display</span>YouTube
+        <a href="https://www.instagram.com/StaticQuasar931" target="_blank" rel="noopener">
+          <span class="material-icons-round">photo_camera</span>Instagram
         </a>
         <a href="https://www.tiktok.com/@StaticQuasar931" target="_blank" rel="noopener">
           <span class="material-icons-round">music_video</span>TikTok
@@ -1001,7 +1016,7 @@
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2025 StaticVault931 · Made by <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">StaticQuasar931</a> · Design by <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Luuk</a></span>
+    <span>© 2026 StaticVault931 · Made by <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">StaticQuasar931</a> · Design by <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Luuk</a></span>
   </div>
 </footer>
 

@@ -2,7 +2,7 @@ import './adblock.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, toggleLike, toggleWatchlist, addDislike } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
-import { buildProviderBar, loadPlayer, nextProvider, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
+import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete } from './search.js';
@@ -479,7 +479,9 @@ export async function openMedia(id, type, hint = {}) {
 
     const title = details.title || details.name || details.romaji || 'Unknown';
     const imdbId = details.external_ids?.imdb_id || null;
-    const useId = imdbId || id;
+    // TV/anime: always use TMDB ID — embed providers need it for episode routing
+    // Movies: prefer IMDB ID when available
+    const useId = (type === 'tv' || type === 'anime') ? id : (imdbId || id);
 
     state.currentMedia = { id, type, title, imdbId, useId, details };
 
@@ -650,7 +652,7 @@ export function closeModal() {
   document.getElementById('player-frame')?.removeAttribute('src');
   document.body.style.overflow = '';
   state.currentMedia = null;
-  clearTimeout(window._providerTimer);
+  cancelProviderTimer();
 }
 
 /* ── PLAY NOW ────────────────────────────────────────────────────── */
@@ -786,13 +788,13 @@ function initEventDelegation() {
     else if (action === 'modal-trailer') {
       const key = btn.dataset.key;
       if (key) {
-        const a = document.createElement('a');
-        a.href = `https://www.youtube.com/watch?v=${key}`;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        const iframe = document.getElementById('player-frame');
+        const loading = document.getElementById('player-loading');
+        if (iframe) {
+          if (loading) { loading.classList.remove('hidden'); loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`; }
+          iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
+          iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
+        }
       }
     }
     else if (action === 'modal-watchlist') { handleWatchlist(id, type, null, meta); renderModalActions(state.currentMedia); }
@@ -825,6 +827,15 @@ function initEventDelegation() {
     const prefsEl = document.getElementById('lib-tab-prefs');
     if (libEl) libEl.style.display = tabName === 'library' ? '' : 'none';
     if (prefsEl) prefsEl.style.display = tabName === 'prefs' ? '' : 'none';
+    if (tabName === 'prefs') {
+      const likedGrid = document.getElementById('lib-preftab-liked');
+      if (likedGrid) {
+        const items = [...state.liked, ...state.prefLikes].slice(0, 12);
+        likedGrid.innerHTML = items.length
+          ? items.map(m => makeCard(m, m.type || 'movie')).join('')
+          : `<p class="muted-note">Like some titles to see them here.</p>`;
+      }
+    }
   });
 
   // Age warn buttons
