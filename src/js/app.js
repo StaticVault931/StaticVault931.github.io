@@ -1,5 +1,5 @@
 import './adblock.js';
-import { injectOverlays, injectTestPanel } from './templates.js';
+import { injectOverlays } from './templates.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -295,6 +295,9 @@ async function loadHero() {
   } catch {}
 }
 
+/* ── ROW LOAD GENERATION (prevents stale responses overwriting fresh content) */
+let _homeGen = 0;
+
 /* ── ROW DEDUP ───────────────────────────────────────────────────── */
 const _homeSeenIds = new Set();
 
@@ -322,39 +325,42 @@ function lazyRow(rowId, secId, fetchFn, type) {
 }
 
 /* ── DIRECT ROW FETCH (always loads, no observer) ────────────────── */
-function _loadRow(rowId, secId, fetchFn, type) {
+function _loadRow(rowId, secId, fetchFn, type, gen) {
   const row = document.getElementById(rowId);
   const sec = secId ? document.getElementById(secId) : null;
-  if (!row) return;
+  if (!row) return Promise.resolve();
   if (sec) sec.style.display = '';
 
   return fetchFn()
     .then(items => {
+      // Stale — a newer loadHomeRows() call has started
+      if (gen !== undefined && gen !== _homeGen) return;
+
       if (!items || !items.length) {
         if (sec) sec.style.display = 'none';
         return;
       }
-      // Soft dedup — only skip exact repeats from trending row
+      // Soft dedup — prefer unique items but fall back to originals if all are dupes
       const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
-      if (!deduped.length) {
-        // Fallback: use original items if dedup removed everything
-        renderRow(rowId, items.slice(0, 14), type);
-      } else {
-        deduped.forEach(m => _homeSeenIds.add(m.id));
-        renderRow(rowId, deduped.slice(0, 14), type);
-      }
+      const toRender = deduped.length ? deduped : items;
+      toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
+      renderRow(rowId, toRender.slice(0, 14), type);
     })
     .catch(err => {
-      console.warn(`Row ${rowId} failed:`, err);
-      if (row) row.innerHTML = '<p class="muted-note" style="padding:.5rem">Could not load. Refresh to retry.</p>';
+      if (gen !== undefined && gen !== _homeGen) return;
+      console.warn(`Row ${rowId} failed:`, err?.message || err);
+      if (row && row.innerHTML.includes('csk-poster')) {
+        // Still showing skeleton — replace with subtle retry notice
+        row.innerHTML = '<div class="row-load-err">Could not load · <button onclick="location.reload()">Retry</button></div>';
+      }
     });
 }
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 async function loadHomeRows() {
-  // Reset dedup for fresh load
+  // Increment generation — any in-flight loads from previous call become stale
+  const gen = ++_homeGen;
   _homeSeenIds.clear();
-  // Disconnect any previous observers
   _lazyObs.forEach(obs => obs.disconnect());
   _lazyObs.clear();
 
@@ -393,41 +399,50 @@ async function loadHomeRows() {
   await Promise.allSettled([
     tmdb('/trending/all/week')
       .then(d => {
+        if (gen !== _homeGen) return; // stale
         const items = (d.results || []).slice(0, 14);
         items.forEach(m => _homeSeenIds.add(m.id));
         renderRow('row-trending', items, null, true);
-      }),
+      })
+      .catch(() => {}),
     loadForYou(),
   ]);
 
+  if (gen !== _homeGen) return; // cancelled by a newer load
+
   // ── BATCH 2: just below the fold — load right after ─────────────────
   Promise.allSettled([
-    _loadRow('row-new',      'sec-new',      () => tmdb('/movie/now_playing', { page: rng }).then(d => d.results || []), 'movie'),
-    _loadRow('row-toprated', 'sec-toprated', () => tmdb('/movie/top_rated',   { page: rng }).then(d => d.results || []), 'movie'),
-    _loadRow('row-tv-pop',   'sec-tv-pop',   () => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []), 'tv'),
-    _loadRow('row-airing',   'sec-airing',   () => tmdb('/tv/airing_today').then(d => d.results || []), 'tv'),
+    _loadRow('row-new',      'sec-new',      () => tmdb('/movie/now_playing', { page: rng }).then(d => d.results || []), 'movie',  gen),
+    _loadRow('row-toprated', 'sec-toprated', () => tmdb('/movie/top_rated',   { page: rng }).then(d => d.results || []), 'movie',  gen),
+    _loadRow('row-tv-pop',   'sec-tv-pop',   () => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []), 'tv',     gen),
+    _loadRow('row-airing',   'sec-airing',   () => tmdb('/tv/airing_today').then(d => d.results || []),                  'tv',     gen),
   ]);
 
   // ── BATCH 3: genre rows — slight delay so batch 2 gets bandwidth ────
   setTimeout(() => {
+    if (gen !== _homeGen) return;
     Promise.allSettled([
-      _loadRow('row-action',   'sec-action',   () => tmdb('/discover/movie', gOpts(28,  { page: rng })).then(d => d.results || []), 'movie'),
-      _loadRow('row-comedy',   'sec-comedy',   () => tmdb('/discover/movie', gOpts(35,  { page: rng })).then(d => d.results || []), 'movie'),
-      _loadRow('row-horror',   'sec-horror',   () => tmdb('/discover/movie', gOpts(27,  { page: rng })).then(d => d.results || []), 'movie'),
-      _loadRow('row-drama',    'sec-drama',    () => tmdb('/discover/movie', gOpts(18,  { sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng })).then(d => d.results || []), 'movie'),
-      _loadRow('row-scifi',    'sec-scifi',    () => tmdb('/discover/movie', gOpts(878, { page: rng })).then(d => d.results || []), 'movie'),
-      _loadRow('row-animated', 'sec-animated', () => tmdb('/discover/movie', gOpts(16,  { page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-action',   'sec-action',   () => tmdb('/discover/movie', gOpts(28,  { page: rng })).then(d => d.results || []), 'movie', gen),
+      _loadRow('row-comedy',   'sec-comedy',   () => tmdb('/discover/movie', gOpts(35,  { page: rng })).then(d => d.results || []), 'movie', gen),
+      _loadRow('row-horror',   'sec-horror',   () => tmdb('/discover/movie', gOpts(27,  { page: rng })).then(d => d.results || []), 'movie', gen),
+      _loadRow('row-drama',    'sec-drama',    () => tmdb('/discover/movie', gOpts(18,  { sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng })).then(d => d.results || []), 'movie', gen),
+      _loadRow('row-scifi',    'sec-scifi',    () => tmdb('/discover/movie', gOpts(878, { page: rng })).then(d => d.results || []), 'movie', gen),
+      _loadRow('row-animated', 'sec-animated', () => tmdb('/discover/movie', gOpts(16,  { page: rng })).then(d => d.results || []), 'movie', gen),
     ]);
   }, 400);
 
   // ── BATCH 4: anime (AniList has separate rate limits) ────────────────
   setTimeout(() => {
+    if (gen !== _homeGen) return;
     _loadRow('row-home-anime', 'sec-home-anime', () =>
-      aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime');
+      aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime', gen);
   }, 800);
 
-  // ── Because You Liked rows (personalized, after main rows) ───────────
-  setTimeout(() => loadBecauseYouLiked().catch(() => {}), 600);
+  // ── Because You Liked rows (personalized) ───────────────────────────
+  setTimeout(() => {
+    if (gen !== _homeGen) return;
+    loadBecauseYouLiked().catch(() => {});
+  }, 600);
 }
 
 function renderContinueRow() {
@@ -1761,136 +1776,226 @@ function initShortcutsModal() {
   document.getElementById('shortcuts-close')?.addEventListener('click', () => ov.classList.remove('open'));
 }
 
-/* ── TESTING MODE (multi-step: logo 5x then Konami) ─────────────── */
-const _konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
-let _konamiIdx = 0;
-let _logoClickCount = 0;
-let _logoClickTimer = null;
-let _konamiArmed = false;
+/* ── TESTING MODE ────────────────────────────────────────────────── */
+// Activation: click the FOOTER logo 5× within 3s, then type "931931"
+let _testFooterClicks = 0;
+let _testClickTimer = null;
+let _testCodeArmed = false;
+let _testCodeTyped = '';
+const TEST_CODE = '931931';
 
 function initTestMode() {
-  // Step 1: Click the logo 5 times within 3 seconds
-  const logoEl = document.querySelector('.logo');
-  if (logoEl) {
-    logoEl.addEventListener('click', () => {
-      _logoClickCount++;
-      clearTimeout(_logoClickTimer);
-      if (_logoClickCount >= 5) {
-        _logoClickCount = 0;
-        _konamiArmed = true;
-        _konamiIdx = 0;
-        toast('🔐 Enter the code…', 'lock');
-        _logoClickTimer = setTimeout(() => { _konamiArmed = false; _konamiIdx = 0; }, 12000);
-      } else {
-        _logoClickTimer = setTimeout(() => { _logoClickCount = 0; }, 2500);
-      }
-    });
-  }
-
-  document.addEventListener('keydown', e => {
-    if (!_konamiArmed) return;
-    if (e.key === _konami[_konamiIdx]) {
-      _konamiIdx++;
-      if (_konamiIdx === _konami.length) {
-        clearTimeout(_logoClickTimer);
-        _konamiIdx = 0; _konamiArmed = false; _logoClickCount = 0;
-        document.body.classList.toggle('test-mode');
-        const on = document.body.classList.contains('test-mode');
-        toast(on ? '🧪 Testing Mode ACTIVATED' : '🧪 Testing Mode deactivated', 'science');
-        if (on) populateTestPanel();
-      }
+  // Step 1: Footer logo 5× within 3 seconds
+  // (footer logo is injected by the existing HTML — it's in #footer .footer-logo)
+  document.getElementById('footer')?.addEventListener('click', e => {
+    if (!e.target.closest('.footer-logo, .footer-bottom')) return;
+    _testFooterClicks++;
+    clearTimeout(_testClickTimer);
+    if (_testFooterClicks >= 5) {
+      _testFooterClicks = 0;
+      _testCodeArmed = true;
+      _testCodeTyped = '';
+      toast('Type the code…', 'lock');
+      _testClickTimer = setTimeout(() => { _testCodeArmed = false; _testCodeTyped = ''; }, 15000);
     } else {
-      _konamiIdx = 0;
+      _testClickTimer = setTimeout(() => { _testFooterClicks = 0; }, 2500);
     }
   });
+
+  // Step 2: Type "931931" while code is armed
+  document.addEventListener('keydown', e => {
+    if (!_testCodeArmed || e.target.matches('input,textarea')) return;
+    if (/^[0-9]$/.test(e.key)) {
+      _testCodeTyped += e.key;
+      if (_testCodeTyped.endsWith(TEST_CODE)) {
+        clearTimeout(_testClickTimer);
+        _testCodeArmed = false; _testCodeTyped = ''; _testFooterClicks = 0;
+        const on = document.body.classList.toggle('test-mode');
+        toast(on ? '🧪 Dev Mode ON' : '🧪 Dev Mode OFF', 'science');
+        if (on) { populateTestPanel(); goPage('prefs'); }
+      }
+    } else if (e.key === 'Escape') {
+      _testCodeArmed = false; _testCodeTyped = '';
+    }
+  });
+}
+
+/* ── TEST PANEL (shown in CYF page when test mode active) ────────── */
+function _provStatusSVG(status) {
+  if (status === 'ok')
+    return `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#22c55e" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  if (status === 'fail')
+    return `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#f87171" stroke-width="1.5"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#f87171" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  if (status === 'testing')
+    return `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="4 2"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur=".8s" repeatCount="indefinite"/></circle></svg>`;
+  // unknown
+  return `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="var(--dim)" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="var(--dim)"/></svg>`;
+}
+
+function buildTestProviderRow(p) {
+  const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+  const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
+  const status = working[p.id] ? 'ok' : 'unknown';
+  const isDisabled = disabled.includes(p.id);
+  return `<div class="tp-row" id="tp-row-${p.id}">
+    <span class="tp-icon" id="tpi-${p.id}">${_provStatusSVG(status)}</span>
+    <span class="tp-name">${p.label}</span>
+    ${p.note ? `<span class="tp-note">${p.note}</span>` : ''}
+    <button class="tp-btn" onclick="window._testProv('${p.id}')">Test</button>
+    <button class="tp-btn tp-toggle ${isDisabled ? 'tp-disabled' : 'tp-enabled'}" onclick="window._toggleProv('${p.id}')">
+      ${isDisabled ? 'Off' : 'On'}
+    </button>
+  </div>`;
 }
 
 function populateTestPanel() {
-  injectTestPanel();
+  // Inject the test section into the CYF page (if not already there)
+  let panel = document.getElementById('dev-test-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'dev-test-panel';
+    panel.innerHTML = `
+      <div class="dev-panel-header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--red)"><path d="M9.4 3L7 8H3l7.5 13 2-7.5H17L9.4 3z"/></svg>
+        <span>Developer Testing Mode</span>
+        <button class="dev-close-btn" id="dev-close">Exit Dev Mode</button>
+      </div>
 
-  const list = document.getElementById('test-providers-list');
-  if (list) {
-    list.innerHTML = PROVIDERS.map(p => {
-      const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
-      const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
-      const status = working[p.id] ? 'ok' : disabled.includes(p.id) ? 'off' : 'unknown';
-      return `<div class="test-prov-row" data-pid="${p.id}">
-        <svg class="test-prov-icon" id="tpi-${p.id}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="8" cy="8" r="7" stroke="${status === 'ok' ? '#22c55e' : status === 'off' ? '#f97316' : 'var(--dim)'}" stroke-width="1.5"/>
-          ${status === 'ok' ? '<path d="M5 8l2 2 4-4" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>' : status === 'off' ? '<path d="M6 6l4 4M10 6l-4 4" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/>' : '<circle cx="8" cy="8" r="2" fill="var(--dim)"/>'}
-        </svg>
-        <span class="test-prov-name">${p.label}</span>
-        <span class="test-prov-note" style="color:var(--dim)">${p.note || ''}</span>
-        <button class="test-btn test-btn-small" onclick="window._testProvider('${p.id}')">Test</button>
-        <button class="test-btn test-btn-small ${disabled.includes(p.id) ? 'test-btn-warn' : ''}" onclick="window._toggleProviderDisabled('${p.id}')">
-          ${disabled.includes(p.id) ? 'Disabled' : 'Enabled'}
-        </button>
+      <div class="dev-section">
+        <div class="dev-sec-title">Visual Layers</div>
+        <div class="dev-btn-row">
+          <button class="dev-btn" id="dev-btn-skeleton">Show Skeletons</button>
+          <button class="dev-btn" id="dev-btn-no-img">Break Images</button>
+          <button class="dev-btn" id="dev-btn-slow">Slow Mode</button>
+          <button class="dev-btn" id="dev-btn-adblock">AdBlock: ON</button>
+          <button class="dev-btn" id="dev-btn-clear">Clear Cache</button>
+        </div>
+        <div class="dev-btn-row" style="margin-top:.4rem">
+          <span class="card-rating rating-great"><span class="material-icons-round">star</span>9.5</span>
+          <span class="card-rating rating-good"><span class="material-icons-round">star</span>7.8</span>
+          <span class="card-rating rating-ok"><span class="material-icons-round">star</span>5.4</span>
+          <span class="card-rating rating-bad"><span class="material-icons-round">star</span>3.1</span>
+          <span style="font-size:.7rem;color:var(--dim);align-self:center;margin-left:.3rem">Rating previews</span>
+        </div>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Themes
+          <div class="dev-btn-row" style="display:inline-flex;margin-left:.5rem">
+            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='dark'">Dark</button>
+            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='light'">Light</button>
+            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='midnight'">Midnight</button>
+            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='warm'">Warm</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Source Testing
+          <button class="dev-btn dev-btn-sm" id="dev-test-all-btn" style="margin-left:.5rem">Test All</button>
+        </div>
+        <div class="dev-providers-grid" id="dev-providers-grid"></div>
       </div>`;
-    }).join('');
+
+    const prefsPage = document.getElementById('page-prefs');
+    if (prefsPage) prefsPage.appendChild(panel);
+
+    // Wire up buttons (single init)
+    document.getElementById('dev-close')?.addEventListener('click', () => {
+      document.body.classList.remove('test-mode');
+      panel.style.display = 'none';
+    });
+
+    const _toggle = (btnId, bodyClass, onLabel, offLabel) => {
+      document.getElementById(btnId)?.addEventListener('click', function() {
+        document.body.classList.toggle(bodyClass);
+        this.textContent = document.body.classList.contains(bodyClass) ? offLabel : onLabel;
+        this.classList.toggle('dev-btn-active', document.body.classList.contains(bodyClass));
+      });
+    };
+    _toggle('dev-btn-skeleton', 'test-force-skeleton', 'Show Skeletons', 'Hide Skeletons');
+    _toggle('dev-btn-no-img',   'test-no-images',     'Break Images', 'Fix Images');
+    _toggle('dev-btn-slow',     'test-slow-mode',     'Slow Mode', 'Normal Speed');
+    _toggle('dev-btn-adblock',  '_none_', 'AdBlock: ON', 'AdBlock: OFF');
+
+    document.getElementById('dev-btn-adblock')?.addEventListener('click', function() {
+      window._svAdBlockDisabled = document.body.classList.contains('_none_') ? false : !window._svAdBlockDisabled;
+      this.textContent = window._svAdBlockDisabled ? 'AdBlock: OFF' : 'AdBlock: ON';
+      this.classList.toggle('dev-btn-active', window._svAdBlockDisabled);
+    });
+
+    document.getElementById('dev-btn-clear')?.addEventListener('click', () => {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k?.startsWith('svc_')) sessionStorage.removeItem(k);
+      }
+      toast('Cache cleared', 'delete_sweep');
+    });
+
+    document.getElementById('dev-test-all-btn')?.addEventListener('click', () => {
+      PROVIDERS.forEach(p => window._testProv(p.id));
+    });
   }
 
-  // Close/feature buttons
-  document.getElementById('test-close-btn')?.addEventListener('click', () => {
-    document.body.classList.remove('test-mode');
-  });
-  document.getElementById('test-no-images-btn')?.addEventListener('click', function() {
-    document.body.classList.toggle('test-no-images');
-    this.textContent = document.body.classList.contains('test-no-images') ? 'Show Images' : 'Hide Images';
-  });
-  document.getElementById('test-adblock-btn')?.addEventListener('click', function() {
-    window._svAdBlockDisabled = !window._svAdBlockDisabled;
-    this.textContent = window._svAdBlockDisabled ? 'AdBlock: OFF' : 'AdBlock: ON';
-  });
-  document.getElementById('test-clear-cache-btn')?.addEventListener('click', () => {
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const k = sessionStorage.key(i);
-      if (k?.startsWith('svc_')) sessionStorage.removeItem(k);
-    }
-    toast('Cache cleared!', 'delete_sweep');
-  });
-  document.getElementById('test-all-providers-btn')?.addEventListener('click', () => {
-    PROVIDERS.forEach(p => window._testProvider(p.id));
-  });
+  panel.style.display = '';
+
+  // Refresh provider list
+  const grid = document.getElementById('dev-providers-grid');
+  if (grid) grid.innerHTML = PROVIDERS.map(buildTestProviderRow).join('');
 }
 
-// Global test helpers (accessible from inline onclick)
-window._testProvider = async function(id) {
+// Global provider test/toggle helpers
+window._testProv = async function(id) {
   const prov = PROVIDERS.find(p => p.id === id);
   if (!prov) return;
+
   const iconEl = document.getElementById(`tpi-${id}`);
-  if (iconEl) iconEl.innerHTML = '<circle cx="8" cy="8" r="5" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="3 2"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="indefinite"/></circle>';
+  if (iconEl) iconEl.innerHTML = _provStatusSVG('testing');
 
   try {
     const testUrl = prov.url(550, 'movie', 1, 1);
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 6000);
+    const timer = setTimeout(() => ctrl.abort(), 7000);
     await fetch(testUrl, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
-    clearTimeout(t);
+    clearTimeout(timer);
+
+    // no-cors fetch resolves even for blocked URLs; treat all non-abort as reachable
     const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
     working[id] = Date.now();
     localStorage.setItem('sv_provider_working', JSON.stringify(working));
-    toast(`${prov.label}: Reachable ✓`, 'check_circle');
+    if (iconEl) iconEl.innerHTML = _provStatusSVG('ok');
+    const row = document.getElementById(`tp-row-${id}`);
+    if (row) row.querySelector('.tp-btn')?.classList.add('tp-ok');
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
-      working[id] = Date.now(); // no-cors doesn't throw on real 200s
-      localStorage.setItem('sv_provider_working', JSON.stringify(working));
-      toast(`${prov.label}: Reachable ✓`, 'check_circle');
+    if (e.name === 'AbortError') {
+      if (iconEl) iconEl.innerHTML = _provStatusSVG('fail');
+      toast(`${prov.label}: Timed out`, 'timer_off');
     } else {
-      toast(`${prov.label}: Timeout ✗`, 'error');
+      // Other errors treated as reachable (network/CORS masking)
+      const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+      working[id] = Date.now();
+      localStorage.setItem('sv_provider_working', JSON.stringify(working));
+      if (iconEl) iconEl.innerHTML = _provStatusSVG('ok');
     }
   }
-  populateTestPanel(); // refresh icons
 };
 
-window._toggleProviderDisabled = function(id) {
+window._toggleProv = function(id) {
   const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
   const idx = disabled.indexOf(id);
   if (idx >= 0) disabled.splice(idx, 1);
   else disabled.push(id);
   localStorage.setItem('sv_provider_disabled', JSON.stringify(disabled));
-  populateTestPanel();
-  toast(disabled.includes(id) ? `${id} disabled` : `${id} enabled`, 'tune');
+
+  // Refresh just the toggle button
+  const row = document.getElementById(`tp-row-${id}`);
+  const btn = row?.querySelectorAll('.tp-btn')[1];
+  const isOff = disabled.includes(id);
+  if (btn) {
+    btn.textContent = isOff ? 'Off' : 'On';
+    btn.className = `tp-btn tp-toggle ${isOff ? 'tp-disabled' : 'tp-enabled'}`;
+  }
+  toast(`${id} ${isOff ? 'disabled' : 'enabled'}`, 'tune');
 };
 
 /* ── VIDSRC DOMAIN TESTER ────────────────────────────────────────── */
