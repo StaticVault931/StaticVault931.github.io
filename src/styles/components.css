@@ -445,6 +445,17 @@
   align-items: center;
   gap: .25rem;
 }
+.prov-note {
+  font-size: .5rem;
+  font-weight: 900;
+  background: rgba(99,179,237,.25);
+  color: #63b3ed;
+  border-radius: 2px;
+  padding: .05rem .25rem;
+  margin-left: .25rem;
+  vertical-align: middle;
+  letter-spacing: .04em;
+}
 
 /* ── MODAL BODY (3-column) ───────────────────────────────────────── */
 .modal-body {
@@ -1059,8 +1070,19 @@
 .shortcuts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: .5rem;
+  gap: 1.2rem;
   margin-bottom: 1rem;
+}
+.sc-group-label {
+  font-size: .66rem;
+  font-weight: 900;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin-bottom: .5rem;
+  padding-left: .2rem;
+  border-left: 2px solid var(--red);
+  padding-left: .45rem;
 }
 .sc-item {
   display: flex;
@@ -1225,6 +1247,39 @@ body.test-mode #test-mode-panel { display: block; }
   color: var(--dim);
   margin-left: .2rem;
 }
+
+/* ── WATCH TOGETHER COUNTDOWN ────────────────────────────────────── */
+.watch-together-cd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.wt-icon {
+  font-size: 2.4rem !important;
+  color: var(--red);
+}
+.wt-title {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.wt-count {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 5rem;
+  line-height: 1;
+  color: var(--red);
+  text-shadow: 0 0 40px rgba(229,9,20,.6);
+  animation: wtPulse .9s ease-in-out infinite;
+}
+@keyframes wtPulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: .85; }
+}
+.wt-sub { font-size: .84rem; color: var(--muted); }
 
 /* ── HOVER TRAILER PREVIEW ───────────────────────────────────────── */
 #hover-preview {

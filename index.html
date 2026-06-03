@@ -4,7 +4,39 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>StaticVault931 — Your Personal Cinema</title>
-<meta name="description" content="StaticVault931 — Discover and stream movies, TV shows, and anime."/>
+<meta name="description" content="StaticVault931 — Discover and stream movies, TV shows, and anime. Free, no account required."/>
+<meta name="keywords" content="watch movies online, streaming, TV shows, anime, free movies"/>
+<meta name="robots" content="index, follow"/>
+<link rel="canonical" href="https://staticvault931.github.io/"/>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://staticvault931.github.io/"/>
+<meta property="og:title" content="StaticVault931 — Your Personal Cinema"/>
+<meta property="og:description" content="Discover and stream movies, TV shows, and anime. Free, no account required."/>
+<meta property="og:image" content="https://staticvault931.github.io/og-image.jpg"/>
+<meta property="og:site_name" content="StaticVault931"/>
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="StaticVault931 — Your Personal Cinema"/>
+<meta name="twitter:description" content="Discover and stream movies, TV shows, and anime. Free, no account required."/>
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "StaticVault931",
+  "url": "https://staticvault931.github.io/",
+  "description": "Discover and stream movies, TV shows, and anime.",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://staticvault931.github.io/?search={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -1029,6 +1061,9 @@
       </div>
       <div class="footer-col">
         <h4>Community</h4>
+        <a href="https://discord.gg/staticvault931" target="_blank" rel="noopener">
+          <span class="material-icons-round">forum</span>Discord
+        </a>
         <a href="https://www.instagram.com/StaticQuasar931" target="_blank" rel="noopener">
           <span class="material-icons-round">photo_camera</span>Instagram
         </a>
@@ -1044,6 +1079,7 @@
         <button class="footer-legal-btn" data-legal="privacy">Privacy Policy</button>
         <button class="footer-legal-btn" data-legal="tos">Terms of Service</button>
         <button class="footer-legal-btn" data-legal="dmca">DMCA Notice</button>
+        <button class="footer-legal-btn" data-legal="disclaimer">Disclaimer</button>
       </div>
     </div>
   </div>
@@ -1126,6 +1162,8 @@
   </div>
 </div>
 
+<!-- Dynamic structured data for media pages -->
+<script type="application/ld+json" id="jsonld-media"></script>
 <script type="module" src="src/js/app.js"></script>
 </body>
 </html>

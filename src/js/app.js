@@ -34,42 +34,93 @@ const LEGAL_CONTENT = {
   privacy: {
     title: 'Privacy Policy',
     body: `
-      <h3>Information We Collect</h3>
-      <p>StaticVault931 stores your preferences, watchlist, and viewing history locally in your browser using localStorage. We do not collect, transmit, or store any personal data on our servers.</p>
-      <h3>Third-Party Services</h3>
-      <p>We use The Movie Database (TMDB) API and AniList API to fetch content metadata. These services may collect data per their own privacy policies. Video content is streamed via third-party embed providers which operate independently.</p>
-      <h3>Cookies & Storage</h3>
-      <p>We use browser localStorage to save your settings and preferences. No tracking cookies are set by StaticVault931.</p>
-      <h3>Advertising</h3>
-      <p>Third-party video providers may display advertisements. StaticVault931 has no control over these ads and does not receive revenue from them.</p>
-      <h3>Contact</h3>
-      <p>For privacy concerns, contact us at StaticQuasar931Games@gmail.com.</p>`
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <h3>1. Overview</h3>
+      <p>StaticVault931 ("we", "us", "our") is committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights regarding that data. By using StaticVault931 you agree to this policy.</p>
+      <h3>2. Data We Collect</h3>
+      <p><strong>Locally stored data (never leaves your device):</strong></p>
+      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, content rating, liked/disliked titles)<br>• Continue-watching progress<br>• Recent searches<br>• Theme and display settings<br>• Provider preferences</p>
+      <p>All of the above is stored exclusively in your browser's <code>localStorage</code> and <code>sessionStorage</code>. It is never transmitted to StaticVault931 or any third party by us.</p>
+      <h3>3. Third-Party Services</h3>
+      <p><strong>The Movie Database (TMDB):</strong> We query the TMDB API for movie, TV show, and metadata. TMDB may log API requests. See <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener">TMDB Privacy Policy</a>.</p>
+      <p><strong>AniList:</strong> We query the AniList GraphQL API for anime metadata. See <a href="https://anilist.co/privacy" target="_blank" rel="noopener">AniList Privacy Policy</a>.</p>
+      <p><strong>Video Embed Providers:</strong> VidSrc, Cineby, VidLink, 2Embed, SuperEmbed, VidSrc Pro, AutoEmbed, and Videasy operate independently. When you load a video, their servers receive your IP address and browser information as part of standard HTTP requests. StaticVault931 has no control over their data practices.</p>
+      <h3>4. Cookies & Tracking</h3>
+      <p>StaticVault931 itself sets no cookies and uses no tracking technologies. Embed providers may set their own cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers from running on the page.</p>
+      <h3>5. Analytics</h3>
+      <p>We do not run any analytics platform (Google Analytics, Mixpanel, etc.) on StaticVault931.</p>
+      <h3>6. Children's Privacy</h3>
+      <p>StaticVault931 is not directed at children under 13. We do not knowingly collect data from children. If you believe a child has used the service inappropriately, please contact us.</p>
+      <h3>7. Your Rights</h3>
+      <p>Because all data is stored locally in your browser, you can delete it at any time via Library → Reset All Data, or by clearing your browser's storage for this site.</p>
+      <h3>8. Contact</h3>
+      <p>For privacy concerns: <a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a> or join our <a href="https://discord.gg/staticvault931" target="_blank" rel="noopener">Discord server</a>.</p>`
   },
   tos: {
     title: 'Terms of Service',
     body: `
-      <h3>Acceptance of Terms</h3>
-      <p>By using StaticVault931, you agree to these terms. If you do not agree, please do not use this service.</p>
-      <h3>Content</h3>
-      <p>StaticVault931 is a content discovery platform. We do not host, store, or distribute any media files. All video content is sourced from third-party embed providers.</p>
-      <h3>Use of Service</h3>
-      <p>You agree to use StaticVault931 for lawful purposes only. You must not attempt to circumvent any technical measures or exploit the service.</p>
-      <h3>Disclaimer</h3>
-      <p>StaticVault931 is provided "as is" without warranties of any kind. We are not responsible for content displayed by third-party providers.</p>
-      <h3>Changes</h3>
-      <p>We reserve the right to modify these terms at any time. Continued use of the service constitutes acceptance of updated terms.</p>`
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <h3>1. Acceptance</h3>
+      <p>By accessing or using StaticVault931 ("the Service") you agree to be bound by these Terms. If you disagree with any part, you may not use the Service.</p>
+      <h3>2. What StaticVault931 Is</h3>
+      <p>StaticVault931 is a content <em>discovery</em> and <em>aggregation</em> platform. We do not host, upload, store, encode, or distribute any video files. All video content is sourced from independent third-party embed providers via publicly accessible embed URLs.</p>
+      <h3>3. Permitted Use</h3>
+      <p>You may use the Service for personal, non-commercial purposes. You must not:</p>
+      <p>• Use the Service for any unlawful purpose<br>• Attempt to circumvent ad-blocking, CORS restrictions, or other technical measures<br>• Scrape or automate requests to the Service<br>• Resell access to the Service<br>• Use the Service to distribute malware or spam</p>
+      <h3>4. Intellectual Property</h3>
+      <p>The StaticVault931 codebase, UI design, and branding are the property of their respective creators. Content metadata is provided by TMDB and AniList under their respective licenses. Video content rights belong to their respective owners; StaticVault931 makes no claim over any media content.</p>
+      <h3>5. Third-Party Content</h3>
+      <p>StaticVault931 is not responsible for content displayed by third-party video providers. This includes quality, accuracy, availability, advertisements, and any malicious content that may originate from those providers. We make reasonable efforts to block popups and intrusive ads but cannot guarantee complete effectiveness.</p>
+      <h3>6. Availability</h3>
+      <p>The Service is provided on a best-effort basis. We do not guarantee uninterrupted availability. Third-party providers may go offline without notice.</p>
+      <h3>7. Disclaimer of Warranties</h3>
+      <p>The Service is provided "as is" and "as available" without warranties of any kind, express or implied, including but not limited to merchantability, fitness for a particular purpose, and non-infringement.</p>
+      <h3>8. Limitation of Liability</h3>
+      <p>To the fullest extent permitted by law, StaticVault931 and its creators shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the Service.</p>
+      <h3>9. Changes to Terms</h3>
+      <p>We may update these Terms at any time. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
+      <h3>10. Contact</h3>
+      <p><a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a></p>`
   },
   dmca: {
-    title: 'DMCA Notice',
+    title: 'DMCA & Copyright',
     body: `
-      <h3>Copyright Policy</h3>
-      <p>StaticVault931 respects intellectual property rights. We do not host any media content — all video is embedded from third-party providers.</p>
-      <h3>Filing a DMCA Notice</h3>
-      <p>If you believe content accessible through our platform infringes your copyright, please contact the third-party provider that is hosting the content directly.</p>
-      <p>For concerns specifically about StaticVault931's functionality or metadata, contact us at StaticQuasar931Games@gmail.com with:</p>
-      <p>• A description of the copyrighted work<br>• The specific URL or content in question<br>• Your contact information<br>• A statement of good faith belief</p>
-      <h3>Response</h3>
-      <p>We will respond to valid DMCA notices within a reasonable timeframe and take appropriate action.</p>`
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <h3>1. Our Position</h3>
+      <p>StaticVault931 fully respects intellectual property rights. We do not host, store, or distribute any media files. All video content is embedded from independent third-party providers via publicly accessible URLs.</p>
+      <h3>2. Where Content Is Hosted</h3>
+      <p>Video content accessible through StaticVault931 is physically hosted on third-party servers (VidSrc, Cineby, VidLink, 2Embed, etc.). We have no control over these servers and cannot directly remove content from them.</p>
+      <h3>3. DMCA Takedown for Hosted Content</h3>
+      <p>If you are a copyright holder and believe your content is being served by one of our embed providers, the appropriate action is to file a DMCA notice directly with that provider:</p>
+      <p>• <strong>VidSrc</strong>: contact via vidsrc.to<br>• <strong>2Embed</strong>: contact via 2embed.cc<br>• <strong>Other providers</strong>: contact the respective domain operator</p>
+      <h3>4. DMCA Notice for StaticVault931 Specifically</h3>
+      <p>If you have a concern specifically about StaticVault931 (e.g., our use of TMDB metadata, search indexing, or promotional imagery), send a written notice to <a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a> including:</p>
+      <p>• Your full legal name and contact information<br>• Identification of the copyrighted work claimed to be infringed<br>• The specific URL or content on StaticVault931 in question<br>• A statement that you have a good faith belief that use of the material is not authorized<br>• A statement under penalty of perjury that the information in the notice is accurate and that you are the copyright owner or authorized to act on their behalf<br>• Your electronic or physical signature</p>
+      <h3>5. Response Time</h3>
+      <p>We will acknowledge valid DMCA notices within 5 business days and take appropriate action, which may include removing metadata, links, or functionality related to the claimed content.</p>
+      <h3>6. Counter-Notice</h3>
+      <p>If you believe content was removed in error, you may file a counter-notice with the same contact information above.</p>`
+  },
+  disclaimer: {
+    title: 'General Disclaimer',
+    body: `
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <h3>Content Availability</h3>
+      <p>StaticVault931 is a discovery platform. Content availability depends entirely on third-party embed providers which operate independently. We cannot guarantee that any specific title will be available, playable, or of any particular quality.</p>
+      <h3>No Endorsement</h3>
+      <p>StaticVault931 does not endorse, certify, or warranty any content accessible through third-party providers. Content ratings and descriptions are sourced from TMDB and AniList and are provided for informational purposes only.</p>
+      <h3>Advertisements</h3>
+      <p>Third-party video providers may display advertisements including pre-roll ads, banner ads, and pop-ups. StaticVault931 includes an ad-blocking layer but cannot guarantee it will catch all ads. We receive no revenue from these advertisements.</p>
+      <h3>Technical Limitations</h3>
+      <p>Streaming quality, speed, and reliability depend on your internet connection, your browser, and the third-party provider's servers. StaticVault931 makes no guarantees about streaming performance.</p>
+      <h3>Age-Appropriate Use</h3>
+      <p>StaticVault931 includes a content rating filter as a convenience feature. This filter relies on metadata from TMDB and is not a parental control system. It does not guarantee that all content is appropriate for the selected rating. Parents and guardians are responsible for supervising minors' use of the platform.</p>
+      <h3>External Links</h3>
+      <p>StaticVault931 may contain links to external websites. We have no control over the content or privacy practices of those sites and accept no responsibility for them.</p>
+      <h3>Accuracy of Information</h3>
+      <p>Content descriptions, ratings, cast information, and other metadata are sourced from third-party databases (TMDB, AniList). We make no warranty as to the accuracy, completeness, or timeliness of this information.</p>
+      <h3>Contact</h3>
+      <p>Questions or concerns: <a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a></p>`
   }
 };
 
@@ -85,6 +136,22 @@ function showLegal(type) {
 function closeLegal() {
   document.getElementById('legal-overlay')?.classList.remove('open');
 }
+
+/* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
+const SHORTCUTS = [
+  { key: '/', desc: 'Open search', group: 'Navigation' },
+  { key: 'H', desc: 'Go to Home', group: 'Navigation' },
+  { key: 'L', desc: 'Go to Library', group: 'Navigation' },
+  { key: 'S', desc: 'Go to Search', group: 'Navigation' },
+  { key: 'T', desc: 'Cycle theme', group: 'Navigation' },
+  { key: 'Esc', desc: 'Close modal / dialog', group: 'Modal' },
+  { key: 'P', desc: 'Play / pause current', group: 'Modal' },
+  { key: 'N', desc: 'Try next provider', group: 'Modal' },
+  { key: 'I', desc: 'Toggle info panel', group: 'Modal' },
+  { key: '← / A', desc: 'Previous hero slide', group: 'Hero' },
+  { key: '→ / D', desc: 'Next hero slide', group: 'Hero' },
+  { key: '?', desc: 'Show this help screen', group: 'Help' },
+];
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
@@ -107,12 +174,29 @@ function closeLegal() {
   loadHero().catch(() => {});
   loadHomeRows().catch(() => {});
 
-  // URL param deep-link
+  // URL param deep-link — supports both old ?id=X&type=Y and new ?watch=type&name=slug&id=X
   const sp = new URLSearchParams(location.search);
-  if (sp.get('id') && sp.get('type')) {
+  const watchId = sp.get('id');
+  const watchType = sp.get('watch') || sp.get('type');
+  const watchStart = sp.get('start') ? parseInt(sp.get('start')) : null;
+
+  if (watchId && watchType) {
     document.getElementById('loading-screen')?.classList.add('out');
-    setTimeout(() => openMedia(+sp.get('id'), sp.get('type')), 400);
+    setTimeout(async () => {
+      await openMedia(+watchId, watchType);
+      // Handle Watch Together scheduled start
+      if (watchStart) handleWatchTogetherLink(watchStart);
+    }, 400);
   }
+
+  // Handle browser back/forward to restore modal state
+  window.addEventListener('popstate', e => {
+    if (e.state?.id && e.state?.type) {
+      openMedia(e.state.id, e.state.type);
+    } else {
+      closeModal();
+    }
+  });
 })();
 
 /* ── LOADING SCREEN ──────────────────────────────────────────────── */
@@ -549,7 +633,16 @@ export async function openMedia(id, type, hint = {}) {
     // Movies: prefer IMDB ID when available
     const useId = (type === 'tv' || type === 'anime') ? id : (imdbId || id);
 
+    const year = String(details.release_date || details.first_air_date || '').slice(0, 4);
     state.currentMedia = { id, type, title, imdbId, useId, details };
+
+    // Update URL + page meta for SEO + sharing
+    const mediaUrl = buildMediaUrl(id, type, title, year);
+    history.pushState({ id, type }, title, mediaUrl);
+    const ogImg = details.backdrop_path
+      ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
+      : null;
+    updatePageSEO(title, type, details.overview, ogImg);
 
     // Age check
     const contentRating = getContentRating(details, type);
@@ -726,8 +819,8 @@ export function closeModal() {
   state.currentMedia = null;
   cancelProviderTimer();
 
-  // Remove trailer fallback button
   document.getElementById('trailer-fallback-btn')?.remove();
+  resetPageSEO();
 
   // Reset panel states for next open
   document.getElementById('modal-left-panel')?.classList.remove('panel-collapsed');
@@ -916,6 +1009,7 @@ function initEventDelegation() {
       closeModal();
     }
     else if (action === 'modal-share') shareMedia();
+    else if (action === 'modal-watch-together') generateWatchTogetherLink();
   });
 
   // Legal overlay
@@ -1223,14 +1317,137 @@ function refreshCardBadges(id) {
   });
 }
 
+/* ── SEO: URL ROUTING + META ─────────────────────────────────────── */
+function slugify(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 60);
+}
+
+function buildMediaUrl(id, type, title, year) {
+  const slug = slugify(`${title || ''} ${year || ''}`);
+  return `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}`;
+}
+
+function updatePageSEO(title, type, overview, poster) {
+  const fullTitle = title ? `${title} — StaticVault931` : 'StaticVault931 — Your Personal Cinema';
+  const desc = overview
+    ? overview.slice(0, 160)
+    : `Watch ${title || 'content'} on StaticVault931`;
+  const typeLabel = type === 'tv' ? 'TV Show' : type === 'anime' ? 'Anime' : 'Movie';
+
+  document.title = fullTitle;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', fullTitle);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
+  if (poster) {
+    document.querySelector('meta[property="og:image"]')?.setAttribute('content', poster);
+    document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', poster);
+  }
+
+  // Update JSON-LD structured data dynamically
+  const ldEl = document.getElementById('jsonld-media');
+  if (ldEl && title) {
+    ldEl.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': typeLabel === 'Movie' ? 'Movie' : 'TVSeries',
+      'name': title,
+      'description': desc,
+      'url': location.href,
+    });
+  }
+}
+
+function resetPageSEO() {
+  document.title = 'StaticVault931 — Your Personal Cinema';
+  document.querySelector('meta[name="description"]')?.setAttribute('content', 'StaticVault931 — Discover and stream movies, TV shows, and anime.');
+  document.querySelector('meta[property="og:type"]')?.setAttribute('content', 'website');
+  history.replaceState(null, '', location.pathname);
+}
+
 /* ── SHARE ───────────────────────────────────────────────────────── */
 function shareMedia() {
   if (!state.currentMedia) return;
-  const url = `${location.origin}${location.pathname}?id=${state.currentMedia.id}&type=${state.currentMedia.type}`;
+  const { id, type, title, details } = state.currentMedia;
+  const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
+  const url = buildMediaUrl(id, type, title, year);
   if (navigator.share) {
-    navigator.share({ title: state.currentMedia.title, url }).catch(() => {});
+    navigator.share({ title: title || 'StaticVault931', url }).catch(() => {});
   } else {
     navigator.clipboard?.writeText(url).then(() => toast('Link copied!', 'link')).catch(() => toast('Copy failed', 'error'));
+  }
+}
+
+/* ── WATCH TOGETHER ──────────────────────────────────────────────── */
+function generateWatchTogetherLink() {
+  if (!state.currentMedia) return;
+  const { id, type, title, details } = state.currentMedia;
+  const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
+  // Schedule start 10 seconds from now
+  const startTs = Date.now() + 10000;
+  const room = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const slug = slugify(`${title || ''} ${year || ''}`);
+  const url = `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&room=${room}&start=${startTs}`;
+
+  if (navigator.share) {
+    navigator.share({ title: `Watch ${title || 'this'} together!`, url }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(url).then(() => {
+      toast(`Link copied! Watch starts in 10 seconds ⏱`, 'group');
+    }).catch(() => toast('Could not copy link', 'error'));
+  }
+}
+
+function handleWatchTogetherLink(startTs) {
+  const now = Date.now();
+  const delay = startTs - now;
+
+  if (delay > 30000) {
+    toast('Watch Together: Link has too long a delay', 'warning');
+    return;
+  }
+
+  const playFn = () => {
+    if (state.currentMedia) {
+      const { useId, id, type } = state.currentMedia;
+      loadPlayer(useId || id, type, 1, 1);
+    }
+  };
+
+  if (delay <= 0) {
+    // Already past start time — play immediately
+    playFn();
+    toast('Watch Together: Playing now (synced)', 'group');
+  } else {
+    // Show countdown and auto-play
+    let remaining = Math.ceil(delay / 1000);
+    const loading = document.getElementById('player-loading');
+    if (loading) {
+      loading.classList.remove('hidden');
+      loading.innerHTML = `<div class="watch-together-cd">
+        <span class="material-icons-round wt-icon">group</span>
+        <div class="wt-title">Watch Together</div>
+        <div class="wt-count" id="wt-count">${remaining}</div>
+        <div class="wt-sub">Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…</div>
+      </div>`;
+    }
+    const tick = setInterval(() => {
+      remaining--;
+      const countEl = document.getElementById('wt-count');
+      const subEl = countEl?.nextElementSibling;
+      if (countEl) countEl.textContent = remaining;
+      if (subEl) subEl.textContent = `Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…`;
+      if (remaining <= 0) {
+        clearInterval(tick);
+        playFn();
+        toast('Watch Together: GO! 🎬', 'group');
+      }
+    }, 1000);
   }
 }
 
@@ -1287,17 +1504,6 @@ function showTrailerFallback(key) {
 }
 
 /* ── SHORTCUTS MODAL ─────────────────────────────────────────────── */
-const SHORTCUTS = [
-  { key: '/', desc: 'Open search' },
-  { key: 'Esc', desc: 'Close modal / dialog' },
-  { key: '?', desc: 'Show keyboard shortcuts' },
-  { key: '← / A', desc: 'Previous hero slide' },
-  { key: '→ / D', desc: 'Next hero slide' },
-  { key: 'T', desc: 'Cycle theme' },
-  { key: 'H', desc: 'Go to Home' },
-  { key: 'L', desc: 'Go to Library' },
-];
-
 function showShortcuts() {
   const ov = document.getElementById('shortcuts-overlay');
   if (ov) ov.classList.add('open');
@@ -1308,17 +1514,76 @@ function initShortcutsModal() {
   if (!ov) return;
   const grid = document.getElementById('shortcuts-grid');
   if (grid) {
-    grid.innerHTML = SHORTCUTS.map(s =>
-      `<div class="sc-item"><kbd class="sc-key">${esc(s.key)}</kbd><span class="sc-desc">${esc(s.desc)}</span></div>`
-    ).join('');
+    const groups = [...new Set(SHORTCUTS.map(s => s.group))];
+    grid.innerHTML = groups.map(g => `
+      <div class="sc-group">
+        <div class="sc-group-label">${g}</div>
+        ${SHORTCUTS.filter(s => s.group === g).map(s =>
+          `<div class="sc-item"><kbd class="sc-key">${esc(s.key)}</kbd><span class="sc-desc">${esc(s.desc)}</span></div>`
+        ).join('')}
+      </div>`).join('');
   }
   ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
   document.getElementById('shortcuts-close')?.addEventListener('click', () => ov.classList.remove('open'));
 }
 
-/* ── TESTING MODE (konami code) ──────────────────────────────────── */
+/* ── TESTING MODE (multi-step: logo 5x then Konami) ─────────────── */
 const _konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
 let _konamiIdx = 0;
+let _logoClickCount = 0;
+let _logoClickTimer = null;
+let _konamiArmed = false;
+
+function initTestMode() {
+  // Step 1: Click the logo 5 times within 3 seconds
+  const logoEl = document.querySelector('.logo');
+  if (logoEl) {
+    logoEl.addEventListener('click', () => {
+      _logoClickCount++;
+      clearTimeout(_logoClickTimer);
+      if (_logoClickCount >= 5) {
+        _logoClickCount = 0;
+        _konamiArmed = true;
+        _konamiIdx = 0;
+        toast('🔐 Enter the code…', 'lock');
+        _logoClickTimer = setTimeout(() => { _konamiArmed = false; _konamiIdx = 0; }, 12000);
+      } else {
+        _logoClickTimer = setTimeout(() => { _logoClickCount = 0; }, 2500);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', e => {
+    if (!_konamiArmed) return;
+    if (e.key === _konami[_konamiIdx]) {
+      _konamiIdx++;
+      if (_konamiIdx === _konami.length) {
+        clearTimeout(_logoClickTimer);
+        _konamiIdx = 0; _konamiArmed = false; _logoClickCount = 0;
+        document.body.classList.toggle('test-mode');
+        const on = document.body.classList.contains('test-mode');
+        toast(on ? '🧪 Testing Mode ACTIVATED' : '🧪 Testing Mode deactivated', 'science');
+        if (on) populateTestPanel();
+      }
+    } else {
+      _konamiIdx = 0;
+    }
+  });
+}
+
+function populateTestPanel() {
+  const el = document.getElementById('test-providers-list');
+  if (el) {
+    el.innerHTML = PROVIDERS.map(p =>
+      `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${p.prio==='high'?'#22c55e':p.prio==='low'?'#f97316':'#f5c518'}"></span>
+        <span style="font-weight:700">${p.label}</span>
+        <span style="font-size:.65rem;color:var(--dim)">${p.id}</span>
+        <span class="prov-btn prio-${p.prio}" style="font-size:.6rem;padding:.05rem .3rem">${p.prio}</span>
+      </div>`
+    ).join('');
+  }
+}
 
 /* ── RATING DESCRIPTIONS ─────────────────────────────────────────── */
 function buildRatingDescriptions() {
@@ -1338,20 +1603,7 @@ function buildRatingDescriptions() {
     </div>`).join('');
 }
 
-function initTestMode() {
-  document.addEventListener('keydown', e => {
-    if (e.key === _konami[_konamiIdx]) {
-      _konamiIdx++;
-      if (_konamiIdx === _konami.length) {
-        _konamiIdx = 0;
-        document.body.classList.toggle('test-mode');
-        toast(document.body.classList.contains('test-mode') ? '🧪 Test mode ON' : '🧪 Test mode OFF', 'science');
-      }
-    } else {
-      _konamiIdx = 0;
-    }
-  });
-}
+/* (initTestMode defined above in testing mode section) */
 
 /* ── PROVIDER NOTIFICATION ───────────────────────────────────────── */
 function checkProviderNotification() {
@@ -1519,6 +1771,20 @@ function initKeyboard() {
       goPage('home');
     } else if (e.key === 'l' || e.key === 'L') {
       goPage('library');
+    } else if (e.key === 's' || e.key === 'S') {
+      goPage('search');
+      setTimeout(() => document.getElementById('search-input')?.focus(), 100);
+    } else if (e.key === 'n' || e.key === 'N') {
+      if (state.currentMedia) {
+        const { useId, id, type } = state.currentMedia;
+        const sel = document.getElementById('season-sel');
+        const s = sel ? +sel.value : 1;
+        const ep = document.querySelector('.ep-card.on');
+        const next = nextProvider(useId || id, type, s, ep ? +ep.dataset.ep : 1);
+        toast(`Switched to ${next.label}`, 'swap_horiz');
+      }
+    } else if (e.key === 'i' || e.key === 'I') {
+      document.getElementById('left-panel-toggle')?.click();
     }
   });
 }

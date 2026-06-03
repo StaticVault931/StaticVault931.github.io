@@ -348,6 +348,9 @@ export function renderModalActions(media) {
     </button>
     <button class="ma" data-action="modal-share" aria-label="Share">
       <span class="material-icons-round">share</span>Share
+    </button>
+    <button class="ma" data-action="modal-watch-together" aria-label="Watch together">
+      <span class="material-icons-round">group</span>Watch Together
     </button>`;
 }
 
