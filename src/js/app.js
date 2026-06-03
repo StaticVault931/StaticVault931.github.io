@@ -848,6 +848,8 @@ export function closeModal() {
 
   document.getElementById('trailer-fallback-btn')?.remove();
   resetPageSEO();
+  // Stop any Watch Together countdown
+  if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
 
   // Reset panel states for next open
   document.getElementById('modal-left-panel')?.classList.remove('panel-collapsed');
@@ -1442,24 +1444,29 @@ function shareMedia(forceClipboard = false) {
   const titleEl = document.getElementById('share-title-preview');
   if (titleEl) titleEl.textContent = title || 'Content';
 
-  document.getElementById('share-copy')?.onclick = () => {
-    navigator.clipboard?.writeText(url).then(() => { toast('Link copied!', 'link'); closeShareMenu(); }).catch(() => {});
+  const copyBtn = document.getElementById('share-copy');
+  if (copyBtn) copyBtn.onclick = () => {
+    navigator.clipboard?.writeText(url).then(() => { toast('Link copied!', 'link'); closeShareMenu(); }).catch(() => toast('Copy failed', 'error'));
   };
-  document.getElementById('share-twitter')?.onclick = () => {
-    window._nativeOpen?.(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Watching ${title} on StaticVault931`)}&url=${encodeURIComponent(url)}`, '_blank') || window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Watching ${title} on StaticVault931`)}&url=${encodeURIComponent(url)}`, '_blank');
+
+  const twitterBtn = document.getElementById('share-twitter');
+  if (twitterBtn) twitterBtn.onclick = () => {
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent('Watching ' + (title || 'this') + ' on StaticVault931')}&url=${encodeURIComponent(url)}`;
+    window.open(tweetUrl, '_blank', 'noopener');
     closeShareMenu();
   };
-  document.getElementById('share-info-page')?.onclick = () => {
+
+  const infoBtn = document.getElementById('share-info-page');
+  if (infoBtn) infoBtn.onclick = () => {
     const infoUrl = url + '&mode=info';
     navigator.clipboard?.writeText(infoUrl).then(() => toast('Info page link copied!', 'info')).catch(() => {});
     closeShareMenu();
   };
-  if (navigator.share) {
-    const nativeBtn = document.getElementById('share-native');
-    if (nativeBtn) {
-      nativeBtn.style.display = '';
-      nativeBtn.onclick = () => { navigator.share({ title: title || 'StaticVault931', url }).catch(() => {}); closeShareMenu(); };
-    }
+
+  const nativeBtn = document.getElementById('share-native');
+  if (nativeBtn) {
+    nativeBtn.style.display = navigator.share ? '' : 'none';
+    nativeBtn.onclick = () => { navigator.share({ title: title || 'StaticVault931', url }).catch(() => {}); closeShareMenu(); };
   }
 
   if (overlay) overlay.classList.add('open');
@@ -1470,81 +1477,152 @@ function closeShareMenu() {
 }
 
 /* ── WATCH TOGETHER ──────────────────────────────────────────────── */
+let _wtTick = null; // global so we can cancel on modal close
+
 function generateWatchTogetherLink() {
   if (!state.currentMedia) return;
   const { id, type, title, details } = state.currentMedia;
   const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
-  const delayMs = 15000; // 15 seconds
+  const delayMs = 15000; // 15 seconds from now
   const startTs = Date.now() + delayMs;
   const room = Math.random().toString(36).slice(2, 8).toUpperCase();
   const slug = slugify(`${title || ''} ${year || ''}`);
   const url = `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&room=${room}&start=${startTs}`;
 
-  // Copy link
-  navigator.clipboard?.writeText(url).then(() => {
-    toast(`Link copied! Share it. Starting in 15s ⏱`, 'group');
-  }).catch(() => toast('Could not copy link', 'error'));
+  // Copy link to clipboard
+  navigator.clipboard?.writeText(url)
+    .then(() => toast('Watch Together link copied! Starts in 15 seconds ⏱', 'group'))
+    .catch(() => toast('Could not copy — link: ' + url, 'error'));
 
-  // Stop current player and show countdown for generator too
+  // Stop any current playback and show countdown for the link generator too
   const iframe = document.getElementById('player-frame');
   if (iframe) iframe.removeAttribute('src');
   cancelProviderTimer();
-  handleWatchTogetherLink(startTs);
+
+  // Both parties use the same countdown function
+  _startWatchTogetherCountdown(startTs, id, type);
 }
 
 function handleWatchTogetherLink(startTs) {
+  // Called when visiting a Watch Together URL
+  // Content is already loaded via openMedia at this point
+  if (!startTs || isNaN(startTs)) return;
+
   const now = Date.now();
   const delay = startTs - now;
 
-  if (delay > 30000) {
-    toast('Watch Together: Link has too long a delay', 'warning');
-    return;
-  }
-
-  const playFn = () => {
+  // Expired link (> 10 minutes old) — just play from beginning
+  if (delay < -600000) {
     if (state.currentMedia) {
       const { useId, id, type } = state.currentMedia;
       loadPlayer(useId || id, type, 1, 1);
+      toast('Watch Together: Starting from beginning', 'group');
     }
-  };
+    return;
+  }
 
+  // Stop auto-play that happened in openMedia so everyone starts together
+  const iframe = document.getElementById('player-frame');
+  if (iframe) iframe.removeAttribute('src');
+  cancelProviderTimer();
+
+  const { id, type } = state.currentMedia || {};
+  if (id && type) _startWatchTogetherCountdown(startTs, id, type);
+}
+
+function _startWatchTogetherCountdown(startTs, mediaId, mediaType) {
+  // Clear any existing countdown
+  if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
+
+  const now = Date.now();
+  const delay = startTs - now;
+
+  // Already past start time (joined late) — reset to beginning and play now
   if (delay <= 0) {
-    // Already past start time — play immediately
-    playFn();
-    toast('Watch Together: Playing now (synced)', 'group');
-  } else {
-    // Show countdown and auto-play
-    let remaining = Math.ceil(delay / 1000);
+    _wtPlayFromStart(mediaId, mediaType);
+    toast('Watch Together: Starting now (synced)', 'group');
+    return;
+  }
+
+  let remaining = Math.ceil(delay / 1000);
+
+  const showCountdown = () => {
     const loading = document.getElementById('player-loading');
-    if (loading) {
-      loading.classList.remove('hidden');
-      loading.innerHTML = `<div class="watch-together-cd">
+    if (!loading) return;
+    loading.classList.remove('hidden');
+    loading.innerHTML = `
+      <div class="watch-together-cd">
         <span class="material-icons-round wt-icon">group</span>
         <div class="wt-title">Watch Together</div>
         <div class="wt-count" id="wt-count">${remaining}</div>
-        <div class="wt-sub">Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…</div>
-        <button class="wt-skip-btn" id="wt-skip">Play Now</button>
+        <div class="wt-sub" id="wt-sub">Starting in ${remaining}s…</div>
+        <div class="wt-actions">
+          <button class="wt-skip-btn" id="wt-skip">
+            <span class="material-icons-round">play_arrow</span> Play Now
+          </button>
+          <button class="wt-cancel-btn" id="wt-cancel">Cancel</button>
+        </div>
       </div>`;
-    }
-    const tick = setInterval(() => {
-      remaining--;
-      const countEl = document.getElementById('wt-count');
-      if (!countEl) { clearInterval(tick); return; } // user navigated away
-      const subEl = countEl?.nextElementSibling;
-      if (countEl) countEl.textContent = remaining;
-      if (subEl) subEl.textContent = `Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…`;
-      if (remaining <= 0) {
-        clearInterval(tick);
-        playFn();
-        toast('Watch Together: GO!', 'group');
+
+    const skipBtn = document.getElementById('wt-skip');
+    const cancelBtn = document.getElementById('wt-cancel');
+
+    if (skipBtn) skipBtn.addEventListener('click', () => {
+      if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
+      _wtPlayFromStart(mediaId, mediaType);
+    }, { once: true });
+
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+      if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
+      const loading2 = document.getElementById('player-loading');
+      if (loading2) { loading2.classList.remove('hidden'); loading2.innerHTML = `<div class="spin"></div><p>Loading player…</p>`; }
+      // Restart player normally
+      if (state.currentMedia) {
+        const { useId, id, type } = state.currentMedia;
+        loadPlayer(useId || id, type, 1, 1);
       }
-    }, 1000);
-    // Skip button
-    document.getElementById('wt-skip')?.addEventListener('click', () => {
-      clearInterval(tick);
-      playFn();
-    });
-  }
+    }, { once: true });
+  };
+
+  showCountdown();
+
+  _wtTick = setInterval(() => {
+    remaining--;
+    const countEl = document.getElementById('wt-count');
+    const subEl = document.getElementById('wt-sub');
+
+    if (!countEl) {
+      // Modal closed or navigated away — stop
+      clearInterval(_wtTick);
+      _wtTick = null;
+      return;
+    }
+
+    countEl.textContent = remaining;
+    if (subEl) subEl.textContent = remaining > 0 ? `Starting in ${remaining}s…` : 'GO!';
+
+    if (remaining <= 0) {
+      clearInterval(_wtTick);
+      _wtTick = null;
+      _wtPlayFromStart(mediaId, mediaType);
+      toast('🎬 Watch Together: GO!', 'group');
+    }
+  }, 1000);
+}
+
+function _wtPlayFromStart(mediaId, mediaType) {
+  // Always play from season 1, episode 1 (beginning) for sync
+  if (!state.currentMedia) return;
+  const { useId, id, type } = state.currentMedia;
+  const uid = useId || id;
+
+  // Reset episode selection to ep 1
+  const epCards = document.querySelectorAll('.ep-card');
+  epCards.forEach((c, i) => c.classList.toggle('on', i === 0));
+  const seasonSel = document.getElementById('season-sel');
+  if (seasonSel) seasonSel.value = '1';
+
+  loadPlayer(uid, type || mediaType, 1, 1);
 }
 
 /* ── FEED REFRESH ────────────────────────────────────────────────── */

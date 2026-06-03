@@ -1287,7 +1287,20 @@ body.test-mode #test-mode-panel { display: block; }
   0%,100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.08); opacity: .85; }
 }
-.wt-sub { font-size: .84rem; color: var(--muted); }
+.wt-sub { font-size: .84rem; color: var(--muted); min-height: 1.2rem; }
+.wt-actions { display: flex; gap: .65rem; margin-top: .35rem; flex-wrap: wrap; justify-content: center; }
+.wt-cancel-btn {
+  padding: .42rem 1rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .18s;
+}
+.wt-cancel-btn:hover { color: var(--text); border-color: var(--border3); background: var(--s3); }
 
 /* ── NETFLIX-STYLE HOVER CARD ────────────────────────────────────── */
 #netflix-card {
@@ -1437,19 +1450,21 @@ body.test-mode #test-mode-panel { display: block; }
 
 /* ── WATCH TOGETHER SKIP BUTTON ──────────────────────────────────── */
 .wt-skip-btn {
-  margin-top: .5rem;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
   padding: .52rem 1.4rem;
   border-radius: var(--r);
-  border: 1.5px solid var(--border3);
-  background: rgba(255,255,255,.1);
+  border: 1.5px solid var(--red);
+  background: var(--red);
   color: #fff;
   font-size: .82rem;
   font-weight: 800;
   cursor: pointer;
   transition: all .18s;
-  backdrop-filter: blur(8px);
 }
-.wt-skip-btn:hover { background: var(--red); border-color: var(--red); }
+.wt-skip-btn .material-icons-round { font-size: .9rem; }
+.wt-skip-btn:hover { background: #f6121d; box-shadow: 0 4px 18px rgba(229,9,20,.4); transform: scale(1.04); }
 
 /* ── SHARE MENU ──────────────────────────────────────────────────── */
 #share-overlay {
