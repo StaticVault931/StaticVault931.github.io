@@ -1304,17 +1304,18 @@ body.test-mode #test-mode-panel { display: block; }
 
 /* ── NETFLIX-STYLE HOVER CARD ────────────────────────────────────── */
 #netflix-card {
-  position: fixed;  /* fixed so it stays over content regardless of scroll */
+  position: fixed;
   z-index: 8900;
   pointer-events: none;
   opacity: 0;
-  transform: scale(.88) translateY(10px);
-  transition: opacity .28s var(--ease), transform .28s var(--ease);
-  width: 360px;
-  border-radius: 10px;
+  transform: scale(.84) translateY(16px);
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+  width: 420px;         /* wider */
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 32px 100px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.08);
+  box-shadow: 0 48px 120px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.1);
   background: var(--s1);
+  cursor: pointer;      /* whole card is clickable */
 }
 #netflix-card.visible {
   opacity: 1;
@@ -1436,11 +1437,29 @@ body.test-mode #test-mode-panel { display: block; }
   min-height: 1rem;
 }
 .nc-genre-chip {
-  font-size: .7rem;
+  font-size: .72rem;
   font-weight: 700;
   color: var(--muted);
 }
-.nc-dot { color: var(--dim); font-size: .7rem; }
+.nc-genre-chip.nc-loading { color: var(--dim); font-style: italic; }
+.nc-dot { color: var(--dim); font-size: .7rem; margin: 0 .1rem; }
+.nc-extra {
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--dim);
+  margin-left: .5rem;
+}
+.nc-extra:first-child { margin-left: 0; }
+.nc-cert {
+  display: inline-block;
+  font-size: .6rem;
+  font-weight: 900;
+  border: 1.5px solid var(--dim);
+  border-radius: 2px;
+  padding: .05rem .32rem;
+  color: var(--dim);
+  letter-spacing: .04em;
+}
 @media (hover: none) {
   #netflix-card { display: none; }
 }

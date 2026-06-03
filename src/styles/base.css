@@ -135,14 +135,22 @@ a { text-decoration: none; color: inherit; }
 .sk {
   background: linear-gradient(
     90deg,
-    var(--s3) 25%,
+    var(--s3) 0%,
+    var(--s3) 30%,
     var(--s4) 50%,
-    var(--s3) 75%
+    var(--s3) 70%,
+    var(--s3) 100%
   );
-  background-size: 400% auto;
-  animation: shimmer 1.8s linear infinite;
+  background-size: 300% auto;
+  animation: shimmer 2.4s ease-in-out infinite;  /* slower, more natural */
   border-radius: 6px;
 }
+/* Stagger skeleton children for a more realistic wave effect */
+.card-sk:nth-child(2n) .sk { animation-delay: .35s; }
+.card-sk:nth-child(3n) .sk { animation-delay: .7s; }
+.card-sk:nth-child(4n) .sk { animation-delay: 1.05s; }
+.card-sk:nth-child(5n) .sk { animation-delay: .2s; }
+.card-sk:nth-child(6n) .sk { animation-delay: .55s; }
 
 /* ── SPINNER ─────────────────────────────────────────────────────── */
 .spin {

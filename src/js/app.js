@@ -1,4 +1,5 @@
 import './adblock.js';
+import { injectOverlays } from './templates.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -54,7 +55,7 @@ const LEGAL_CONTENT = {
       <h3>7. Your Rights</h3>
       <p>Because all data is stored locally in your browser, you can delete it at any time via Library → Reset All Data, or by clearing your browser's storage for this site.</p>
       <h3>8. Contact</h3>
-      <p>For privacy concerns: <a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a> or join our <a href="https://discord.gg/staticvault931" target="_blank" rel="noopener">Discord server</a>.</p>`
+      <p>For privacy concerns: <a href="mailto:StaticQuasar931Games@gmail.com">StaticQuasar931Games@gmail.com</a> or join our <a href="https://discord.com/invite/DP2hM7RRhR" target="_blank" rel="noopener">Discord server</a>.</p>`
   },
   tos: {
     title: 'Terms of Service',
@@ -154,6 +155,7 @@ const SHORTCUTS = [
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  injectOverlays();   // inject modals/overlays before anything else
   initTheme();
   applyLoadingScreenState();
   initEventDelegation();
@@ -309,7 +311,11 @@ function lazyRow(rowId, secId, fetchFn, type, numbered = false) {
   _lazyObs.get(rowId)?.disconnect();
   _lazyObs.delete(rowId);
 
-  row.innerHTML = skelCards(6);
+  // Ensure section is visible (might have been hidden by a previous failed render)
+  if (sec) sec.style.display = '';
+
+  // Skeletons are already set by loadHomeRows(); don't overwrite them here
+  // (row.innerHTML already has skeleton from initial setup)
 
   const target = sec || row;
   const obs = new IntersectionObserver((entries, observer) => {
@@ -338,10 +344,22 @@ function lazyRow(rowId, secId, fetchFn, type, numbered = false) {
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 async function loadHomeRows() {
-  // Show skeletons for above-fold rows immediately
-  ['row-trending', 'row-foryou', 'row-continue', 'row-recent'].forEach(id => {
+  // Show skeletons for ALL rows immediately so the page never looks empty
+  const allRowIds = [
+    'row-trending', 'row-foryou', 'row-continue', 'row-recent',
+    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
+    'row-action', 'row-comedy', 'row-horror', 'row-drama',
+    'row-scifi', 'row-animated', 'row-home-anime',
+  ];
+  allRowIds.forEach((id, i) => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = skelCards(8);
+    if (el) {
+      // Stagger skeleton cards for a more natural look
+      el.innerHTML = skelCards(i < 4 ? 8 : 6);
+      // Ensure parent section is visible (not hidden from a previous failed render)
+      const secId = el.closest('.section')?.id;
+      if (secId) showSection(secId);
+    }
   });
 
   // Continue watching and recently viewed — instant from localStorage
@@ -402,7 +420,10 @@ function renderContinueRow() {
     trendSec.after(sec);
   }
 
-  const items = Object.values(state.continueWatching)
+  // Use Object.entries so we can backfill the id from the key for old saves
+  const items = Object.entries(state.continueWatching)
+    .map(([key, val]) => ({ ...val, id: val.id ?? +key }))
+    .filter(item => item.id && !isNaN(item.id))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .slice(0, 12);
 
@@ -1036,7 +1057,8 @@ function initEventDelegation() {
     else if (action === 'modal-dislike') {
       addDislike(meta);
       toast("Got it — we'll show less like this", 'thumb_down');
-      closeModal();
+      // Don't close the modal — user can keep watching
+      renderModalActions(state.currentMedia); // refresh button states
     }
     else if (action === 'modal-share') shareMedia(e.shiftKey);
     else if (action === 'modal-watch-together') generateWatchTogetherLink();
@@ -1215,14 +1237,14 @@ function initEventDelegation() {
     }
   });
 
-  // Prefs apply — clear all content caches and reload everything
-  document.getElementById('pref-apply-btn')?.addEventListener('click', () => {
-    refreshFeed(false);
+  // Prefs apply — Shift+click to refresh without navigating home
+  document.getElementById('pref-apply-btn')?.addEventListener('click', e => {
+    refreshFeed(false, e.shiftKey);
   });
 
   // Feed randomize
-  document.getElementById('pref-randomize-btn')?.addEventListener('click', () => {
-    refreshFeed(true);
+  document.getElementById('pref-randomize-btn')?.addEventListener('click', e => {
+    refreshFeed(true, e.shiftKey);
   });
 
   // VidSrc test all
@@ -1626,7 +1648,7 @@ function _wtPlayFromStart(mediaId, mediaType) {
 }
 
 /* ── FEED REFRESH ────────────────────────────────────────────────── */
-function refreshFeed(randomize = false) {
+function refreshFeed(randomize = false, stayOnPage = false) {
   // Clear ALL content caches from sessionStorage
   const keysToRemove = [];
   for (let i = 0; i < sessionStorage.length; i++) {
@@ -1654,7 +1676,8 @@ function refreshFeed(randomize = false) {
 
   loadForYou().catch(() => {});
   loadBecauseYouLiked().catch(() => {});
-  goPage('home');
+  if (!stayOnPage) goPage('home');
+  else toast(randomize ? 'Feed randomized! Scroll to see changes.' : 'Feed updated!', randomize ? 'shuffle' : 'check');
   // Reload lazy rows
   setTimeout(() => loadHomeRows().catch(() => {}), 200);
 }
@@ -1916,24 +1939,26 @@ function initHoverTrailer() {
     if (!e.relatedTarget?.closest?.('.card')) clearHoverTrailer();
   });
 
-  // Netflix card action buttons
-  document.getElementById('nc-play')?.addEventListener('click', () => {
-    if (_hoverCurrentId && _hoverCurrentCard) {
+  // Click ANYWHERE on the Netflix card opens the content
+  const nc = document.getElementById('netflix-card');
+  if (nc) {
+    nc.addEventListener('click', e => {
+      if (e.target.closest('#nc-wl') || e.target.closest('#nc-like')) return; // those handle themselves
+      if (!_hoverCurrentCard) return;
       clearHoverTrailer();
       openMedia(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type, {
         title: _hoverCurrentCard.dataset.title,
         poster_path: _hoverCurrentCard.dataset.poster,
       });
-    }
+    });
+  }
+
+  // Individual button overrides (also bubble up to the card click above)
+  document.getElementById('nc-play')?.addEventListener('click', () => {
+    // handled by the parent click — no separate action needed
   });
   document.getElementById('nc-more')?.addEventListener('click', () => {
-    if (_hoverCurrentCard) {
-      clearHoverTrailer();
-      openMedia(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type, {
-        title: _hoverCurrentCard.dataset.title,
-        poster_path: _hoverCurrentCard.dataset.poster,
-      });
-    }
+    // handled by the parent click
   });
   document.getElementById('nc-wl')?.addEventListener('click', e => {
     e.stopPropagation();
@@ -1975,6 +2000,7 @@ async function showNetflixCard(card) {
   if (!_hoverActive) return;
   const id = +card.dataset.id;
   const type = card.dataset.type;
+  if (!id || isNaN(id) || !type) return; // guard against broken cards
   _hoverCurrentId = id;
 
   const nc = document.getElementById('netflix-card');
@@ -2020,31 +2046,73 @@ async function showNetflixCard(card) {
   }
   if (likeIcon) likeIcon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   if (wlIcon) wlIcon.textContent = isInWatchlist(id) ? 'check' : 'add';
-  if (genresEl) genresEl.innerHTML = '';
+  if (genresEl) genresEl.innerHTML = '<span class="nc-genre-chip nc-loading">Loading…</span>';
+  if (metaEl) {
+    const rVal = parseFloat(rating);
+    const rColor = rVal >= 9 ? '#22c55e' : rVal >= 7 ? '#f5c518' : rVal >= 5 ? '#f97316' : rVal > 0 ? '#f87171' : '';
+    metaEl.innerHTML = [
+      year ? `<span class="nc-year">${year}</span>` : '',
+      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : '',
+    ].filter(Boolean).join('');
+  }
 
-  // Position the card over the original card
+  // Position and show immediately with backdrop
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
 
-  // Fetch trailer and genres in parallel
-  const [trailerKey, genres] = await Promise.all([
+  // Fetch rich metadata in parallel
+  const [trailerKey, details] = await Promise.all([
     fetchTrailerKey(id, type),
-    fetchGenreNames(id, type),
+    _genreCache.has(id) ? Promise.resolve(_genreCache.get(id)) : fetchRichDetails(id, type),
   ]);
 
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
-  // Update genres
-  if (genresEl && genres.length) {
-    genresEl.innerHTML = genres.slice(0, 3).map(g =>
-      `<span class="nc-genre-chip">${esc(g)}</span>`
-    ).join('<span class="nc-dot">·</span>');
+  // Update rich metadata
+  if (details) {
+    const genres = details.genres || [];
+    const runtime = details.runtime || details.episode_run_time?.[0];
+    const seasons = details.number_of_seasons;
+    const certification = details._cert || '';
+
+    // Genres
+    if (genresEl && genres.length) {
+      genresEl.innerHTML = genres.slice(0, 3).map(g =>
+        `<span class="nc-genre-chip">${esc(g)}</span>`
+      ).join('<span class="nc-dot">·</span>');
+    } else if (genresEl) {
+      genresEl.innerHTML = '';
+    }
+
+    // Enhanced meta: runtime / seasons / certification
+    const extraMeta = [];
+    if (runtime) {
+      const h = Math.floor(runtime / 60);
+      const m = runtime % 60;
+      extraMeta.push(h > 0 ? `${h}h ${m}m` : `${m}m`);
+    }
+    if (seasons > 1) extraMeta.push(`${seasons} Seasons`);
+    else if (seasons === 1) extraMeta.push('1 Season');
+    if (certification) extraMeta.push(`<span class="nc-cert">${esc(certification)}</span>`);
+
+    if (metaEl && extraMeta.length) {
+      metaEl.innerHTML += extraMeta.map(m => `<span class="nc-extra">${m}</span>`).join('');
+    }
+  } else if (genresEl) {
+    genresEl.innerHTML = '';
   }
 
-  // Load trailer
+  // Load trailer — backdrop stays as fallback if trailer fails (Error 153 etc)
   if (frame && trailerKey && trailerKey !== '__none__') {
-    if (backdrop) backdrop.style.opacity = '0';
     frame.src = `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${trailerKey}&modestbranding=1`;
+    // Fade out backdrop when trailer loads
+    frame.onload = () => { if (backdrop) backdrop.style.opacity = '0'; };
+    // If trailer fails (Error 153 etc), keep backdrop visible
+    frame.onerror = () => { if (backdrop) backdrop.style.opacity = '1'; };
+    // Timeout fallback: if iframe didn't load after 4s, keep backdrop
+    setTimeout(() => {
+      if (backdrop && backdrop.style.opacity !== '0') backdrop.style.opacity = '1';
+    }, 4000);
   }
 }
 
@@ -2052,18 +2120,20 @@ function positionNetflixCard(card, nc) {
   const rect = card.getBoundingClientRect();
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
-  const ncW = 360;
-  const ncH = 360; // approximate full card height
+  const ncW = 420;
+  const ncH = 400; // approximate full card height
 
-  // Center horizontally on card (viewport coords for position:fixed)
+  // Center horizontally on card, expanding outward from card center
   let left = rect.left + (rect.width / 2) - (ncW / 2);
-  // Expand up from card center
-  let top = rect.top - 20;
 
-  // Viewport edge clamp
-  if (left + ncW > vpW - 12) left = vpW - ncW - 12;
+  // If card is near left edge, push the card right instead of going off-screen
   if (left < 8) left = 8;
-  // If not enough room above, show below
+  // If card is near right edge, push left
+  if (left + ncW > vpW - 8) left = vpW - ncW - 8;
+
+  // Vertically: expand upward from near card top, covering the card
+  let top = rect.top - 20;
+  // Not enough room above? Show below the card
   if (top < 70) top = rect.bottom + 8;
   // Don't go off bottom
   if (top + ncH > vpH - 8) top = Math.max(70, vpH - ncH - 8);
@@ -2092,17 +2162,40 @@ async function fetchTrailerKey(id, type) {
 }
 
 const _genreCache = new Map();
-async function fetchGenreNames(id, type) {
+
+async function fetchRichDetails(id, type) {
   if (_genreCache.has(id)) return _genreCache.get(id);
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
-    const data = await tmdb(`/${endpoint}`);
-    const names = (data.genres || []).map(g => g.name).filter(Boolean);
-    _genreCache.set(id, names);
-    return names;
+    const data = await tmdb(`/${endpoint}`, { append_to_response: 'release_dates,content_ratings' });
+    const genres = (data.genres || []).map(g => g.name).filter(Boolean);
+
+    // Get US certification
+    let cert = '';
+    if (type === 'movie') {
+      const usRelease = (data.release_dates?.results || []).find(r => r.iso_3166_1 === 'US');
+      cert = usRelease?.release_dates?.[0]?.certification || '';
+    } else {
+      const usRating = (data.content_ratings?.results || []).find(r => r.iso_3166_1 === 'US');
+      cert = usRating?.rating || '';
+    }
+
+    const rich = {
+      genres,
+      runtime: data.runtime || data.episode_run_time?.[0] || null,
+      number_of_seasons: data.number_of_seasons || null,
+      _cert: cert,
+    };
+    _genreCache.set(id, rich);
+    return rich;
   } catch {
-    return [];
+    return null;
   }
+}
+
+async function fetchGenreNames(id, type) {
+  const rich = await fetchRichDetails(id, type);
+  return rich?.genres || [];
 }
 
 /* ── COLLAPSIBLE MODAL SIDEBARS ──────────────────────────────────── */

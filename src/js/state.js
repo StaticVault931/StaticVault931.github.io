@@ -99,6 +99,7 @@ export function saveContinue(id, data) {
   state.continueWatching[String(id)] = {
     ...state.continueWatching[String(id)],
     ...data,
+    id: +id,          // ← always store numeric id so Object.values() includes it
     updatedAt: Date.now(),
   };
   persist('continueWatching');
