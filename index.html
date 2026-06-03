@@ -54,7 +54,8 @@
   <div class="header-right">
     <div class="search-pill" id="header-search-pill" role="button" tabindex="0" aria-label="Search">
       <span class="material-icons-round">search</span>
-      <span class="pill-text">Search…</span>
+      <span class="pill-text">Search movies, shows…</span>
+      <kbd class="pill-kbd">/</kbd>
     </div>
     <button class="hbtn" data-page="library" aria-label="Library">
       <span class="material-icons-round">video_library</span>
@@ -99,8 +100,8 @@
     <div id="hero-dots" role="tablist" aria-label="Featured slides"></div>
   </section>
 
-  <!-- Genre rail -->
-  <div class="genre-wrap">
+  <!-- Genre rail (hidden from home — accessible via search/genre pages) -->
+  <div class="genre-wrap" style="display:none" aria-hidden="true">
     <div class="genre-scroll" id="genre-scroll" role="list" aria-label="Browse by genre"></div>
   </div>
 
@@ -855,20 +856,28 @@
       <div class="pref-tag-list" id="pref-dislikes-list"></div>
     </div>
 
-    <div class="pref-section pref-section-full">
-      <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
-      <div class="pref-genres-wrap genre-scroll" id="pref-genres" style="flex-wrap:wrap"></div>
-    </div>
-
-    <div class="pref-section pref-section-full">
-      <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
-      <div id="pref-age-row"></div>
+    <!-- Genres + Content Rating: side by side -->
+    <div class="pref-section-full pref-two-col">
+      <div class="pref-section pref-genres-section">
+        <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
+        <p class="pref-hint">Click to toggle. Selected genres are highlighted.</p>
+        <div class="pref-genres-wrap" id="pref-genres"></div>
+      </div>
+      <div class="pref-section pref-rating-section">
+        <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
+        <p class="pref-hint">Set the maximum content rating you want to see.</p>
+        <div id="pref-age-row"></div>
+        <div class="pref-rating-descs" id="pref-rating-descs"></div>
+      </div>
     </div>
   </div>
 
-  <div style="margin-top:2rem">
+  <div class="pref-actions-row">
     <button class="pref-apply-btn" id="pref-apply-btn" aria-label="Apply preferences">
       <span class="material-icons-round">check</span>Apply &amp; Refresh Feed
+    </button>
+    <button class="pref-apply-btn pref-randomize-btn" id="pref-randomize-btn" aria-label="Randomize feed">
+      <span class="material-icons-round">shuffle</span>Randomize Feed
     </button>
   </div>
 
@@ -1010,12 +1019,13 @@
         <a role="button" tabindex="0" data-page="movies">Movies</a>
         <a role="button" tabindex="0" data-page="tv">TV Shows</a>
         <a role="button" tabindex="0" data-page="anime">Anime</a>
-        <a role="button" tabindex="0" data-page="search">Search</a>
       </div>
       <div class="footer-col">
         <h4>My Space</h4>
+        <a role="button" tabindex="0" data-page="search">Search</a>
         <a role="button" tabindex="0" data-page="library">Library</a>
         <a role="button" tabindex="0" data-page="prefs">Customize Feed</a>
+        <a role="button" tabindex="0" id="footer-shortcuts-btn">Shortcuts</a>
       </div>
       <div class="footer-col">
         <h4>Community</h4>
@@ -1038,9 +1048,62 @@
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2026 StaticVault931 · Made by <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">StaticQuasar931</a> · Design by <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Luuk</a></span>
+    <span>© 2026 StaticVault931 ·
+      <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">Made by StaticQuasar931</a> ·
+      <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Design by Luuk</a>
+    </span>
   </div>
 </footer>
+
+<!-- SHORTCUTS MODAL -->
+<div id="shortcuts-overlay" role="dialog" aria-label="Keyboard shortcuts">
+  <div id="shortcuts-modal">
+    <div class="shortcuts-header">
+      <h2><span class="material-icons-round">keyboard</span> Keyboard Shortcuts</h2>
+      <button id="shortcuts-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    </div>
+    <div id="shortcuts-grid" class="shortcuts-grid"></div>
+    <p class="shortcuts-tip">Press <kbd>?</kbd> anytime to show this screen</p>
+  </div>
+</div>
+
+<!-- TESTING MODE PANEL (secret — Konami code to activate) -->
+<div id="test-mode-panel" aria-hidden="true">
+  <div class="test-panel-header">
+    <span class="material-icons-round">science</span> Testing Mode
+    <button class="test-close-btn" onclick="document.body.classList.remove('test-mode')">
+      <span class="material-icons-round">close</span>
+    </button>
+  </div>
+  <div class="test-panel-body">
+    <div class="test-section">
+      <div class="test-section-title">Star Ratings</div>
+      <div class="test-ratings-row">
+        <span class="card-rating rating-great"><span class="material-icons-round">star</span>9.5</span>
+        <span class="card-rating rating-good"><span class="material-icons-round">star</span>7.8</span>
+        <span class="card-rating rating-ok"><span class="material-icons-round">star</span>6.1</span>
+        <span class="card-rating rating-bad"><span class="material-icons-round">star</span>3.2</span>
+      </div>
+    </div>
+    <div class="test-section">
+      <div class="test-section-title">Themes</div>
+      <div class="test-theme-row">
+        <button onclick="document.documentElement.dataset.theme='dark'">Dark</button>
+        <button onclick="document.documentElement.dataset.theme='light'">Light</button>
+        <button onclick="document.documentElement.dataset.theme='midnight'">Midnight</button>
+        <button onclick="document.documentElement.dataset.theme='warm'">Warm</button>
+      </div>
+    </div>
+    <div class="test-section">
+      <div class="test-section-title">Providers</div>
+      <div id="test-providers-list" class="test-section-content"></div>
+    </div>
+    <div class="test-section">
+      <div class="test-section-title">AdBlock</div>
+      <button onclick="window._svAdBlockDisabled=!window._svAdBlockDisabled;this.textContent=window._svAdBlockDisabled?'AdBlock: OFF':'AdBlock: ON'">AdBlock: ON</button>
+    </div>
+  </div>
+</div>
 
 <!-- Legal info modal -->
 <div id="legal-overlay">

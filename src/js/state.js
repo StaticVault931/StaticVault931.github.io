@@ -42,6 +42,8 @@ export const state = {
   watchlist:        load('sv_watchlist', []),
   liked:            load('sv_liked', []),
   disliked:         load('sv_disliked', []),
+  watched:          load('sv_watched', []),        // [{id,type,title,poster_path}]
+  impressions:      load('sv_impressions', {}),    // {id: count}
   recentlyViewed:   load('sv_recent', []),
   continueWatching: load('sv_continue', {}),
   recentSearches:   load('sv_recent_searches', []),
@@ -68,6 +70,8 @@ const PERSIST_MAP = {
   watchlist:        'sv_watchlist',
   liked:            'sv_liked',
   disliked:         'sv_disliked',
+  watched:          'sv_watched',
+  impressions:      'sv_impressions',
   recentlyViewed:   'sv_recent',
   continueWatching: 'sv_continue',
   recentSearches:   'sv_recent_searches',
@@ -130,6 +134,31 @@ export function addDislike(item) {
     state.disliked.push(item);
     persist('disliked');
   }
+}
+
+/* ── RECENT SEARCHES ─────────────────────────────────────────────── */
+/* ── WATCHED ─────────────────────────────────────────────────────── */
+export function isWatched(id) { return state.watched.some(x => x.id == id); }
+
+export function toggleWatched(item) {
+  const idx = state.watched.findIndex(x => x.id == item.id);
+  if (idx >= 0) { state.watched.splice(idx, 1); persist('watched'); return false; }
+  state.watched.push(item);
+  persist('watched');
+  return true;
+}
+
+/* ── IMPRESSIONS ─────────────────────────────────────────────────── */
+export function recordImpression(id) {
+  state.impressions[id] = (state.impressions[id] || 0) + 1;
+  // Persist in batches (every 5 impressions) to avoid thrashing localStorage
+  if (state.impressions[id] % 5 === 0) persist('impressions');
+}
+
+export function getImpressionPenalty(id) {
+  const count = state.impressions[id] || 0;
+  // After 20 unseen impressions, penalize. Linear penalty up to -5 at 100 impressions.
+  return Math.min(5, Math.max(0, (count - 20) / 16));
 }
 
 /* ── RECENT SEARCHES ─────────────────────────────────────────────── */

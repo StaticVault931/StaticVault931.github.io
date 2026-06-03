@@ -91,6 +91,8 @@
   .related-grid { grid-template-columns: 1fr 1fr; }
 
   #page-prefs { padding-top: 70px; }
+  .pref-two-col { grid-template-columns: 1fr !important; }
+  .pref-actions-row { flex-direction: column; }
 }
 
 /* ── 480px ────────────────────────────────────────────────────────── */

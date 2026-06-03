@@ -1,5 +1,5 @@
 import './adblock.js';
-import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, toggleLike, toggleWatchlist, addDislike } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
@@ -95,6 +95,9 @@ function closeLegal() {
   initHeader();
   initHoverTrailer();
   initModalPanelToggles();
+  initShortcutsModal();
+  initTestMode();
+  buildRatingDescriptions();
   registerAllLoaders();
   registerAllSeeAll();
   initSearch();
@@ -196,6 +199,10 @@ async function loadHero() {
   } catch {}
 }
 
+/* ── ROW DEDUP ───────────────────────────────────────────────────── */
+// Global set tracking IDs already rendered in home page rows (reset on page load)
+const _homeSeenIds = new Set();
+
 /* ── LAZY ROW HELPER ─────────────────────────────────────────────── */
 const _lazyObs = new Map();
 
@@ -222,7 +229,11 @@ function lazyRow(rowId, secId, fetchFn, type, numbered = false) {
           if (sec) sec.style.display = 'none'; else row.innerHTML = '';
           return;
         }
-        renderRow(rowId, items.slice(0, 14), type, numbered);
+        // Dedup: filter out IDs already shown in other rows
+        const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
+        deduped.forEach(m => _homeSeenIds.add(m.id));
+        if (!deduped.length) { if (sec) sec.style.display = 'none'; return; }
+        renderRow(rowId, deduped.slice(0, 14), type, numbered);
       })
       .catch(() => { if (sec) sec.style.display = 'none'; });
   }, { rootMargin: '400px 0px' });
@@ -243,10 +254,17 @@ async function loadHomeRows() {
   renderContinueRow();
   renderRecentRow();
 
+  // Reset dedup set for fresh home load
+  _homeSeenIds.clear();
+
   // Above-fold: load immediately
   await Promise.allSettled([
     tmdb('/trending/all/week')
-      .then(d => renderRow('row-trending', (d.results || []).slice(0, 14), null, true))
+      .then(d => {
+        const items = (d.results || []).slice(0, 14);
+        items.forEach(m => _homeSeenIds.add(m.id));
+        renderRow('row-trending', items, null, true);
+      })
       .catch(() => hideSection('sec-trending')),
     loadForYou(),
   ]);
@@ -378,6 +396,7 @@ function loadGenresUI() {
 /* ── PREFS PAGE ──────────────────────────────────────────────────── */
 function loadPrefsPage() {
   renderPrefLists();
+  buildRatingDescriptions();
   buildGenreChips('pref-genres', GENRES, (id, chip) => {
     const i = state.prefGenres.indexOf(id);
     if (i >= 0) state.prefGenres.splice(i, 1); else state.prefGenres.push(id);
@@ -401,6 +420,7 @@ function buildAgeRatingUI() {
       persist('ageRating');
       container.querySelectorAll('.age-btn').forEach(b => b.classList.toggle('on', b.dataset.age === state.ageRating));
       toast(`Content rating set to ${state.ageRating}`, 'child_care');
+      buildRatingDescriptions();
     });
   });
 }
@@ -542,9 +562,9 @@ export async function openMedia(id, type, hint = {}) {
       loadPlayer(useId, type, 1, 1);
     }
 
+    buildProviderBar(useId, type, 1, 1);
     renderModalInfo(details, type);
     renderModalActions(state.currentMedia);
-    buildProviderBar(useId, type, 1, 1);
     renderCast(credits);
 
     if (type === 'tv') {
@@ -593,6 +613,11 @@ async function buildTvEpisodes(tmdbId, useId, details) {
         </select>
       </div>
       <div class="ep-grid" id="ep-grid">${skelCards(4)}</div>
+      <div class="ep-footer">
+        <button class="ep-jump-related" id="ep-jump-related" title="Jump to similar titles">
+          <span class="material-icons-round">arrow_downward</span> More Like This
+        </button>
+      </div>
     </div>`;
 
   const sel = document.getElementById('season-sel');
@@ -701,6 +726,9 @@ export function closeModal() {
   state.currentMedia = null;
   cancelProviderTimer();
 
+  // Remove trailer fallback button
+  document.getElementById('trailer-fallback-btn')?.remove();
+
   // Reset panel states for next open
   document.getElementById('modal-left-panel')?.classList.remove('panel-collapsed');
   document.getElementById('modal-right-panel')?.classList.remove('panel-collapsed');
@@ -760,6 +788,16 @@ function initEventDelegation() {
       return;
     }
 
+    // Watched button
+    const watchedBtn = e.target.closest('[data-action="watched"]');
+    if (watchedBtn) {
+      e.stopPropagation();
+      const itemId = +watchedBtn.dataset.id;
+      const itemType = watchedBtn.dataset.type;
+      handleWatched(itemId, itemType, watchedBtn, card);
+      return;
+    }
+
     // Don't trigger card click if it's a button inside
     if (e.target.closest('button')) return;
 
@@ -792,6 +830,9 @@ function initEventDelegation() {
     if (pageEl.closest('[data-id]')) return; // skip card internals
     goPage(pageEl.dataset.page);
   });
+
+  // Shortcuts button in footer
+  document.getElementById('footer-shortcuts-btn')?.addEventListener('click', showShortcuts);
 
   // Logo click → home
   const logo = document.querySelector('.logo');
@@ -845,17 +886,24 @@ function initEventDelegation() {
     else if (action === 'modal-trailer') {
       const key = btn.dataset.key;
       if (key) {
-        cancelProviderTimer(); // stop any pending provider error timer
+        cancelProviderTimer();
         const iframe = document.getElementById('player-frame');
         const loading = document.getElementById('player-loading');
         if (iframe) {
-          if (loading) { loading.classList.remove('hidden'); loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`; }
+          if (loading) {
+            loading.classList.remove('hidden');
+            loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`;
+          }
           iframe.removeAttribute('src');
           setTimeout(() => {
-            iframe.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
+            iframe.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&origin=${encodeURIComponent(location.origin)}`;
             iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
-            // Fallback: hide loading after 8s regardless
-            setTimeout(() => { if (loading) loading.classList.add('hidden'); }, 8000);
+            // Fallback for Error 153 / embedding disabled — show helpful message after 5s
+            setTimeout(() => {
+              if (loading && !loading.classList.contains('hidden')) return;
+              // Check if iframe shows YouTube error (can't detect directly, add "Watch on YouTube" overlay)
+              showTrailerFallback(key);
+            }, 6000);
           }, 50);
         }
       }
@@ -962,6 +1010,14 @@ function initEventDelegation() {
     epCard.click();
   });
 
+  // Jump to "More Like This"
+  document.addEventListener('click', e => {
+    if (e.target.closest('#ep-jump-related')) {
+      const related = document.getElementById('modal-related-section');
+      if (related) related.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
   // Row scroll arrows
   document.addEventListener('click', e => {
     const scrollBtn = e.target.closest('[data-scroll-row]');
@@ -1011,16 +1067,14 @@ function initEventDelegation() {
     }
   });
 
-  // Prefs apply
+  // Prefs apply — clear all content caches and reload everything
   document.getElementById('pref-apply-btn')?.addEventListener('click', () => {
-    clearCachePattern('discover');
-    clearCachePattern('trending');
-    // Clear stale "Because You Liked" sections
-    document.querySelectorAll('[id^="sec-because-"]').forEach(el => el.remove());
-    toast('Feed updated!', 'check');
-    loadForYou().catch(() => {});
-    loadBecauseYouLiked().catch(() => {});
-    goPage('home');
+    refreshFeed(false);
+  });
+
+  // Feed randomize
+  document.getElementById('pref-randomize-btn')?.addEventListener('click', () => {
+    refreshFeed(true);
   });
 
   // Data management — use in-app confirm dialog
@@ -1105,6 +1159,31 @@ function handleLike(id, type, btn, metaOverride) {
   }
 }
 
+function handleWatched(id, type, btn, card) {
+  const item = buildItemMeta(id, type);
+  const added = toggleWatched(item);
+  if (added) toast('Marked as watched', 'visibility');
+  else toast('Removed from watched', 'visibility_off');
+  if (btn) {
+    btn.classList.toggle('done', isWatched(id));
+    btn.querySelector('.material-icons-round').textContent = isWatched(id) ? 'visibility' : 'visibility_off';
+  }
+  // Refresh badge on card
+  const badgesEl = card?.querySelector('.card-badges');
+  if (badgesEl) {
+    // Re-render badges — simplest approach: rebuild card badges section
+    const existing = badgesEl.querySelector('.badge-watched');
+    if (isWatched(id) && !existing) {
+      const span = document.createElement('span');
+      span.className = 'card-badge badge-watched';
+      span.textContent = 'Watched';
+      badgesEl.appendChild(span);
+    } else if (!isWatched(id) && existing) {
+      existing.remove();
+    }
+  }
+}
+
 function handleWatchlist(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
   const added = toggleWatchlist(item);
@@ -1152,6 +1231,136 @@ function shareMedia() {
     navigator.share({ title: state.currentMedia.title, url }).catch(() => {});
   } else {
     navigator.clipboard?.writeText(url).then(() => toast('Link copied!', 'link')).catch(() => toast('Copy failed', 'error'));
+  }
+}
+
+/* ── FEED REFRESH ────────────────────────────────────────────────── */
+function refreshFeed(randomize = false) {
+  // Clear ALL content caches from sessionStorage
+  const keysToRemove = [];
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const k = sessionStorage.key(i);
+    if (k && k.startsWith('svc_')) keysToRemove.push(k);
+  }
+  keysToRemove.forEach(k => sessionStorage.removeItem(k));
+
+  // Clear stale "Because You Liked" sections
+  document.querySelectorAll('[id^="sec-because-"]').forEach(el => el.remove());
+
+  // Disconnect lazy observers so rows reload
+  _lazyObs.forEach(obs => obs.disconnect());
+  _lazyObs.clear();
+  _homeSeenIds.clear();
+
+  if (randomize) {
+    // Add random page offset to API calls via a temp state var
+    state._randomPage = Math.floor(Math.random() * 5) + 2;
+    toast('Feed randomized!', 'shuffle');
+  } else {
+    state._randomPage = null;
+    toast('Feed updated!', 'check');
+  }
+
+  loadForYou().catch(() => {});
+  loadBecauseYouLiked().catch(() => {});
+  goPage('home');
+  // Reload lazy rows
+  setTimeout(() => loadHomeRows().catch(() => {}), 200);
+}
+
+/* ── TRAILER FALLBACK ────────────────────────────────────────────── */
+function showTrailerFallback(key) {
+  // Add a small "Watch on YouTube" button over the player without interrupting playback
+  const existing = document.getElementById('trailer-fallback-btn');
+  if (existing) return;
+  const playerWrap = document.querySelector('.player-wrap');
+  if (!playerWrap) return;
+  const btn = document.createElement('a');
+  btn.id = 'trailer-fallback-btn';
+  btn.href = `https://www.youtube.com/watch?v=${key}`;
+  btn.target = '_blank';
+  btn.rel = 'noopener';
+  btn.className = 'trailer-fallback-btn';
+  btn.innerHTML = `<span class="material-icons-round">open_in_new</span> Can't play? Watch on YouTube`;
+  playerWrap.appendChild(btn);
+  // Remove when modal closes
+}
+
+/* ── SHORTCUTS MODAL ─────────────────────────────────────────────── */
+const SHORTCUTS = [
+  { key: '/', desc: 'Open search' },
+  { key: 'Esc', desc: 'Close modal / dialog' },
+  { key: '?', desc: 'Show keyboard shortcuts' },
+  { key: '← / A', desc: 'Previous hero slide' },
+  { key: '→ / D', desc: 'Next hero slide' },
+  { key: 'T', desc: 'Cycle theme' },
+  { key: 'H', desc: 'Go to Home' },
+  { key: 'L', desc: 'Go to Library' },
+];
+
+function showShortcuts() {
+  const ov = document.getElementById('shortcuts-overlay');
+  if (ov) ov.classList.add('open');
+}
+
+function initShortcutsModal() {
+  const ov = document.getElementById('shortcuts-overlay');
+  if (!ov) return;
+  const grid = document.getElementById('shortcuts-grid');
+  if (grid) {
+    grid.innerHTML = SHORTCUTS.map(s =>
+      `<div class="sc-item"><kbd class="sc-key">${esc(s.key)}</kbd><span class="sc-desc">${esc(s.desc)}</span></div>`
+    ).join('');
+  }
+  ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+  document.getElementById('shortcuts-close')?.addEventListener('click', () => ov.classList.remove('open'));
+}
+
+/* ── TESTING MODE (konami code) ──────────────────────────────────── */
+const _konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+let _konamiIdx = 0;
+
+/* ── RATING DESCRIPTIONS ─────────────────────────────────────────── */
+function buildRatingDescriptions() {
+  const el = document.getElementById('pref-rating-descs');
+  if (!el) return;
+  const descs = [
+    { r: 'G',     label: 'General Audiences',  desc: 'All ages. No offensive content.' },
+    { r: 'PG',    label: 'Parental Guidance',   desc: 'May not suit young children. Mild language or themes.' },
+    { r: 'PG-13', label: 'Parents Strongly Cautioned', desc: 'May be inappropriate for children under 13. Some strong language, violence.' },
+    { r: 'R',     label: 'Restricted',          desc: 'Under 17 requires parent/guardian. Strong language, violence, adult themes.' },
+    { r: 'NC-17', label: 'Adults Only',         desc: 'No one under 17 admitted. Explicit adult content.' },
+  ];
+  el.innerHTML = descs.map(d => `
+    <div class="rating-desc${state.ageRating === d.r ? ' active' : ''}">
+      <span class="rd-badge">${d.r}</span>
+      <div><div class="rd-label">${d.label}</div><div class="rd-text">${d.desc}</div></div>
+    </div>`).join('');
+}
+
+function initTestMode() {
+  document.addEventListener('keydown', e => {
+    if (e.key === _konami[_konamiIdx]) {
+      _konamiIdx++;
+      if (_konamiIdx === _konami.length) {
+        _konamiIdx = 0;
+        document.body.classList.toggle('test-mode');
+        toast(document.body.classList.contains('test-mode') ? '🧪 Test mode ON' : '🧪 Test mode OFF', 'science');
+      }
+    } else {
+      _konamiIdx = 0;
+    }
+  });
+}
+
+/* ── PROVIDER NOTIFICATION ───────────────────────────────────────── */
+function checkProviderNotification() {
+  const active = getActiveProvider();
+  const usual = state.lastProvider || 'vidsrc';
+  if (active.id !== usual && state.currentMedia) {
+    const usualProv = PROVIDERS.find(p => p.id === usual);
+    const usualLabel = usualProv?.label || usual;
+    toast(`Using ${active.label} instead of ${usualLabel}`, 'swap_horiz');
   }
 }
 
@@ -1291,6 +1500,9 @@ function initKeyboard() {
       return;
     }
 
+    // ? opens shortcuts
+    if (e.key === '?') { e.preventDefault(); showShortcuts(); return; }
+
     // WASD / Arrow keys — hero navigation and row scrolling
     const modalOpen = document.getElementById('modal-overlay')?.classList.contains('open');
     if (modalOpen) return;
@@ -1301,6 +1513,12 @@ function initKeyboard() {
     } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
       e.preventDefault();
       jumpHero((state.heroIdx + 1) % state.heroItems.length);
+    } else if (e.key === 't' || e.key === 'T') {
+      cycleTheme();
+    } else if (e.key === 'h' || e.key === 'H') {
+      goPage('home');
+    } else if (e.key === 'l' || e.key === 'L') {
+      goPage('library');
     }
   });
 }

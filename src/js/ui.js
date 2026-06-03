@@ -1,4 +1,4 @@
-import { state, isLiked, isInWatchlist, getContinue } from './state.js';
+import { state, isLiked, isInWatchlist, isWatched, getContinue } from './state.js';
 import { imgUrl } from './api.js';
 
 /* ── ESCAPE ──────────────────────────────────────────────────────── */
@@ -32,16 +32,13 @@ export function skelCards(n = 8) {
 
 /* ── CARD ────────────────────────────────────────────────────────── */
 export function makeCard(m, type, opts = {}) {
-  const { numbered, showProgress = true } = opts;
+  const { numbered, showProgress = true, compact = false } = opts;
 
   const title = m.title || m.name || m.romaji || '';
   const id = m.id;
   const year = String(m.release_date || m.first_air_date || m.startDate_year || '').slice(0, 4);
-  const rating = m.vote_average
-    ? m.vote_average.toFixed(1)
-    : m.averageScore
-    ? (m.averageScore / 10).toFixed(1)
-    : '';
+  const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);
+  const rating = ratingVal ? ratingVal.toFixed(1) : '';
 
   // Image: prefer backdrop for 16:9 cards, fall back to poster/coverImage
   const backdrop = imgUrl(m.backdrop_path, 'w780');
@@ -50,13 +47,13 @@ export function makeCard(m, type, opts = {}) {
 
   const likedNow = isLiked(id);
   const wlNow = isInWatchlist(id);
+  const watchedNow = isWatched(id);
   const contData = showProgress ? getContinue(id) : null;
 
   const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV' : 'Film';
   const typeClass = type === 'anime' ? 'tp-a' : type === 'tv' ? 'tp-t' : 'tp-m';
 
   // Rating color class
-  const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);
   const ratingClass = ratingVal >= 9.0 ? ' rating-great' : ratingVal >= 7.0 ? ' rating-good' : ratingVal >= 5.0 ? ' rating-ok' : ratingVal > 0 ? ' rating-bad' : '';
 
   // Badges
@@ -64,20 +61,24 @@ export function makeCard(m, type, opts = {}) {
   if (contData) badges.push(`<span class="card-badge badge-continue">Continue</span>`);
   if (wlNow) badges.push(`<span class="card-badge badge-wl">Saved</span>`);
   if (likedNow) badges.push(`<span class="card-badge badge-liked">Liked</span>`);
+  if (watchedNow) badges.push(`<span class="card-badge badge-watched">Watched</span>`);
 
-  // Progress bar (only if continue watching)
+  // Progress bar
   const progressBar = (contData && contData.progress)
     ? `<div class="card-progress"><div class="card-progress-fill" style="width:${Math.min(100, Math.round(contData.progress * 100))}%"></div></div>`
     : '';
 
-  const numEl = numbered != null
-    ? `<div class="card-num">${numbered}</div>`
-    : '';
+  const numEl = numbered != null ? `<div class="card-num">${numbered}</div>` : '';
 
-  return `<div class="card"
+  // For compact/related view: don't overlay rating on image — show in text
+  const showOverlayRating = !compact;
+
+  return `<div class="card${compact ? ' card-compact' : ''}"
     data-id="${id}"
     data-type="${type}"
     data-title="${esc(title)}"
+    data-year="${esc(year)}"
+    data-rating="${esc(rating)}"
     data-poster="${esc(poster || '')}"
     data-backdrop="${esc(m.backdrop_path || '')}"
     role="button"
@@ -87,14 +88,19 @@ export function makeCard(m, type, opts = {}) {
       ${imgSrc
         ? `<img src="${imgSrc}" alt="${esc(title)}" loading="lazy">`
         : `<div class="card-poster-ph">
-             <span class="material-icons-round">${type === 'anime' ? 'auto_awesome' : type === 'tv' ? 'tv' : 'movie'}</span>
+             <span class="card-ph-icon material-icons-round">${type === 'anime' ? 'auto_awesome' : type === 'tv' ? 'tv' : 'movie'}</span>
              <span class="card-ph-title">${esc(title)}</span>
+             ${year ? `<span class="card-ph-year">${year}</span>` : ''}
+             ${rating ? `<span class="card-ph-rating"><span class="material-icons-round">star</span>${rating}</span>` : ''}
            </div>`}
       <div class="type-pill ${typeClass}">${typeLabel}</div>
       ${badges.length ? `<div class="card-badges">${badges.join('')}</div>` : ''}
-      ${rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
+      ${showOverlayRating && rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
       <div class="card-ov">
         <div class="card-ov-actions">
+          <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
+            <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
+          </button>
           <button class="card-like-btn${likedNow ? ' liked' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${likedNow ? 'Unlike' : 'Like'}">
             <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>
           </button>
@@ -108,7 +114,8 @@ export function makeCard(m, type, opts = {}) {
     <div class="card-body">
       <div class="card-title" title="${esc(title)}">${esc(title)}</div>
       <div class="card-sub">
-        ${year ? `<span>${year}</span>` : ''}
+        ${year ? `<span class="card-sub-year">${year}</span>` : ''}
+        ${!showOverlayRating && rating ? `<span class="card-sub-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</span>` : ''}
         ${numEl}
       </div>
     </div>
@@ -285,21 +292,24 @@ export function renderModalInfo(details, type) {
   const tagsEl = document.getElementById('modal-tags');
   if (tagsEl) tagsEl.innerHTML = tags;
 
-  // Ratings chips
+  // Ratings chips — only show meaningful values
+  const pop = details.popularity || 0;
+  const votes = details.vote_count || 0;
+  const ratingColorCls = rating >= 9 ? 'rv-great' : rating >= 7 ? 'rv-gold' : rating >= 5 ? 'rv-ok' : rating > 0 ? 'rv-bad' : '';
   const rats = [
-    rating ? `<div class="r-chip"><div class="rv">${rating.toFixed(1)}</div><div class="rs">${type === 'anime' ? 'AniList' : 'TMDB'}</div></div>` : '',
-    details.vote_count ? `<div class="r-chip"><div class="rv">${(details.vote_count / 1000).toFixed(1)}K</div><div class="rs">Votes</div></div>` : '',
-    details.number_of_seasons ? `<div class="r-chip"><div class="rv">${details.number_of_seasons}</div><div class="rs">Seasons</div></div>` : '',
-    details.popularity ? `<div class="r-chip"><div class="rv">${Math.round(details.popularity).toLocaleString()}</div><div class="rs">Popularity</div></div>` : '',
+    rating ? `<div class="r-chip"><div class="rv ${ratingColorCls}">${rating.toFixed(1)}</div><div class="rs">${type === 'anime' ? 'AniList' : 'TMDB'} Score</div></div>` : '',
+    votes >= 10 ? `<div class="r-chip"><div class="rv">${votes >= 1000 ? (votes / 1000).toFixed(1) + 'K' : votes}</div><div class="rs">Votes</div></div>` : '',
+    details.number_of_seasons > 1 ? `<div class="r-chip"><div class="rv">${details.number_of_seasons}</div><div class="rs">Seasons</div></div>` : '',
+    pop >= 5 ? `<div class="r-chip"><div class="rv">${Math.round(pop).toLocaleString()}</div><div class="rs">Trending</div></div>` : '',
   ].filter(Boolean).join('');
   const ratsEl = document.getElementById('modal-ratings');
   if (ratsEl) ratsEl.innerHTML = rats;
 
-  // Plot
+  // Plot — expanded by default
   const plotEl = document.getElementById('modal-plot');
   if (plotEl) {
     plotEl.textContent = details.overview || '';
-    plotEl.classList.remove('exp');
+    plotEl.classList.add('exp'); // expanded by default; click to collapse
   }
 }
 
@@ -343,7 +353,7 @@ export function renderModalActions(media) {
 
 /* ── CAST RENDER ─────────────────────────────────────────────────── */
 export function renderCast(credits) {
-  const cast = (credits?.cast?.length ? credits.cast : credits?._cast || []).slice(0, 20);
+  const cast = (credits?.cast?.length ? credits.cast : credits?._cast || []).slice(0, 30);
   const el = document.getElementById('modal-cast-row');
   if (!el) return;
 
@@ -375,7 +385,7 @@ export function renderRelated(items, type) {
   const label = type === 'tv' ? 'Similar Shows' : type === 'anime' ? 'Similar Anime' : 'More Like This';
   el.innerHTML = `
     <div class="section-label" style="margin-bottom:.6rem">${label}</div>
-    <div class="related-grid">${items.slice(0, 12).map(m => makeCard(m, type, {})).join('')}</div>`;
+    <div class="related-grid">${items.slice(0, 12).map(m => makeCard(m, type, { compact: true })).join('')}</div>`;
 }
 
 /* ── ROW SCROLL ARROWS ───────────────────────────────────────────── */
