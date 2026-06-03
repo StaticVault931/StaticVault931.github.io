@@ -3,6 +3,52 @@
  * Keeps index.html lean; these elements are not needed for initial paint or SEO.
  */
 
+export function injectTestPanel() {
+  if (document.getElementById('test-mode-panel')) return;
+  const el = document.createElement('div');
+  el.id = 'test-mode-panel';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `
+  <div class="test-panel-inner">
+    <div class="test-panel-hdr">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--red)" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14.5 2.5h-5L8 9H3l7 13 2-7h4l2 7 7-13h-5L14.5 2.5z" stroke="none"/>
+      </svg>
+      <span>Testing Mode</span>
+      <button class="test-close" id="test-close-btn">×</button>
+    </div>
+    <div class="test-panel-body">
+      <div class="test-col">
+        <div class="test-group-label">Themes</div>
+        <div class="test-btn-row">
+          <button class="test-btn" onclick="document.documentElement.dataset.theme='dark'">Dark</button>
+          <button class="test-btn" onclick="document.documentElement.dataset.theme='light'">Light</button>
+          <button class="test-btn" onclick="document.documentElement.dataset.theme='midnight'">Midnight</button>
+          <button class="test-btn" onclick="document.documentElement.dataset.theme='warm'">Warm</button>
+        </div>
+        <div class="test-group-label" style="margin-top:.6rem">Ratings</div>
+        <div class="test-btn-row">
+          <span class="card-rating rating-great"><span class="material-icons-round">star</span>9.5</span>
+          <span class="card-rating rating-good"><span class="material-icons-round">star</span>7.8</span>
+          <span class="card-rating rating-ok"><span class="material-icons-round">star</span>5.4</span>
+          <span class="card-rating rating-bad"><span class="material-icons-round">star</span>3.1</span>
+        </div>
+        <div class="test-group-label" style="margin-top:.6rem">Features</div>
+        <div class="test-btn-row">
+          <button class="test-btn" id="test-no-images-btn">Hide Images</button>
+          <button class="test-btn" id="test-adblock-btn">AdBlock: ON</button>
+          <button class="test-btn" id="test-clear-cache-btn">Clear Cache</button>
+        </div>
+      </div>
+      <div class="test-col test-providers-col">
+        <div class="test-group-label">Provider Status <button class="test-btn test-btn-small" id="test-all-providers-btn">Test All</button></div>
+        <div id="test-providers-list" class="test-providers-list"></div>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+}
+
 export function injectOverlays() {
   const frag = document.createDocumentFragment();
 
@@ -19,7 +65,6 @@ export function injectOverlays() {
         <span class="material-icons-round">close</span>
       </button>
       <div class="modal-top-spacer"></div>
-      <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
       <button class="modal-panel-toggle" id="left-panel-toggle" title="Toggle info panel" aria-label="Toggle info panel">
         <span class="material-icons-round">view_sidebar</span>
       </button>
@@ -27,6 +72,7 @@ export function injectOverlays() {
         <span class="material-icons-round">view_sidebar</span>
       </button>
     </div>
+    <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
     <div class="modal-body">
       <div class="modal-left-panel" id="modal-left-panel">
         <div class="modal-poster-wrap" id="modal-poster">
@@ -92,8 +138,8 @@ export function injectOverlays() {
   nc.innerHTML = `
   <div class="nc-video">
     <iframe id="nc-frame"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-      allow="autoplay; encrypted-media"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
+      allow="autoplay; encrypted-media; picture-in-picture"
       referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>

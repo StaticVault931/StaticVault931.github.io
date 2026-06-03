@@ -132,25 +132,21 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ── SHIMMER SKELETON ────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 .sk {
   background: linear-gradient(
     90deg,
-    var(--s3) 0%,
-    var(--s3) 30%,
+    var(--s2) 0%,
     var(--s4) 50%,
-    var(--s3) 70%,
-    var(--s3) 100%
+    var(--s2) 100%
   );
-  background-size: 300% auto;
-  animation: shimmer 2.4s ease-in-out infinite;  /* slower, more natural */
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;  /* consistent pace, no delays */
   border-radius: 6px;
 }
-/* Stagger skeleton children for a more realistic wave effect */
-.card-sk:nth-child(2n) .sk { animation-delay: .35s; }
-.card-sk:nth-child(3n) .sk { animation-delay: .7s; }
-.card-sk:nth-child(4n) .sk { animation-delay: 1.05s; }
-.card-sk:nth-child(5n) .sk { animation-delay: .2s; }
-.card-sk:nth-child(6n) .sk { animation-delay: .55s; }
 
 /* ── SPINNER ─────────────────────────────────────────────────────── */
 .spin {

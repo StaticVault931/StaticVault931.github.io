@@ -1,5 +1,5 @@
 import './adblock.js';
-import { injectOverlays } from './templates.js';
+import { injectOverlays, injectTestPanel } from './templates.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -296,117 +296,138 @@ async function loadHero() {
 }
 
 /* ── ROW DEDUP ───────────────────────────────────────────────────── */
-// Global set tracking IDs already rendered in home page rows (reset on page load)
 const _homeSeenIds = new Set();
 
-/* ── LAZY ROW HELPER ─────────────────────────────────────────────── */
+/* ── LAZY ROW HELPER (observer-based, for truly off-screen rows) ─── */
 const _lazyObs = new Map();
 
-function lazyRow(rowId, secId, fetchFn, type, numbered = false) {
+function lazyRow(rowId, secId, fetchFn, type) {
   const row = document.getElementById(rowId);
   const sec = secId ? document.getElementById(secId) : null;
   if (!row) return;
 
-  // Disconnect any existing observer for this row
   _lazyObs.get(rowId)?.disconnect();
   _lazyObs.delete(rowId);
-
-  // Ensure section is visible (might have been hidden by a previous failed render)
   if (sec) sec.style.display = '';
 
-  // Skeletons are already set by loadHomeRows(); don't overwrite them here
-  // (row.innerHTML already has skeleton from initial setup)
-
-  const target = sec || row;
   const obs = new IntersectionObserver((entries, observer) => {
     if (!entries[0].isIntersecting) return;
     observer.disconnect();
     _lazyObs.delete(rowId);
+    _loadRow(rowId, secId, fetchFn, type);
+  }, { rootMargin: '800px 0px' }); // large margin so most rows pre-load
 
-    fetchFn()
-      .then(items => {
-        if (!items || !items.length) {
-          if (sec) sec.style.display = 'none'; else row.innerHTML = '';
-          return;
-        }
-        // Dedup: filter out IDs already shown in other rows
-        const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
-        deduped.forEach(m => _homeSeenIds.add(m.id));
-        if (!deduped.length) { if (sec) sec.style.display = 'none'; return; }
-        renderRow(rowId, deduped.slice(0, 14), type, numbered);
-      })
-      .catch(() => { if (sec) sec.style.display = 'none'; });
-  }, { rootMargin: '400px 0px' });
-
-  obs.observe(target);
+  obs.observe(sec || row);
   _lazyObs.set(rowId, obs);
+}
+
+/* ── DIRECT ROW FETCH (always loads, no observer) ────────────────── */
+function _loadRow(rowId, secId, fetchFn, type) {
+  const row = document.getElementById(rowId);
+  const sec = secId ? document.getElementById(secId) : null;
+  if (!row) return;
+  if (sec) sec.style.display = '';
+
+  return fetchFn()
+    .then(items => {
+      if (!items || !items.length) {
+        if (sec) sec.style.display = 'none';
+        return;
+      }
+      // Soft dedup — only skip exact repeats from trending row
+      const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
+      if (!deduped.length) {
+        // Fallback: use original items if dedup removed everything
+        renderRow(rowId, items.slice(0, 14), type);
+      } else {
+        deduped.forEach(m => _homeSeenIds.add(m.id));
+        renderRow(rowId, deduped.slice(0, 14), type);
+      }
+    })
+    .catch(err => {
+      console.warn(`Row ${rowId} failed:`, err);
+      if (row) row.innerHTML = '<p class="muted-note" style="padding:.5rem">Could not load. Refresh to retry.</p>';
+    });
 }
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 async function loadHomeRows() {
-  // Show skeletons for ALL rows immediately so the page never looks empty
+  // Reset dedup for fresh load
+  _homeSeenIds.clear();
+  // Disconnect any previous observers
+  _lazyObs.forEach(obs => obs.disconnect());
+  _lazyObs.clear();
+
+  // Show skeletons for ALL rows immediately
   const allRowIds = [
     'row-trending', 'row-foryou', 'row-continue', 'row-recent',
     'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
     'row-action', 'row-comedy', 'row-horror', 'row-drama',
     'row-scifi', 'row-animated', 'row-home-anime',
   ];
-  allRowIds.forEach((id, i) => {
+  allRowIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      // Stagger skeleton cards for a more natural look
-      el.innerHTML = skelCards(i < 4 ? 8 : 6);
-      // Ensure parent section is visible (not hidden from a previous failed render)
-      const secId = el.closest('.section')?.id;
-      if (secId) showSection(secId);
+      el.innerHTML = skelCards(6);
+      const sec = el.closest('.section');
+      if (sec) sec.style.display = '';
     }
   });
 
-  // Continue watching and recently viewed — instant from localStorage
+  // Instant local data
   renderContinueRow();
   renderRecentRow();
 
-  // Reset dedup set for fresh home load
-  _homeSeenIds.clear();
+  // Genre preferences for personalized rows
+  const prefG = state.prefGenres;
+  const gOpts = (genreId, extra = {}) => ({
+    with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
+    sort_by: 'popularity.desc',
+    ...extra,
+  });
+  const rng = state._randomPage || 1;
 
-  // Above-fold: load immediately
+  const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
+
+  // ── BATCH 1: visible above the fold — load immediately ─────────────
   await Promise.allSettled([
     tmdb('/trending/all/week')
       .then(d => {
         const items = (d.results || []).slice(0, 14);
         items.forEach(m => _homeSeenIds.add(m.id));
         renderRow('row-trending', items, null, true);
-      })
-      .catch(() => hideSection('sec-trending')),
+      }),
     loadForYou(),
   ]);
 
-  // Below-fold: lazy load when scrolled near
-  const animeQ = `query{Page(perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
+  // ── BATCH 2: just below the fold — load right after ─────────────────
+  Promise.allSettled([
+    _loadRow('row-new',      'sec-new',      () => tmdb('/movie/now_playing', { page: rng }).then(d => d.results || []), 'movie'),
+    _loadRow('row-toprated', 'sec-toprated', () => tmdb('/movie/top_rated',   { page: rng }).then(d => d.results || []), 'movie'),
+    _loadRow('row-tv-pop',   'sec-tv-pop',   () => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []), 'tv'),
+    _loadRow('row-airing',   'sec-airing',   () => tmdb('/tv/airing_today').then(d => d.results || []), 'tv'),
+  ]);
 
-  // Use preferred genres to make home rows feed-aware
-  const prefG = state.prefGenres;
-  const movieGenreParam = prefG.length ? prefG.slice(0, 3).join('|') : null;
-  const discoverMovieOpts = (genreId, extra = {}) => ({
-    with_genres: movieGenreParam ? `${genreId}|${movieGenreParam}` : genreId,
-    sort_by: 'popularity.desc',
-    ...extra,
-  });
+  // ── BATCH 3: genre rows — slight delay so batch 2 gets bandwidth ────
+  setTimeout(() => {
+    Promise.allSettled([
+      _loadRow('row-action',   'sec-action',   () => tmdb('/discover/movie', gOpts(28,  { page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-comedy',   'sec-comedy',   () => tmdb('/discover/movie', gOpts(35,  { page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-horror',   'sec-horror',   () => tmdb('/discover/movie', gOpts(27,  { page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-drama',    'sec-drama',    () => tmdb('/discover/movie', gOpts(18,  { sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-scifi',    'sec-scifi',    () => tmdb('/discover/movie', gOpts(878, { page: rng })).then(d => d.results || []), 'movie'),
+      _loadRow('row-animated', 'sec-animated', () => tmdb('/discover/movie', gOpts(16,  { page: rng })).then(d => d.results || []), 'movie'),
+    ]);
+  }, 400);
 
-  lazyRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing').then(d => d.results || []), 'movie');
-  lazyRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated').then(d => d.results || []), 'movie');
-  lazyRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular').then(d => d.results || []), 'tv');
-  lazyRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []), 'tv');
-  lazyRow('row-action',    'sec-action',    () => tmdb('/discover/movie', discoverMovieOpts(28)).then(d => d.results || []), 'movie');
-  lazyRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', discoverMovieOpts(35)).then(d => d.results || []), 'movie');
-  lazyRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', discoverMovieOpts(27)).then(d => d.results || []), 'movie');
-  lazyRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', discoverMovieOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 300 })).then(d => d.results || []), 'movie');
-  lazyRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', discoverMovieOpts(878)).then(d => d.results || []), 'movie');
-  lazyRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', discoverMovieOpts(16)).then(d => d.results || []), 'movie');
-  lazyRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime');
+  // ── BATCH 4: anime (AniList has separate rate limits) ────────────────
+  setTimeout(() => {
+    _loadRow('row-home-anime', 'sec-home-anime', () =>
+      aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime');
+  }, 800);
 
-  // Because You Liked rows (load after above-fold settles)
-  loadBecauseYouLiked().catch(() => {});
+  // ── Because You Liked rows (personalized, after main rows) ───────────
+  setTimeout(() => loadBecauseYouLiked().catch(() => {}), 600);
 }
 
 function renderContinueRow() {
@@ -1040,7 +1061,7 @@ function initEventDelegation() {
           }
           iframe.removeAttribute('src');
           setTimeout(() => {
-            iframe.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&origin=${encodeURIComponent(location.origin)}`;
+            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
             iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
             // Fallback for Error 153 / embedding disabled — show helpful message after 5s
             setTimeout(() => {
@@ -1526,14 +1547,12 @@ function generateWatchTogetherLink() {
 }
 
 function handleWatchTogetherLink(startTs) {
-  // Called when visiting a Watch Together URL
-  // Content is already loaded via openMedia at this point
   if (!startTs || isNaN(startTs)) return;
 
   const now = Date.now();
   const delay = startTs - now;
 
-  // Expired link (> 10 minutes old) — just play from beginning
+  // Very old link (> 10 minutes) — just play from start
   if (delay < -600000) {
     if (state.currentMedia) {
       const { useId, id, type } = state.currentMedia;
@@ -1543,13 +1562,31 @@ function handleWatchTogetherLink(startTs) {
     return;
   }
 
-  // Stop auto-play that happened in openMedia so everyone starts together
+  // Stop the auto-play from openMedia so everyone starts together
   const iframe = document.getElementById('player-frame');
   if (iframe) iframe.removeAttribute('src');
   cancelProviderTimer();
 
   const { id, type } = state.currentMedia || {};
-  if (id && type) _startWatchTogetherCountdown(startTs, id, type);
+  if (!id || !type) return;
+
+  // Preload: if there's enough time (>5s), warm up the provider
+  // by loading the player iframe silently a few seconds before countdown ends
+  if (delay > 5000) {
+    setTimeout(() => {
+      if (!state.currentMedia || _wtTick === null) return; // cancelled
+      const { useId: uid, id: mid, type: mtype } = state.currentMedia;
+      // Load silently into the frame (user will start seeing it load)
+      const pf = document.getElementById('player-frame');
+      const active = getActiveProvider();
+      if (pf && active) {
+        const src = active.url(uid || mid, mtype === 'anime' ? 'tv' : mtype, 1, 1);
+        pf.src = src; // preload
+      }
+    }, delay - 3000); // 3 seconds before start
+  }
+
+  _startWatchTogetherCountdown(startTs, id, type);
 }
 
 function _startWatchTogetherCountdown(startTs, mediaId, mediaType) {
@@ -1769,18 +1806,92 @@ function initTestMode() {
 }
 
 function populateTestPanel() {
-  const el = document.getElementById('test-providers-list');
-  if (el) {
-    el.innerHTML = PROVIDERS.map(p =>
-      `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
-        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${p.prio==='high'?'#22c55e':p.prio==='low'?'#f97316':'#f5c518'}"></span>
-        <span style="font-weight:700">${p.label}</span>
-        <span style="font-size:.65rem;color:var(--dim)">${p.id}</span>
-        <span class="prov-btn prio-${p.prio}" style="font-size:.6rem;padding:.05rem .3rem">${p.prio}</span>
-      </div>`
-    ).join('');
+  injectTestPanel();
+
+  const list = document.getElementById('test-providers-list');
+  if (list) {
+    list.innerHTML = PROVIDERS.map(p => {
+      const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+      const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
+      const status = working[p.id] ? 'ok' : disabled.includes(p.id) ? 'off' : 'unknown';
+      return `<div class="test-prov-row" data-pid="${p.id}">
+        <svg class="test-prov-icon" id="tpi-${p.id}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="8" cy="8" r="7" stroke="${status === 'ok' ? '#22c55e' : status === 'off' ? '#f97316' : 'var(--dim)'}" stroke-width="1.5"/>
+          ${status === 'ok' ? '<path d="M5 8l2 2 4-4" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>' : status === 'off' ? '<path d="M6 6l4 4M10 6l-4 4" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/>' : '<circle cx="8" cy="8" r="2" fill="var(--dim)"/>'}
+        </svg>
+        <span class="test-prov-name">${p.label}</span>
+        <span class="test-prov-note" style="color:var(--dim)">${p.note || ''}</span>
+        <button class="test-btn test-btn-small" onclick="window._testProvider('${p.id}')">Test</button>
+        <button class="test-btn test-btn-small ${disabled.includes(p.id) ? 'test-btn-warn' : ''}" onclick="window._toggleProviderDisabled('${p.id}')">
+          ${disabled.includes(p.id) ? 'Disabled' : 'Enabled'}
+        </button>
+      </div>`;
+    }).join('');
   }
+
+  // Close/feature buttons
+  document.getElementById('test-close-btn')?.addEventListener('click', () => {
+    document.body.classList.remove('test-mode');
+  });
+  document.getElementById('test-no-images-btn')?.addEventListener('click', function() {
+    document.body.classList.toggle('test-no-images');
+    this.textContent = document.body.classList.contains('test-no-images') ? 'Show Images' : 'Hide Images';
+  });
+  document.getElementById('test-adblock-btn')?.addEventListener('click', function() {
+    window._svAdBlockDisabled = !window._svAdBlockDisabled;
+    this.textContent = window._svAdBlockDisabled ? 'AdBlock: OFF' : 'AdBlock: ON';
+  });
+  document.getElementById('test-clear-cache-btn')?.addEventListener('click', () => {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith('svc_')) sessionStorage.removeItem(k);
+    }
+    toast('Cache cleared!', 'delete_sweep');
+  });
+  document.getElementById('test-all-providers-btn')?.addEventListener('click', () => {
+    PROVIDERS.forEach(p => window._testProvider(p.id));
+  });
 }
+
+// Global test helpers (accessible from inline onclick)
+window._testProvider = async function(id) {
+  const prov = PROVIDERS.find(p => p.id === id);
+  if (!prov) return;
+  const iconEl = document.getElementById(`tpi-${id}`);
+  if (iconEl) iconEl.innerHTML = '<circle cx="8" cy="8" r="5" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="3 2"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="1s" repeatCount="indefinite"/></circle>';
+
+  try {
+    const testUrl = prov.url(550, 'movie', 1, 1);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    await fetch(testUrl, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
+    clearTimeout(t);
+    const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+    working[id] = Date.now();
+    localStorage.setItem('sv_provider_working', JSON.stringify(working));
+    toast(`${prov.label}: Reachable ✓`, 'check_circle');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+      working[id] = Date.now(); // no-cors doesn't throw on real 200s
+      localStorage.setItem('sv_provider_working', JSON.stringify(working));
+      toast(`${prov.label}: Reachable ✓`, 'check_circle');
+    } else {
+      toast(`${prov.label}: Timeout ✗`, 'error');
+    }
+  }
+  populateTestPanel(); // refresh icons
+};
+
+window._toggleProviderDisabled = function(id) {
+  const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
+  const idx = disabled.indexOf(id);
+  if (idx >= 0) disabled.splice(idx, 1);
+  else disabled.push(id);
+  localStorage.setItem('sv_provider_disabled', JSON.stringify(disabled));
+  populateTestPanel();
+  toast(disabled.includes(id) ? `${id} disabled` : `${id} enabled`, 'tune');
+};
 
 /* ── VIDSRC DOMAIN TESTER ────────────────────────────────────────── */
 const VIDSRC_DOMAINS = [
@@ -2104,7 +2215,8 @@ async function showNetflixCard(card) {
 
   // Load trailer — backdrop stays as fallback if trailer fails (Error 153 etc)
   if (frame && trailerKey && trailerKey !== '__none__') {
-    frame.src = `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${trailerKey}&modestbranding=1`;
+    // Try standard youtube.com embed (nocookie can trigger more 153 errors for some videos)
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1`;
     // Fade out backdrop when trailer loads
     frame.onload = () => { if (backdrop) backdrop.style.opacity = '0'; };
     // If trailer fails (Error 153 etc), keep backdrop visible
