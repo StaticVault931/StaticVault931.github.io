@@ -1,3 +1,4 @@
+import './adblock.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, toggleLike, toggleWatchlist, addDislike } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -7,8 +8,87 @@ import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 
+/* ── THEMES ──────────────────────────────────────────────────────── */
+const THEMES = ['dark', 'light', 'midnight', 'warm'];
+const THEME_ICONS = { dark: 'dark_mode', light: 'light_mode', midnight: 'nights_stay', warm: 'wb_sunny' };
+
+function initTheme() {
+  const saved = localStorage.getItem('sv_theme') || 'dark';
+  applyTheme(saved);
+}
+function applyTheme(name) {
+  document.documentElement.dataset.theme = name;
+  localStorage.setItem('sv_theme', name);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.querySelector('.material-icons-round').textContent = THEME_ICONS[name] || 'palette';
+}
+function cycleTheme() {
+  const cur = document.documentElement.dataset.theme || 'dark';
+  const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+  applyTheme(next);
+  toast(`Theme: ${next.charAt(0).toUpperCase() + next.slice(1)}`, THEME_ICONS[next] || 'palette');
+}
+
+/* ── LEGAL ───────────────────────────────────────────────────────── */
+const LEGAL_CONTENT = {
+  privacy: {
+    title: 'Privacy Policy',
+    body: `
+      <h3>Information We Collect</h3>
+      <p>StaticVault931 stores your preferences, watchlist, and viewing history locally in your browser using localStorage. We do not collect, transmit, or store any personal data on our servers.</p>
+      <h3>Third-Party Services</h3>
+      <p>We use The Movie Database (TMDB) API and AniList API to fetch content metadata. These services may collect data per their own privacy policies. Video content is streamed via third-party embed providers which operate independently.</p>
+      <h3>Cookies & Storage</h3>
+      <p>We use browser localStorage to save your settings and preferences. No tracking cookies are set by StaticVault931.</p>
+      <h3>Advertising</h3>
+      <p>Third-party video providers may display advertisements. StaticVault931 has no control over these ads and does not receive revenue from them.</p>
+      <h3>Contact</h3>
+      <p>For privacy concerns, contact us at StaticQuasar931Games@gmail.com.</p>`
+  },
+  tos: {
+    title: 'Terms of Service',
+    body: `
+      <h3>Acceptance of Terms</h3>
+      <p>By using StaticVault931, you agree to these terms. If you do not agree, please do not use this service.</p>
+      <h3>Content</h3>
+      <p>StaticVault931 is a content discovery platform. We do not host, store, or distribute any media files. All video content is sourced from third-party embed providers.</p>
+      <h3>Use of Service</h3>
+      <p>You agree to use StaticVault931 for lawful purposes only. You must not attempt to circumvent any technical measures or exploit the service.</p>
+      <h3>Disclaimer</h3>
+      <p>StaticVault931 is provided "as is" without warranties of any kind. We are not responsible for content displayed by third-party providers.</p>
+      <h3>Changes</h3>
+      <p>We reserve the right to modify these terms at any time. Continued use of the service constitutes acceptance of updated terms.</p>`
+  },
+  dmca: {
+    title: 'DMCA Notice',
+    body: `
+      <h3>Copyright Policy</h3>
+      <p>StaticVault931 respects intellectual property rights. We do not host any media content — all video is embedded from third-party providers.</p>
+      <h3>Filing a DMCA Notice</h3>
+      <p>If you believe content accessible through our platform infringes your copyright, please contact the third-party provider that is hosting the content directly.</p>
+      <p>For concerns specifically about StaticVault931's functionality or metadata, contact us at StaticQuasar931Games@gmail.com with:</p>
+      <p>• A description of the copyrighted work<br>• The specific URL or content in question<br>• Your contact information<br>• A statement of good faith belief</p>
+      <h3>Response</h3>
+      <p>We will respond to valid DMCA notices within a reasonable timeframe and take appropriate action.</p>`
+  }
+};
+
+function showLegal(type) {
+  const data = LEGAL_CONTENT[type];
+  if (!data) return;
+  const overlay = document.getElementById('legal-overlay');
+  const content = document.getElementById('legal-content');
+  if (!overlay || !content) return;
+  content.innerHTML = `<h2>${data.title}</h2>${data.body}`;
+  overlay.classList.add('open');
+}
+function closeLegal() {
+  document.getElementById('legal-overlay')?.classList.remove('open');
+}
+
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  initTheme();
   applyLoadingScreenState();
   initEventDelegation();
   initKeyboard();
@@ -112,7 +192,8 @@ async function loadHero() {
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 async function loadHomeRows() {
   const rowIds = ['row-trending', 'row-foryou', 'row-continue', 'row-recent',
-    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing', 'row-action', 'row-comedy', 'row-horror'];
+    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing', 'row-action', 'row-comedy', 'row-horror',
+    'row-drama', 'row-scifi', 'row-animated', 'row-home-anime'];
   rowIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = skelCards(8);
@@ -121,6 +202,8 @@ async function loadHomeRows() {
   // Continue watching from localStorage
   renderContinueRow();
   renderRecentRow();
+
+  const animeQ = `query{Page(perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
 
   await Promise.allSettled([
     tmdb('/trending/all/week').then(d => renderRow('row-trending', (d.results || []).slice(0, 14), null, true)).catch(() => hideSection('sec-trending')),
@@ -132,6 +215,10 @@ async function loadHomeRows() {
     tmdb('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc' }).then(d => renderRow('row-action', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-action')),
     tmdb('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc' }).then(d => renderRow('row-comedy', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-comedy')),
     tmdb('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc' }).then(d => renderRow('row-horror', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-horror')),
+    tmdb('/discover/movie', { with_genres: 18, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }).then(d => renderRow('row-drama', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-drama')),
+    tmdb('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc' }).then(d => renderRow('row-scifi', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-scifi')),
+    tmdb('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc' }).then(d => renderRow('row-animated', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-animated')),
+    aniQuery(animeQ).then(d => renderRow('row-home-anime', (d?.data?.Page?.media || []).map(normalizeAnime).slice(0, 14), 'anime')).catch(() => hideSection('sec-home-anime')),
   ]);
 
   // Because You Liked rows
@@ -414,8 +501,10 @@ export async function openMedia(id, type, hint = {}) {
 
     if (type === 'tv') {
       buildTvEpisodes(id, useId, details);
+      loadRelated(id, type, details);
     } else if (type === 'anime') {
       buildAnimeEpisodes(details);
+      loadRelated(id, type, details);
     } else {
       loadRelated(id, type, details);
     }
@@ -445,8 +534,6 @@ function showAgeWarning(rating, useId, type) {
 async function buildTvEpisodes(tmdbId, useId, details) {
   const sidebar = document.getElementById('modal-ep-sidebar');
   if (!sidebar) return;
-
-  document.getElementById('modal-media-row')?.classList.add('has-episodes');
 
   const total = details.number_of_seasons || 1;
   sidebar.innerHTML = `
@@ -509,8 +596,6 @@ function buildAnimeEpisodes(details) {
   const colRight = document.getElementById('modal-ep-sidebar');
   if (!colRight) return;
 
-  document.getElementById('modal-media-row')?.classList.add('has-episodes');
-
   const total = details.number_of_episodes || 1;
   const cont = getContinue(details.id);
   const lastEp = cont?.episode || 1;
@@ -563,7 +648,6 @@ async function loadRelated(id, type, details) {
 export function closeModal() {
   document.getElementById('modal-overlay')?.classList.remove('open');
   document.getElementById('player-frame')?.removeAttribute('src');
-  document.getElementById('modal-media-row')?.classList.remove('has-episodes');
   document.body.style.overflow = '';
   state.currentMedia = null;
   clearTimeout(window._providerTimer);
@@ -588,7 +672,6 @@ function playNow() {
   } else {
     loadPlayer(uid, type, 1, 1);
   }
-  document.getElementById('modal-overlay')?.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ── EVENT DELEGATION ────────────────────────────────────────────── */
@@ -676,20 +759,42 @@ function initEventDelegation() {
     if (dot) jumpHero(+dot.dataset.heroDot);
   });
 
+  // Theme toggle
+  document.getElementById('theme-toggle')?.addEventListener('click', cycleTheme);
+
+  // Hero right-click → next slide
+  document.getElementById('hero')?.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (state.heroItems.length) jumpHero((state.heroIdx + 1) % state.heroItems.length);
+  });
+
   // Modal close
   document.getElementById('modal-close')?.addEventListener('click', closeModal);
   document.getElementById('modal-overlay')?.addEventListener('click', e => {
     if (e.target === document.getElementById('modal-overlay')) closeModal();
   });
 
-  // Modal actions
-  document.getElementById('modal-actions')?.addEventListener('click', e => {
-    const action = e.target.closest('[data-action]')?.dataset.action;
-    if (!action || !state.currentMedia) return;
+  // Modal actions — document-level so dislike and trailer work even after re-render
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('#modal-actions [data-action]');
+    if (!btn || !state.currentMedia) return;
+    const action = btn.dataset.action;
     const { id, type, title, details } = state.currentMedia;
     const meta = { id, type, title, poster_path: details?.poster_path || null, coverImage_large: details?.coverImage_large || null };
 
     if (action === 'modal-play') playNow();
+    else if (action === 'modal-trailer') {
+      const key = btn.dataset.key;
+      if (key) {
+        const a = document.createElement('a');
+        a.href = `https://www.youtube.com/watch?v=${key}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    }
     else if (action === 'modal-watchlist') { handleWatchlist(id, type, null, meta); renderModalActions(state.currentMedia); }
     else if (action === 'modal-like') { handleLike(id, type, null, meta); renderModalActions(state.currentMedia); }
     else if (action === 'modal-dislike') {
@@ -698,6 +803,28 @@ function initEventDelegation() {
       closeModal();
     }
     else if (action === 'modal-share') shareMedia();
+  });
+
+  // Legal overlay
+  document.addEventListener('click', e => {
+    const legalBtn = e.target.closest('[data-legal]');
+    if (legalBtn) { showLegal(legalBtn.dataset.legal); return; }
+    const lcloseBtn = e.target.closest('#legal-close');
+    if (lcloseBtn) { closeLegal(); return; }
+    const loverlay = document.getElementById('legal-overlay');
+    if (loverlay && e.target === loverlay) closeLegal();
+  });
+
+  // Library tabs
+  document.addEventListener('click', e => {
+    const tab = e.target.closest('[data-lib-tab]');
+    if (!tab) return;
+    document.querySelectorAll('.lib-tab').forEach(t => t.classList.toggle('on', t === tab));
+    const tabName = tab.dataset.libTab;
+    const libEl = document.getElementById('lib-tab-library');
+    const prefsEl = document.getElementById('lib-tab-prefs');
+    if (libEl) libEl.style.display = tabName === 'library' ? '' : 'none';
+    if (prefsEl) prefsEl.style.display = tabName === 'prefs' ? '' : 'none';
   });
 
   // Age warn buttons
@@ -745,7 +872,6 @@ function initEventDelegation() {
     const { useId, id, type } = state.currentMedia;
     const uid = useId || id;
     loadPlayer(uid, type, season, ep);
-    document.getElementById('modal-overlay')?.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Save continue watching for TV/anime
     if (type === 'tv' || type === 'anime') {

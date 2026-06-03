@@ -27,34 +27,39 @@ export async function loadForYou() {
       tmdb(`/${item.type || 'movie'}/${item.id}/recommendations`).catch(() => ({ results: [] }))
     );
 
-    const [discoverRes, trendRes, ...recResults] = await Promise.allSettled([
+    const [discoverRes, discoverTvRes, ...recResults] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'popularity.desc', with_genres: genreIds }),
-      tmdb('/trending/all/week'),
+      tmdb('/discover/tv', { sort_by: 'popularity.desc', with_genres: genreIds }),
       ...recRequests,
     ]);
 
     const discover = discoverRes.status === 'fulfilled' ? discoverRes.value.results || [] : [];
-    const trend = trendRes.status === 'fulfilled' ? trendRes.value.results || [] : [];
+    const discoverTv = discoverTvRes.status === 'fulfilled' ? discoverTvRes.value.results || [] : [];
     const recItems = recResults.flatMap(r => r.status === 'fulfilled' ? r.value.results || [] : []);
 
-    // Score: recommendation hit = 3pts, genre match = 1pt each, trending = 0.5pt
-    const trendIds = new Set(trend.map(x => x.id));
+    // IDs currently shown in Trending row — exclude to avoid repeats
+    const trendingRowIds = new Set(
+      Array.from(document.querySelectorAll('#row-trending [data-id]')).map(el => +el.dataset.id)
+    );
+    const recentIds = new Set(state.recentlyViewed.map(x => x.id));
+
+    // Score: recommendation hit = 3pts, genre match = 1pt each
     const recIdCounts = {};
     recItems.forEach(m => { recIdCounts[m.id] = (recIdCounts[m.id] || 0) + 3; });
 
     const seen = new Set();
-    const pool = [...recItems, ...discover, ...trend].filter(m => {
+    const pool = [...recItems, ...discover, ...discoverTv].filter(m => {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
-      return !dislikedIds.has(m.id) && !likedIds.has(m.id);
+      return !dislikedIds.has(m.id) && !likedIds.has(m.id) && !trendingRowIds.has(m.id) && !recentIds.has(m.id);
     });
 
     pool.sort((a, b) => {
       const score = m => {
         let s = recIdCounts[m.id] || 0;
-        if (trendIds.has(m.id)) s += 0.5;
         if (state.prefGenres.length)
           s += (m.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
+        s += ((m.vote_average || 0) / 20);
         return s;
       };
       return score(b) - score(a);

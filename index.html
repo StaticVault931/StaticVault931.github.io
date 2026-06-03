@@ -62,6 +62,9 @@
     <button class="hbtn" data-page="prefs" aria-label="Customize Feed">
       <span class="material-icons-round">tune</span>
     </button>
+    <button class="hbtn" id="theme-toggle" aria-label="Change theme" title="Change theme">
+      <span class="material-icons-round">palette</span>
+    </button>
   </div>
 </header>
 
@@ -366,6 +369,106 @@
     </div>
   </div>
 
+  <!-- Drama & Indie -->
+  <div class="section" id="sec-drama">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">theater_comedy</span>Drama &amp; Indie
+      </div>
+      <button class="see-all-btn" data-see-all="genre-18" data-see-all-title="Drama" aria-label="See all drama">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-drama" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-drama"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-drama" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sci-Fi & Fantasy -->
+  <div class="section" id="sec-scifi">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">rocket_launch</span>Sci-Fi &amp; Fantasy
+      </div>
+      <button class="see-all-btn" data-see-all="genre-878" data-see-all-title="Sci-Fi" aria-label="See all sci-fi">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-scifi" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-scifi"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-scifi" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Animated -->
+  <div class="section" id="sec-animated">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">animation</span>Animated
+      </div>
+      <button class="see-all-btn" data-see-all="genre-16" data-see-all-title="Animated" aria-label="See all animated">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-animated" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-animated"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-animated" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trending Anime -->
+  <div class="section" id="sec-home-anime">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">nights_stay</span>Trending Anime
+      </div>
+      <button class="see-all-btn" data-see-all="anime-trending" data-see-all-title="Trending Anime" aria-label="See all trending anime">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-home-anime" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-home-anime"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-home-anime" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Recently Viewed -->
   <div class="section" id="sec-recent" style="display:none">
     <div class="sec-header">
@@ -632,6 +735,13 @@
     <p>Your watchlist, liked titles, and viewing history</p>
   </div>
 
+  <div class="lib-tabs">
+    <button class="lib-tab on" data-lib-tab="library">My Library</button>
+    <button class="lib-tab" data-lib-tab="prefs">Customize Feed</button>
+  </div>
+
+  <div id="lib-tab-library">
+
   <!-- Continue Watching -->
   <div class="lib-section" id="lib-continue-sec">
     <div class="lib-section-header">
@@ -690,6 +800,17 @@
     <div class="data-btn-row">
       <button class="data-btn" id="btn-clear-disliked">Clear Disliked</button>
       <button class="data-btn danger" id="btn-reset-all">Reset All Data</button>
+    </div>
+  </div>
+
+  </div><!-- end lib-tab-library -->
+
+  <div id="lib-tab-prefs" style="display:none">
+    <div style="padding: 2rem 0 1rem;">
+      <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem">Customize what appears in your feed — choose genres, favorite titles, and content ratings.</p>
+      <button class="pref-apply-btn" data-page="prefs" style="display:inline-flex;align-items:center;gap:.4rem;">
+        <span class="material-icons-round">tune</span>Open Customize Feed
+      </button>
     </div>
   </div>
 
@@ -757,20 +878,35 @@
     <button id="modal-close" aria-label="Close">
       <span class="material-icons-round">close</span>
     </button>
-
-    <!-- Provider bar -->
     <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
-
-    <!-- Player + Episode sidebar -->
-    <div class="modal-media-row" id="modal-media-row">
-      <div class="modal-player-col">
-        <div style="position:relative">
+    <div class="modal-body">
+      <!-- LEFT: poster + meta + cast -->
+      <div class="modal-left-panel" id="modal-left-panel">
+        <div class="modal-poster-wrap" id="modal-poster">
+          <div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:6px;"></div>
+        </div>
+        <div class="modal-meta">
+          <div id="modal-title"></div>
+          <div class="modal-tags" id="modal-tags"></div>
+          <div class="modal-actions" id="modal-actions"></div>
+          <div class="modal-ratings" id="modal-ratings"></div>
+          <div id="modal-plot"></div>
+        </div>
+        <div class="modal-cast-section">
+          <div class="cast-section-label">Cast</div>
+          <div class="cast-row" id="modal-cast-row"></div>
+        </div>
+      </div>
+      <!-- CENTER: player -->
+      <div class="modal-center-col">
+        <div class="player-area">
           <div class="player-wrap">
             <div class="player-loading" id="player-loading">
               <div class="spin"></div>
               <p>Loading player…</p>
             </div>
             <iframe id="player-frame"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
               allowfullscreen
               allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
               referrerpolicy="no-referrer"
@@ -786,41 +922,13 @@
             </div>
           </div>
         </div>
-        <div class="player-disclaimer">
-          <span class="material-icons-round">info_outline</span>
-          Content is streamed via third-party providers. StaticVault931 does not host any media. Ads may appear and are outside our control.
-        </div>
       </div>
-
-      <!-- Episode sidebar — shown by adding .has-episodes to .modal-media-row -->
-      <div class="modal-ep-sidebar" id="modal-ep-sidebar"></div>
+      <!-- RIGHT: episodes (TV/anime) or related (movies) -->
+      <div class="modal-right-panel" id="modal-right-panel">
+        <div id="modal-ep-sidebar"></div>
+        <div id="modal-related-section"></div>
+      </div>
     </div>
-
-    <!-- Modal info -->
-    <div class="modal-content">
-      <div class="modal-info">
-        <div class="modal-poster-wrap" id="modal-poster">
-          <div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:6px;"></div>
-        </div>
-        <div class="modal-meta">
-          <div id="modal-title"></div>
-          <div class="modal-tags" id="modal-tags"></div>
-          <div class="modal-actions" id="modal-actions"></div>
-          <div class="modal-ratings" id="modal-ratings"></div>
-          <div id="modal-plot"></div>
-        </div>
-      </div>
-
-      <!-- Cast (full width) -->
-      <div class="modal-cast-section" id="modal-cast-section">
-        <div class="cast-section-label">Cast</div>
-        <div class="cast-row" id="modal-cast-row"></div>
-      </div>
-
-      <!-- More Like This (full width, movies only) -->
-      <div class="modal-related-section" id="modal-related-section"></div>
-    </div>
-
   </div>
 </div>
 
@@ -847,6 +955,63 @@
     </button>
   </div>
 </nav>
+
+<!-- ════ FOOTER ════ -->
+<footer id="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="footer-logo">
+        <span class="s">Static</span><span class="v">Vault</span><span class="n">931</span>
+      </div>
+      <p class="footer-tagline">Your personal cinema, everywhere.</p>
+      <p class="footer-disclaimer">StaticVault931 does not host any media. Content is streamed via third-party providers. Ads may appear and are outside our control.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h4>Browse</h4>
+        <a role="button" tabindex="0" data-page="home">Home</a>
+        <a role="button" tabindex="0" data-page="movies">Movies</a>
+        <a role="button" tabindex="0" data-page="tv">TV Shows</a>
+        <a role="button" tabindex="0" data-page="anime">Anime</a>
+        <a role="button" tabindex="0" data-page="search">Search</a>
+      </div>
+      <div class="footer-col">
+        <h4>My Space</h4>
+        <a role="button" tabindex="0" data-page="library">Library</a>
+        <a role="button" tabindex="0" data-page="prefs">Customize Feed</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://www.youtube.com/@StaticQuasar931" target="_blank" rel="noopener">
+          <span class="material-icons-round">smart_display</span>YouTube
+        </a>
+        <a href="https://www.tiktok.com/@StaticQuasar931" target="_blank" rel="noopener">
+          <span class="material-icons-round">music_video</span>TikTok
+        </a>
+        <a href="mailto:StaticQuasar931Games@gmail.com">
+          <span class="material-icons-round">mail</span>Contact Us
+        </a>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <button class="footer-legal-btn" data-legal="privacy">Privacy Policy</button>
+        <button class="footer-legal-btn" data-legal="tos">Terms of Service</button>
+        <button class="footer-legal-btn" data-legal="dmca">DMCA Notice</button>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2025 StaticVault931 · Made by <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">StaticQuasar931</a> · Design by <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Luuk</a></span>
+  </div>
+</footer>
+
+<!-- Legal info modal -->
+<div id="legal-overlay">
+  <div id="legal-modal">
+    <button id="legal-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    <div id="legal-content"></div>
+  </div>
+</div>
 
 <!-- ════ CONFIRM DIALOG ════ -->
 <div id="confirm-overlay" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">

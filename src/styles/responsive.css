@@ -12,19 +12,31 @@
 /* ── 1024px ───────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   :root { --card-w: 230px; }
-  .modal-ep-sidebar { width: 280px; }
+  .modal-right-panel { width: 280px; }
+  .modal-left-panel { width: 240px; }
 }
 
 /* ── 860px ────────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
-  .modal-media-row { flex-direction: column; }
-  .modal-ep-sidebar {
-    width: 100% !important;
-    max-height: 320px;
+  .modal-body { flex-direction: column; }
+  .modal-left-panel {
+    width: 100%;
+    max-height: 280px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    overflow-y: hidden;
+    overflow-x: auto;
+  }
+  .modal-left-panel .modal-poster-wrap { width: 100px; flex-shrink: 0; }
+  .modal-left-panel .modal-cast-section { display: none; }
+  .modal-right-panel {
+    width: 100%;
+    max-height: 300px;
     border-left: none;
     border-top: 1px solid var(--border);
   }
-  .cast-row { display: grid; grid-template-columns: repeat(auto-fill, 72px); }
+  .cast-row { display: flex; flex-wrap: wrap; }
 }
 
 /* ── 720px ────────────────────────────────────────────────────────── */
@@ -60,11 +72,10 @@
 
   .card:hover { transform: scale(1.04) translateY(-5px); }
 
-  .modal-info { padding: .85rem 1rem; gap: .9rem; }
-  .modal-poster-wrap { width: 90px; }
-  #modal-title { font-size: clamp(1.5rem, 5vw, 2.2rem); }
-  .modal-cast-section, .modal-related-section { padding: .85rem 1rem; }
-  .ma { padding: .44rem .8rem; font-size: .76rem; }
+  .modal-meta { padding: .4rem .7rem .7rem; }
+  .modal-poster-wrap { padding: .7rem .7rem .3rem; }
+  #modal-title { font-size: clamp(1.2rem, 4vw, 1.8rem); }
+  .ma { padding: .38rem .7rem; font-size: .74rem; }
 
   .search-grid,
   .lib-grid,
@@ -93,10 +104,10 @@
   .hero-btns { gap: .4rem; }
   .btn-play, .btn-info { padding: .52rem 1rem; font-size: .82rem; }
 
-  #modal { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; }
-  #modal-overlay { overflow-y: auto; }
-  .modal-info { flex-direction: column; }
-  .modal-poster-wrap { display: none; }
+  #modal { border-radius: 0; min-height: 100vh; width: 100%; }
+  #modal-overlay { padding: 0; }
+  .modal-left-panel { display: none; }
+  .modal-right-panel { max-height: 260px; }
 }
 
 /* ── HOVER MEDIA ─────────────────────────────────────────────────── */

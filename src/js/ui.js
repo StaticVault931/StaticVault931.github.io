@@ -121,6 +121,24 @@ export function renderRow(rowId, items, typeOverride, numbered = false) {
     const t = typeOverride || (m.media_type === 'tv' ? 'tv' : m._anime ? 'anime' : 'movie');
     return makeCard(m, t, { numbered: numbered ? i + 1 : undefined });
   }).join('');
+
+  syncRowArrows(el);
+  if (!el.dataset.arrowInit) {
+    el.dataset.arrowInit = '1';
+    el.addEventListener('scroll', () => syncRowArrows(el), { passive: true });
+  }
+}
+
+function syncRowArrows(row) {
+  const id = row.id;
+  const lBtn = document.querySelector(`[data-scroll-row="${id}"][data-scroll-dir="-1"]`);
+  const rBtn = document.querySelector(`[data-scroll-row="${id}"][data-scroll-dir="1"]`);
+  const lArrow = lBtn?.closest('.row-arrow');
+  const rArrow = rBtn?.closest('.row-arrow');
+  const atStart = row.scrollLeft <= 4;
+  const atEnd = row.scrollLeft >= row.scrollWidth - row.clientWidth - 4;
+  if (lArrow) lArrow.classList.toggle('hidden', atStart);
+  if (rArrow) rArrow.classList.toggle('hidden', atEnd);
 }
 
 /* ── SECTION VISIBILITY ──────────────────────────────────────────── */
@@ -188,8 +206,8 @@ export function jumpHero(i) {
 export function resetModal() {
   const setHTML = (id, h) => { const el = document.getElementById(id); if (el) el.innerHTML = h; };
   const castSkeletons = Array(8).fill(`<div class="cast-card"><div class="cast-ph sk" style="background:var(--s4)"></div><div class="sk" style="height:8px;margin:.3rem auto 0;width:60%;border-radius:4px;"></div></div>`).join('');
-  setHTML('modal-poster', '<div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:8px;"></div>');
-  setHTML('modal-title', '<div class="sk" style="height:2.4rem;width:60%;border-radius:6px;"></div>');
+  setHTML('modal-poster', '<div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:6px;"></div>');
+  setHTML('modal-title', '<div class="sk" style="height:2rem;width:65%;border-radius:5px;"></div>');
   setHTML('modal-tags', '');
   setHTML('modal-actions', '');
   setHTML('modal-ratings', '');
@@ -197,7 +215,6 @@ export function resetModal() {
   setHTML('modal-cast-row', castSkeletons);
   setHTML('modal-ep-sidebar', '');
   setHTML('modal-related-section', '');
-  document.getElementById('modal-media-row')?.classList.remove('has-episodes');
 
   const pf = document.getElementById('player-frame');
   if (pf) pf.removeAttribute('src');
@@ -273,17 +290,25 @@ export function renderModalInfo(details, type) {
 
 /* ── MODAL ACTIONS ───────────────────────────────────────────────── */
 export function renderModalActions(media) {
-  const { id, type } = media;
+  const { id, type, details } = media;
   const likedNow = isLiked(id);
   const wlNow = isInWatchlist(id);
   const el = document.getElementById('modal-actions');
   if (!el) return;
+
+  const trailerKey = details?.videos?.results?.find(
+    v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+  )?.key;
+
   el.innerHTML = `
     <button class="ma primary" data-action="modal-play" aria-label="Play now">
-      <span class="material-icons-round">play_arrow</span>Play Now
+      <span class="material-icons-round">play_arrow</span>Play
     </button>
+    ${trailerKey ? `<button class="ma" data-action="modal-trailer" data-key="${trailerKey}" aria-label="Watch trailer">
+      <span class="material-icons-round">theaters</span>Trailer
+    </button>` : ''}
     <button class="ma${wlNow ? ' saved' : ''}" data-action="modal-watchlist" aria-label="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}">
-      <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Watchlist'}
+      <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
     </button>
     <button class="ma${likedNow ? ' liked' : ''}" data-action="modal-like" aria-label="${likedNow ? 'Unlike' : 'Like'}">
       <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
@@ -324,11 +349,12 @@ export function renderRelated(items, type) {
   const el = document.getElementById('modal-related-section');
   if (!el) return;
   if (!items || !items.length) {
-    el.innerHTML = '<p class="muted-note">No recommendations available.</p>';
+    el.innerHTML = '<p class="muted-note" style="padding:.5rem">No recommendations available.</p>';
     return;
   }
+  const label = type === 'tv' ? 'Similar Shows' : type === 'anime' ? 'Similar Anime' : 'More Like This';
   el.innerHTML = `
-    <div class="section-label">More Like This</div>
+    <div class="section-label" style="margin-bottom:.6rem">${label}</div>
     <div class="related-grid">${items.slice(0, 12).map(m => makeCard(m, type, {})).join('')}</div>`;
 }
 
