@@ -25,6 +25,17 @@ export function goPage(p) {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
+  // Update URL for each page
+  if (p === 'home') {
+    history.replaceState({ page: p }, '', location.pathname);
+  } else {
+    history.pushState({ page: p }, '', `${location.pathname}?page=${p}`);
+  }
+
+  // Show/hide header search pill on search page
+  const pill = document.getElementById('header-search-pill');
+  if (pill) pill.style.display = p === 'search' ? 'none' : '';
+
   state.currentPage = p;
   if (PAGE_LOADERS[p]) PAGE_LOADERS[p]();
 }

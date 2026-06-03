@@ -107,8 +107,19 @@ export async function renderSeeAll() {
       return makeCard(m, t);
     }).join('');
 
-    if (moreBtn) {
-      moreBtn.style.display = seeAll.page < seeAll.totalPages ? '' : 'none';
+    if (moreBtn) moreBtn.style.display = 'none'; // replaced by infinite scroll
+
+    // Set up infinite scroll sentinel
+    if (grid && seeAll.page < seeAll.totalPages) {
+      const sentinel = document.createElement('div');
+      sentinel.id = 'seeall-sentinel';
+      sentinel.style.height = '40px';
+      grid.after(sentinel);
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) loadMoreSeeAll();
+      }, { rootMargin: '300px' });
+      obs.observe(sentinel);
+      state._seeAllObs = obs;
     }
   } catch (e) {
     grid.innerHTML = '<p class="muted-note">Failed to load. Try again.</p>';
@@ -140,10 +151,14 @@ export async function loadMoreSeeAll() {
       });
     }
 
-    if (moreBtn) {
-      moreBtn.disabled = false;
-      moreBtn.textContent = 'Load More';
-      moreBtn.style.display = nextPage < (seeAll.totalPages || 1) ? '' : 'none';
+    // Hide Load More button (using infinite scroll now)
+    if (moreBtn) moreBtn.style.display = 'none';
+
+    // Add new sentinel if more pages exist
+    const existingSentinel = document.getElementById('seeall-sentinel');
+    if (existingSentinel && nextPage >= (seeAll.totalPages || 1)) {
+      existingSentinel.remove();
+      state._seeAllObs?.disconnect?.();
     }
   } catch {
     if (moreBtn) { moreBtn.disabled = false; moreBtn.textContent = 'Load More'; }

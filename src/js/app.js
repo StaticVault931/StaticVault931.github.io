@@ -145,7 +145,6 @@ const SHORTCUTS = [
   { key: 'S', desc: 'Go to Search', group: 'Navigation' },
   { key: 'T', desc: 'Cycle theme', group: 'Navigation' },
   { key: 'Esc', desc: 'Close modal / dialog', group: 'Modal' },
-  { key: 'P', desc: 'Play / pause current', group: 'Modal' },
   { key: 'N', desc: 'Try next provider', group: 'Modal' },
   { key: 'I', desc: 'Toggle info panel', group: 'Modal' },
   { key: '← / A', desc: 'Previous hero slide', group: 'Hero' },
@@ -174,25 +173,36 @@ const SHORTCUTS = [
   loadHero().catch(() => {});
   loadHomeRows().catch(() => {});
 
-  // URL param deep-link — supports both old ?id=X&type=Y and new ?watch=type&name=slug&id=X
+  // URL param deep-link — supports ?watch=type&name=slug&id=X, ?id=X&type=Y, ?page=X
   const sp = new URLSearchParams(location.search);
   const watchId = sp.get('id');
   const watchType = sp.get('watch') || sp.get('type');
   const watchStart = sp.get('start') ? parseInt(sp.get('start')) : null;
+  const pageParam = sp.get('page');
+  const searchParam = sp.get('search');
 
   if (watchId && watchType) {
     document.getElementById('loading-screen')?.classList.add('out');
     setTimeout(async () => {
       await openMedia(+watchId, watchType);
-      // Handle Watch Together scheduled start
       if (watchStart) handleWatchTogetherLink(watchStart);
     }, 400);
+  } else if (pageParam) {
+    setTimeout(() => goPage(pageParam), 100);
+  } else if (searchParam) {
+    setTimeout(() => {
+      goPage('search');
+      const inp = document.getElementById('search-input');
+      if (inp) { inp.value = searchParam; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+    }, 100);
   }
 
-  // Handle browser back/forward to restore modal state
+  // Handle browser back/forward
   window.addEventListener('popstate', e => {
     if (e.state?.id && e.state?.type) {
       openMedia(e.state.id, e.state.type);
+    } else if (e.state?.page) {
+      goPage(e.state.page);
     } else {
       closeModal();
     }
@@ -356,16 +366,25 @@ async function loadHomeRows() {
   // Below-fold: lazy load when scrolled near
   const animeQ = `query{Page(perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
 
+  // Use preferred genres to make home rows feed-aware
+  const prefG = state.prefGenres;
+  const movieGenreParam = prefG.length ? prefG.slice(0, 3).join('|') : null;
+  const discoverMovieOpts = (genreId, extra = {}) => ({
+    with_genres: movieGenreParam ? `${genreId}|${movieGenreParam}` : genreId,
+    sort_by: 'popularity.desc',
+    ...extra,
+  });
+
   lazyRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing').then(d => d.results || []), 'movie');
   lazyRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated').then(d => d.results || []), 'movie');
   lazyRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular').then(d => d.results || []), 'tv');
   lazyRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []), 'tv');
-  lazyRow('row-action',    'sec-action',    () => tmdb('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
-  lazyRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
-  lazyRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
-  lazyRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', { with_genres: 18, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }).then(d => d.results || []), 'movie');
-  lazyRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
-  lazyRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc' }).then(d => d.results || []), 'movie');
+  lazyRow('row-action',    'sec-action',    () => tmdb('/discover/movie', discoverMovieOpts(28)).then(d => d.results || []), 'movie');
+  lazyRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', discoverMovieOpts(35)).then(d => d.results || []), 'movie');
+  lazyRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', discoverMovieOpts(27)).then(d => d.results || []), 'movie');
+  lazyRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', discoverMovieOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 300 })).then(d => d.results || []), 'movie');
+  lazyRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', discoverMovieOpts(878)).then(d => d.results || []), 'movie');
+  lazyRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', discoverMovieOpts(16)).then(d => d.results || []), 'movie');
   lazyRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime');
 
   // Because You Liked rows (load after above-fold settles)
@@ -374,8 +393,14 @@ async function loadHomeRows() {
 
 function renderContinueRow() {
   const sec = document.getElementById('sec-continue');
+  const trendSec = document.getElementById('sec-trending');
   const row = document.getElementById('row-continue');
   if (!row) return;
+
+  // Move continue watching after trending if it exists
+  if (sec && trendSec && trendSec.nextElementSibling !== sec) {
+    trendSec.after(sec);
+  }
 
   const items = Object.values(state.continueWatching)
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -481,12 +506,13 @@ function loadGenresUI() {
 function loadPrefsPage() {
   renderPrefLists();
   buildRatingDescriptions();
-  buildGenreChips('pref-genres', GENRES, (id, chip) => {
+  buildGenreChips('pref-genres', GENRES, (id, _name, chipEl) => {
     const i = state.prefGenres.indexOf(id);
     if (i >= 0) state.prefGenres.splice(i, 1); else state.prefGenres.push(id);
     persist('prefGenres');
-    chip.classList.toggle('on', state.prefGenres.includes(id));
+    chipEl.classList.toggle('on', state.prefGenres.includes(id));
   }, state.prefGenres);
+  buildVidsrcDomainList();
   buildAgeRatingUI();
   initPrefAutocomplete();
 }
@@ -669,6 +695,7 @@ export async function openMedia(id, type, hint = {}) {
     } else {
       loadRelated(id, type, details);
     }
+    setTimeout(() => document.dispatchEvent(new CustomEvent('sv:modal-ready')), 200);
 
     // Track
     addRecentlyViewed({ id, type, title, poster_path: details.poster_path || null, coverImage_large: details.coverImage_large || null, backdrop_path: details.backdrop_path || null });
@@ -827,10 +854,6 @@ export function closeModal() {
   document.getElementById('modal-right-panel')?.classList.remove('panel-collapsed');
   document.getElementById('left-panel-toggle')?.classList.remove('panel-toggle-active');
   document.getElementById('right-panel-toggle')?.classList.remove('panel-toggle-active');
-  const li = document.getElementById('left-panel-toggle')?.querySelector('.material-icons-round');
-  const ri = document.getElementById('right-panel-toggle')?.querySelector('.material-icons-round');
-  if (li) li.textContent = 'dock_to_right';
-  if (ri) ri.textContent = 'dock_to_left';
 }
 
 /* ── PLAY NOW ────────────────────────────────────────────────────── */
@@ -927,6 +950,11 @@ function initEventDelegation() {
   // Shortcuts button in footer
   document.getElementById('footer-shortcuts-btn')?.addEventListener('click', showShortcuts);
 
+  // Open media from search autocomplete
+  document.addEventListener('sv:open-media', e => {
+    if (e.detail?.id && e.detail?.type) openMedia(e.detail.id, e.detail.type);
+  });
+
   // Logo click → home
   const logo = document.querySelector('.logo');
   if (logo) {
@@ -1008,7 +1036,7 @@ function initEventDelegation() {
       toast("Got it — we'll show less like this", 'thumb_down');
       closeModal();
     }
-    else if (action === 'modal-share') shareMedia();
+    else if (action === 'modal-share') shareMedia(e.shiftKey);
     else if (action === 'modal-watch-together') generateWatchTogetherLink();
   });
 
@@ -1020,6 +1048,12 @@ function initEventDelegation() {
     if (lcloseBtn) { closeLegal(); return; }
     const loverlay = document.getElementById('legal-overlay');
     if (loverlay && e.target === loverlay) closeLegal();
+  });
+
+  // Share menu
+  document.getElementById('share-close')?.addEventListener('click', closeShareMenu);
+  document.getElementById('share-overlay')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('share-overlay')) closeShareMenu();
   });
 
   // Library tabs
@@ -1112,6 +1146,24 @@ function initEventDelegation() {
     }
   });
 
+  // Show "More Like This" jump button ONLY when related section is off-screen
+  const relObs = new IntersectionObserver(entries => {
+    const btn = document.getElementById('ep-jump-related');
+    if (!btn) return;
+    btn.style.display = entries[0].isIntersecting ? 'none' : '';
+  }, { threshold: 0.1 });
+
+  // Re-observe whenever the modal opens
+  document.getElementById('modal-overlay')?.addEventListener('click', () => {});
+  const _observeRelated = () => {
+    const rel = document.getElementById('modal-related-section');
+    if (rel) relObs.observe(rel);
+  };
+  document.addEventListener('sv:modal-ready', _observeRelated);
+  // Also observe on mutation when related section gets content
+  new MutationObserver(() => _observeRelated())
+    .observe(document.getElementById('modal-ep-sidebar') || document.body, { childList: true });
+
   // Row scroll arrows
   document.addEventListener('click', e => {
     const scrollBtn = e.target.closest('[data-scroll-row]');
@@ -1170,6 +1222,9 @@ function initEventDelegation() {
   document.getElementById('pref-randomize-btn')?.addEventListener('click', () => {
     refreshFeed(true);
   });
+
+  // VidSrc test all
+  document.getElementById('vidsrc-test-all-btn')?.addEventListener('click', testAllVidsrcDomains);
 
   // Data management — use in-app confirm dialog
   document.getElementById('btn-clear-watchlist')?.addEventListener('click', async () => {
@@ -1371,16 +1426,47 @@ function resetPageSEO() {
 }
 
 /* ── SHARE ───────────────────────────────────────────────────────── */
-function shareMedia() {
+function shareMedia(forceClipboard = false) {
   if (!state.currentMedia) return;
   const { id, type, title, details } = state.currentMedia;
   const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
   const url = buildMediaUrl(id, type, title, year);
-  if (navigator.share) {
-    navigator.share({ title: title || 'StaticVault931', url }).catch(() => {});
-  } else {
+
+  if (forceClipboard) {
     navigator.clipboard?.writeText(url).then(() => toast('Link copied!', 'link')).catch(() => toast('Copy failed', 'error'));
+    return;
   }
+
+  // Show share menu
+  const overlay = document.getElementById('share-overlay');
+  const titleEl = document.getElementById('share-title-preview');
+  if (titleEl) titleEl.textContent = title || 'Content';
+
+  document.getElementById('share-copy')?.onclick = () => {
+    navigator.clipboard?.writeText(url).then(() => { toast('Link copied!', 'link'); closeShareMenu(); }).catch(() => {});
+  };
+  document.getElementById('share-twitter')?.onclick = () => {
+    window._nativeOpen?.(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Watching ${title} on StaticVault931`)}&url=${encodeURIComponent(url)}`, '_blank') || window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Watching ${title} on StaticVault931`)}&url=${encodeURIComponent(url)}`, '_blank');
+    closeShareMenu();
+  };
+  document.getElementById('share-info-page')?.onclick = () => {
+    const infoUrl = url + '&mode=info';
+    navigator.clipboard?.writeText(infoUrl).then(() => toast('Info page link copied!', 'info')).catch(() => {});
+    closeShareMenu();
+  };
+  if (navigator.share) {
+    const nativeBtn = document.getElementById('share-native');
+    if (nativeBtn) {
+      nativeBtn.style.display = '';
+      nativeBtn.onclick = () => { navigator.share({ title: title || 'StaticVault931', url }).catch(() => {}); closeShareMenu(); };
+    }
+  }
+
+  if (overlay) overlay.classList.add('open');
+}
+
+function closeShareMenu() {
+  document.getElementById('share-overlay')?.classList.remove('open');
 }
 
 /* ── WATCH TOGETHER ──────────────────────────────────────────────── */
@@ -1388,19 +1474,22 @@ function generateWatchTogetherLink() {
   if (!state.currentMedia) return;
   const { id, type, title, details } = state.currentMedia;
   const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
-  // Schedule start 10 seconds from now
-  const startTs = Date.now() + 10000;
+  const delayMs = 15000; // 15 seconds
+  const startTs = Date.now() + delayMs;
   const room = Math.random().toString(36).slice(2, 8).toUpperCase();
   const slug = slugify(`${title || ''} ${year || ''}`);
   const url = `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&room=${room}&start=${startTs}`;
 
-  if (navigator.share) {
-    navigator.share({ title: `Watch ${title || 'this'} together!`, url }).catch(() => {});
-  } else {
-    navigator.clipboard?.writeText(url).then(() => {
-      toast(`Link copied! Watch starts in 10 seconds ⏱`, 'group');
-    }).catch(() => toast('Could not copy link', 'error'));
-  }
+  // Copy link
+  navigator.clipboard?.writeText(url).then(() => {
+    toast(`Link copied! Share it. Starting in 15s ⏱`, 'group');
+  }).catch(() => toast('Could not copy link', 'error'));
+
+  // Stop current player and show countdown for generator too
+  const iframe = document.getElementById('player-frame');
+  if (iframe) iframe.removeAttribute('src');
+  cancelProviderTimer();
+  handleWatchTogetherLink(startTs);
 }
 
 function handleWatchTogetherLink(startTs) {
@@ -1434,20 +1523,27 @@ function handleWatchTogetherLink(startTs) {
         <div class="wt-title">Watch Together</div>
         <div class="wt-count" id="wt-count">${remaining}</div>
         <div class="wt-sub">Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…</div>
+        <button class="wt-skip-btn" id="wt-skip">Play Now</button>
       </div>`;
     }
     const tick = setInterval(() => {
       remaining--;
       const countEl = document.getElementById('wt-count');
+      if (!countEl) { clearInterval(tick); return; } // user navigated away
       const subEl = countEl?.nextElementSibling;
       if (countEl) countEl.textContent = remaining;
       if (subEl) subEl.textContent = `Starting in ${remaining} second${remaining !== 1 ? 's' : ''}…`;
       if (remaining <= 0) {
         clearInterval(tick);
         playFn();
-        toast('Watch Together: GO! 🎬', 'group');
+        toast('Watch Together: GO!', 'group');
       }
     }, 1000);
+    // Skip button
+    document.getElementById('wt-skip')?.addEventListener('click', () => {
+      clearInterval(tick);
+      playFn();
+    });
   }
 }
 
@@ -1585,6 +1681,83 @@ function populateTestPanel() {
   }
 }
 
+/* ── VIDSRC DOMAIN TESTER ────────────────────────────────────────── */
+const VIDSRC_DOMAINS = [
+  { id: 'vidsrc-to',      label: 'vidsrc.to',         url: 'https://vidsrc.to' },
+  { id: 'vidsrc-me-ru',   label: 'vidsrcme.ru',        url: 'https://vidsrcme.ru' },
+  { id: 'vidsrc-me-su',   label: 'vidsrcme.su',        url: 'https://vidsrcme.su' },
+  { id: 'vidsrc-dash-ru', label: 'vidsrc-me.ru',       url: 'https://vidsrc-me.ru' },
+  { id: 'vidsrc-dash-su', label: 'vidsrc-me.su',       url: 'https://vidsrc-me.su' },
+  { id: 'vidsrc-emb-ru',  label: 'vidsrc-embed.ru',    url: 'https://vidsrc-embed.ru' },
+  { id: 'vidsrc-emb-su',  label: 'vidsrc-embed.su',    url: 'https://vidsrc-embed.su' },
+  { id: 'vsrc-su',        label: 'vsrc.su',            url: 'https://vsrc.su' },
+];
+
+function buildVidsrcDomainList() {
+  const list = document.getElementById('vidsrc-domain-list');
+  if (!list) return;
+  const working = new Set(JSON.parse(localStorage.getItem('sv_vidsrc_working') || '[]'));
+  list.innerHTML = VIDSRC_DOMAINS.map(d => `
+    <div class="vidsrc-domain-item" data-domain-id="${d.id}">
+      <span class="vd-status" id="vd-status-${d.id}">⬜</span>
+      <span class="vd-label">${d.label}</span>
+      <span class="vd-badge${working.has(d.id) ? ' working' : ''}" id="vd-badge-${d.id}">
+        ${working.has(d.id) ? '✓ Works' : 'Unknown'}
+      </span>
+      <button class="vd-test-btn" data-test-domain="${d.id}">Test</button>
+    </div>`).join('');
+
+  list.addEventListener('click', e => {
+    const btn = e.target.closest('[data-test-domain]');
+    if (btn) testVidsrcDomain(btn.dataset.testDomain);
+  });
+}
+
+async function testVidsrcDomain(domainId) {
+  const domain = VIDSRC_DOMAINS.find(d => d.id === domainId);
+  if (!domain) return;
+  const statusEl = document.getElementById(`vd-status-${domainId}`);
+  const badgeEl = document.getElementById(`vd-badge-${domainId}`);
+  if (statusEl) statusEl.textContent = '⏳';
+  if (badgeEl) badgeEl.textContent = 'Testing…';
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    await fetch(`${domain.url}/embed/movie/550`, {
+      method: 'HEAD',
+      mode: 'no-cors',
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (statusEl) statusEl.textContent = '✅';
+    if (badgeEl) { badgeEl.textContent = '✓ Works'; badgeEl.classList.add('working'); }
+    const working = new Set(JSON.parse(localStorage.getItem('sv_vidsrc_working') || '[]'));
+    working.add(domainId);
+    localStorage.setItem('sv_vidsrc_working', JSON.stringify([...working]));
+    toast(`${domain.label} is working!`, 'check_circle');
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (statusEl) statusEl.textContent = '⏱';
+      if (badgeEl) { badgeEl.textContent = 'Timeout'; badgeEl.classList.remove('working'); }
+    } else {
+      // no-cors requests don't throw for blocked URLs — treat as reachable
+      if (statusEl) statusEl.textContent = '✅';
+      if (badgeEl) { badgeEl.textContent = '✓ Reachable'; badgeEl.classList.add('working'); }
+      const working = new Set(JSON.parse(localStorage.getItem('sv_vidsrc_working') || '[]'));
+      working.add(domainId);
+      localStorage.setItem('sv_vidsrc_working', JSON.stringify([...working]));
+    }
+  }
+}
+
+async function testAllVidsrcDomains() {
+  for (const d of VIDSRC_DOMAINS) {
+    await testVidsrcDomain(d.id);
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
 /* ── RATING DESCRIPTIONS ─────────────────────────────────────────── */
 function buildRatingDescriptions() {
   const el = document.getElementById('pref-rating-descs');
@@ -1616,41 +1789,92 @@ function checkProviderNotification() {
   }
 }
 
-/* ── HOVER TRAILER PREVIEW ───────────────────────────────────────── */
+/* ── NETFLIX-STYLE HOVER CARD ────────────────────────────────────── */
 const _hoverTrailerCache = new Map();
 let _hoverTimer = null;
 let _hoverActive = false;
 let _hoverCurrentCard = null;
+let _hoverCurrentId = null;
 
 function initHoverTrailer() {
-  // Mouse enter on cards
   document.addEventListener('mouseover', e => {
     if (document.getElementById('modal-overlay')?.classList.contains('open')) return;
+    if (window.matchMedia('(hover: none)').matches) return; // skip touch devices
 
     const card = e.target.closest('.card[data-id][data-type]');
-    if (!card || card.dataset.type === 'anime') {
-      if (!e.target.closest('#hover-preview') && !e.target.closest('.card')) {
+    const ncCard = e.target.closest('#netflix-card');
+
+    // Entered the netflix card itself — keep it open
+    if (ncCard) return;
+
+    // Left all cards
+    if (!card) {
+      // Only clear if not entering netflix card
+      if (!e.relatedTarget?.closest?.('#netflix-card')) {
         clearHoverTrailer();
       }
       return;
     }
 
-    if (card === _hoverCurrentCard) return; // same card, do nothing
-    clearHoverTrailer(); // reset timer if hovering new card
+    // Same card — don't restart timer
+    if (card === _hoverCurrentCard) return;
+
+    clearHoverTrailer();
     _hoverCurrentCard = card;
     _hoverTimer = setTimeout(async () => {
       if (_hoverCurrentCard === card) {
         _hoverActive = true;
-        await triggerHoverTrailer(card);
+        await showNetflixCard(card);
       }
-    }, 1500);
+    }, 900); // 900ms delay
   });
 
   document.addEventListener('mouseleave', e => {
     if (e.target === document.documentElement) clearHoverTrailer();
   });
 
-  document.getElementById('hover-preview')?.addEventListener('mouseleave', clearHoverTrailer);
+  // Leaving the netflix card itself
+  document.getElementById('netflix-card')?.addEventListener('mouseleave', e => {
+    if (!e.relatedTarget?.closest?.('.card')) clearHoverTrailer();
+  });
+
+  // Netflix card action buttons
+  document.getElementById('nc-play')?.addEventListener('click', () => {
+    if (_hoverCurrentId && _hoverCurrentCard) {
+      clearHoverTrailer();
+      openMedia(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type, {
+        title: _hoverCurrentCard.dataset.title,
+        poster_path: _hoverCurrentCard.dataset.poster,
+      });
+    }
+  });
+  document.getElementById('nc-more')?.addEventListener('click', () => {
+    if (_hoverCurrentCard) {
+      clearHoverTrailer();
+      openMedia(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type, {
+        title: _hoverCurrentCard.dataset.title,
+        poster_path: _hoverCurrentCard.dataset.poster,
+      });
+    }
+  });
+  document.getElementById('nc-wl')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!_hoverCurrentCard) return;
+    const id = +_hoverCurrentCard.dataset.id;
+    const type = _hoverCurrentCard.dataset.type;
+    handleWatchlist(id, type, null, buildItemMeta(id, type));
+    const icon = document.querySelector('#nc-wl .material-icons-round');
+    if (icon) icon.textContent = isInWatchlist(id) ? 'check' : 'add';
+  });
+  document.getElementById('nc-like')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!_hoverCurrentCard) return;
+    const id = +_hoverCurrentCard.dataset.id;
+    const type = _hoverCurrentCard.dataset.type;
+    handleLike(id, type, null, buildItemMeta(id, type));
+    const icon = document.querySelector('#nc-like .material-icons-round');
+    if (icon) icon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+  });
 }
 
 function clearHoverTrailer() {
@@ -1658,57 +1882,149 @@ function clearHoverTrailer() {
   _hoverTimer = null;
   _hoverActive = false;
   _hoverCurrentCard = null;
-  const preview = document.getElementById('hover-preview');
-  const frame = document.getElementById('hover-frame');
-  if (preview) preview.classList.remove('visible');
-  // Delay src removal to avoid flash when preview is reused quickly
-  setTimeout(() => { if (!_hoverActive && frame) frame.removeAttribute('src'); }, 300);
+  _hoverCurrentId = null;
+  const nc = document.getElementById('netflix-card');
+  if (nc) nc.classList.remove('visible');
+  setTimeout(() => {
+    if (!_hoverActive) {
+      const frame = document.getElementById('nc-frame');
+      if (frame) frame.removeAttribute('src');
+    }
+  }, 300);
 }
 
-async function triggerHoverTrailer(card) {
-  const id = card.dataset.id;
-  const type = card.dataset.type;
+async function showNetflixCard(card) {
   if (!_hoverActive) return;
+  const id = +card.dataset.id;
+  const type = card.dataset.type;
+  _hoverCurrentId = id;
 
-  let key = _hoverTrailerCache.get(id);
-  if (!key) {
-    try {
-      const data = await tmdb(`/${type === 'tv' ? 'tv' : 'movie'}/${id}/videos`);
-      const vids = data.results || [];
-      const vid = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
-                  vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
-                  vids.find(v => v.site === 'YouTube');
-      key = vid?.key || '__none__';
-    } catch {
-      key = '__none__';
+  const nc = document.getElementById('netflix-card');
+  if (!nc) return;
+
+  // Fill info from card data immediately
+  const title = card.dataset.title || '';
+  const year = card.dataset.year || '';
+  const rating = card.dataset.rating || '';
+  const poster = card.dataset.poster || '';
+  const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV Show' : 'Film';
+
+  const titleEl = document.getElementById('nc-title');
+  const typePill = document.getElementById('nc-type-pill');
+  const metaEl = document.getElementById('nc-meta');
+  const genresEl = document.getElementById('nc-genres');
+  const backdrop = document.getElementById('nc-backdrop');
+  const frame = document.getElementById('nc-frame');
+  const likeIcon = document.querySelector('#nc-like .material-icons-round');
+  const wlIcon = document.querySelector('#nc-wl .material-icons-round');
+
+  if (titleEl) titleEl.textContent = title;
+  if (typePill) typePill.textContent = typeLabel;
+  if (metaEl) {
+    const rVal = parseFloat(rating);
+    const rColor = rVal >= 9 ? '#22c55e' : rVal >= 7 ? '#f5c518' : rVal >= 5 ? '#f97316' : rVal > 0 ? '#f87171' : '';
+    metaEl.innerHTML = [
+      year ? `<span class="nc-year">${year}</span>` : '',
+      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : '',
+    ].filter(Boolean).join('');
+  }
+  if (backdrop) {
+    const backdropPath = card.dataset.backdrop;
+    if (backdropPath) {
+      backdrop.src = `https://image.tmdb.org/t/p/w500${backdropPath}`;
+      backdrop.style.display = '';
+    } else if (poster) {
+      backdrop.src = poster;
+      backdrop.style.display = '';
+    } else {
+      backdrop.style.display = 'none';
     }
-    _hoverTrailerCache.set(id, key);
+  }
+  if (likeIcon) likeIcon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+  if (wlIcon) wlIcon.textContent = isInWatchlist(id) ? 'check' : 'add';
+  if (genresEl) genresEl.innerHTML = '';
+
+  // Position the card over the original card
+  positionNetflixCard(card, nc);
+  nc.classList.add('visible');
+
+  // Fetch trailer and genres in parallel
+  const [trailerKey, genres] = await Promise.all([
+    fetchTrailerKey(id, type),
+    fetchGenreNames(id, type),
+  ]);
+
+  if (!_hoverActive || _hoverCurrentCard !== card) return;
+
+  // Update genres
+  if (genresEl && genres.length) {
+    genresEl.innerHTML = genres.slice(0, 3).map(g =>
+      `<span class="nc-genre-chip">${esc(g)}</span>`
+    ).join('<span class="nc-dot">·</span>');
   }
 
-  if (!_hoverActive || !key || key === '__none__') return;
+  // Load trailer
+  if (frame && trailerKey && trailerKey !== '__none__') {
+    if (backdrop) backdrop.style.opacity = '0';
+    frame.src = `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${trailerKey}&modestbranding=1`;
+  }
+}
 
-  const preview = document.getElementById('hover-preview');
-  const frame = document.getElementById('hover-frame');
-  if (!preview || !frame) return;
-
-  // Position relative to card
+function positionNetflixCard(card, nc) {
   const rect = card.getBoundingClientRect();
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
-  const pW = 320, pH = 196;
+  const ncW = 360;
+  const ncH = 360; // approximate full card height
 
-  let left = rect.right + 12;
-  let top = rect.top + (rect.height / 2) - (pH / 2);
+  // Center horizontally on card (viewport coords for position:fixed)
+  let left = rect.left + (rect.width / 2) - (ncW / 2);
+  // Expand up from card center
+  let top = rect.top - 20;
 
-  if (left + pW > vpW - 12) left = rect.left - pW - 12;
+  // Viewport edge clamp
+  if (left + ncW > vpW - 12) left = vpW - ncW - 12;
   if (left < 8) left = 8;
-  if (top + pH > vpH - 8) top = vpH - pH - 8;
-  if (top < 8) top = 8;
+  // If not enough room above, show below
+  if (top < 70) top = rect.bottom + 8;
+  // Don't go off bottom
+  if (top + ncH > vpH - 8) top = Math.max(70, vpH - ncH - 8);
 
-  preview.style.left = `${left}px`;
-  preview.style.top = `${top}px`;
-  frame.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${key}&modestbranding=1`;
-  preview.classList.add('visible');
+  nc.style.left = `${left}px`;
+  nc.style.top = `${top}px`;
+}
+
+async function fetchTrailerKey(id, type) {
+  let key = _hoverTrailerCache.get(id);
+  if (key) return key;
+  try {
+    const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
+    const data = await tmdb(`/${endpoint}/videos`);
+    const vids = data.results || [];
+    const vid = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
+                vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
+                vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
+                vids.find(v => v.site === 'YouTube');
+    key = vid?.key || '__none__';
+  } catch {
+    key = '__none__';
+  }
+  _hoverTrailerCache.set(id, key);
+  return key;
+}
+
+const _genreCache = new Map();
+async function fetchGenreNames(id, type) {
+  if (_genreCache.has(id)) return _genreCache.get(id);
+  try {
+    const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
+    const data = await tmdb(`/${endpoint}`);
+    const names = (data.genres || []).map(g => g.name).filter(Boolean);
+    _genreCache.set(id, names);
+    return names;
+  } catch {
+    return [];
+  }
 }
 
 /* ── COLLAPSIBLE MODAL SIDEBARS ──────────────────────────────────── */
@@ -1718,8 +2034,6 @@ function initModalPanelToggles() {
     const btn = document.getElementById('left-panel-toggle');
     if (!panel) return;
     const collapsed = panel.classList.toggle('panel-collapsed');
-    const icon = btn?.querySelector('.material-icons-round');
-    if (icon) icon.textContent = collapsed ? 'dock_to_right' : 'view_sidebar';
     btn?.classList.toggle('panel-toggle-active', collapsed);
     if (btn) btn.title = collapsed ? 'Show info panel' : 'Hide info panel';
   });
@@ -1729,8 +2043,6 @@ function initModalPanelToggles() {
     const btn = document.getElementById('right-panel-toggle');
     if (!panel) return;
     const collapsed = panel.classList.toggle('panel-collapsed');
-    const icon = btn?.querySelector('.material-icons-round');
-    if (icon) icon.textContent = collapsed ? 'dock_to_left' : 'view_sidebar';
     btn?.classList.toggle('panel-toggle-active', collapsed);
     if (btn) btn.title = collapsed ? 'Show episodes panel' : 'Hide episodes panel';
   });
@@ -1758,6 +2070,10 @@ function initKeyboard() {
     // WASD / Arrow keys — hero navigation and row scrolling
     const modalOpen = document.getElementById('modal-overlay')?.classList.contains('open');
     if (modalOpen) return;
+
+    // Number keys 1-6 navigate pages
+    const pageKeys = { '1': 'home', '2': 'movies', '3': 'tv', '4': 'anime', '5': 'library', '6': 'prefs' };
+    if (pageKeys[e.key]) { goPage(pageKeys[e.key]); return; }
 
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       e.preventDefault();

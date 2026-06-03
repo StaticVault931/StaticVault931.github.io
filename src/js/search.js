@@ -21,6 +21,8 @@ function normalizeNoSpaces(q) {
   return q.replace(/\s+/g, '').toLowerCase();
 }
 
+let _acDebounce = null;
+
 /* ── INIT ────────────────────────────────────────────────────────── */
 export function initSearch() {
   const inp = document.getElementById('search-input');
@@ -31,16 +33,38 @@ export function initSearch() {
     if (clear) clear.style.display = this.value ? 'flex' : 'none';
 
     clearTimeout(_debounce);
+    clearTimeout(_acDebounce);
     const q = this.value.trim();
 
     if (!q) {
+      closeInlineDrop();
       loadSearchDefault();
       return;
     }
 
+    // Show autocomplete suggestions after short delay
+    _acDebounce = setTimeout(() => showInlineSuggestions(q), 200);
+
     document.getElementById('search-results-area').innerHTML =
       `<div class="search-spinner"><div class="spin"></div></div>`;
-    _debounce = setTimeout(() => doSearch(q), 350);
+    _debounce = setTimeout(() => { closeInlineDrop(); doSearch(q); }, 400);
+  });
+
+  inp.addEventListener('focus', () => {
+    if (!inp.value.trim()) showInlineRecents();
+  });
+
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeInlineDrop(); inp.blur(); }
+    if (e.key === 'Enter' && inp.value.trim()) {
+      closeInlineDrop();
+      clearTimeout(_debounce);
+      doSearch(inp.value.trim());
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#search-page-input-wrap')) closeInlineDrop();
   });
 
   const clear = document.getElementById('search-clear');
@@ -48,6 +72,7 @@ export function initSearch() {
     clear.addEventListener('click', () => {
       inp.value = '';
       clear.style.display = 'none';
+      closeInlineDrop();
       loadSearchDefault();
       inp.focus();
     });
@@ -72,9 +97,89 @@ export function initSearch() {
         loadMoreSearchResults();
       }
     }, { rootMargin: '300px' });
-    // We'll observe a sentinel added dynamically in search results
     window._searchScrollObs = obs;
   }
+}
+
+/* ── INLINE DROPDOWN ─────────────────────────────────────────────── */
+function showInlineRecents() {
+  const drop = document.getElementById('search-inline-drop');
+  if (!drop) return;
+  const recents = state.recentSearches || [];
+  if (!recents.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = `
+    <div class="sid-section-label">Recent Searches</div>
+    ${recents.slice(0, 6).map(q => `
+      <div class="sid-item" data-sid-q="${esc(q)}">
+        <span class="material-icons-round sid-icon">history</span>
+        <span class="sid-text">${esc(q)}</span>
+        <span class="material-icons-round sid-arrow">north_west</span>
+      </div>`).join('')}
+    <div class="sid-clear-btn" id="sid-clear">Clear Recent</div>`;
+  drop.style.display = '';
+  wireInlineDrop(drop);
+}
+
+async function showInlineSuggestions(q) {
+  const drop = document.getElementById('search-inline-drop');
+  if (!drop) return;
+
+  // Show recents first, then autocomplete
+  const recents = (state.recentSearches || []).filter(r => r.toLowerCase().includes(q.toLowerCase())).slice(0, 3);
+  let html = recents.map(r => `
+    <div class="sid-item" data-sid-q="${esc(r)}">
+      <span class="material-icons-round sid-icon">history</span>
+      <span class="sid-text">${esc(r)}</span>
+    </div>`).join('');
+
+  drop.innerHTML = html || `<div class="sid-section-label">Searching…</div>`;
+  drop.style.display = '';
+
+  try {
+    const results = await searchTmdbAutocomplete(q);
+    if (!results.length && !html) { drop.style.display = 'none'; return; }
+    const acHtml = results.slice(0, 5).map(r => `
+      <div class="sid-item sid-result" data-sid-id="${r.id}" data-sid-type="${r._type}">
+        ${r.poster_path ? `<img class="sid-poster" src="https://image.tmdb.org/t/p/w92${r.poster_path}" alt="">` : `<span class="material-icons-round sid-icon">movie</span>`}
+        <div class="sid-info">
+          <span class="sid-text">${esc(r.title || r.name || '')}</span>
+          <span class="sid-sub">${r._type === 'tv' ? 'TV Show' : 'Movie'} · ${String(r.release_date || r.first_air_date || '').slice(0, 4)}</span>
+        </div>
+      </div>`).join('');
+    drop.innerHTML = (recents.length ? `<div class="sid-section-label">Recent</div>${html}` : '') +
+      (results.length ? `<div class="sid-section-label">Suggestions</div>${acHtml}` : '');
+    drop.style.display = '';
+    wireInlineDrop(drop);
+  } catch {}
+}
+
+function wireInlineDrop(drop) {
+  drop.querySelectorAll('[data-sid-q]').forEach(el => {
+    el.addEventListener('click', () => {
+      const q = el.dataset.sidQ;
+      const inp = document.getElementById('search-input');
+      if (inp) { inp.value = q; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+      closeInlineDrop();
+    });
+  });
+  drop.querySelectorAll('[data-sid-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = +el.dataset.sidId;
+      const type = el.dataset.sidType;
+      closeInlineDrop();
+      // Use custom event to avoid circular import — app.js listens for this
+      document.dispatchEvent(new CustomEvent('sv:open-media', { detail: { id, type } }));
+    });
+  });
+  document.getElementById('sid-clear')?.addEventListener('click', () => {
+    clearRecentSearches();
+    closeInlineDrop();
+  });
+}
+
+function closeInlineDrop() {
+  const drop = document.getElementById('search-inline-drop');
+  if (drop) drop.style.display = 'none';
 }
 
 /* ── DEFAULT STATE (no query) ────────────────────────────────────── */

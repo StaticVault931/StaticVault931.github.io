@@ -78,7 +78,7 @@
     <div class="nav-tab" data-page="movies" role="button" tabindex="0">Movies</div>
     <div class="nav-tab" data-page="tv" role="button" tabindex="0">TV Shows</div>
     <div class="nav-tab" data-page="anime" role="button" tabindex="0">Anime</div>
-    <div class="nav-tab" data-page="search" role="button" tabindex="0">Search</div>
+    <div class="nav-sep" aria-hidden="true"></div>
     <div class="nav-tab" data-page="library" role="button" tabindex="0">Library</div>
     <div class="nav-tab" data-page="prefs" role="button" tabindex="0">Customize Feed</div>
   </nav>
@@ -738,23 +738,23 @@
      PAGE: SEARCH
 ════════════════════════════════════════════════════════════════ -->
 <main class="page" id="page-search">
-  <div class="search-hero">
-    <h1>Find Anything</h1>
-    <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">Movies, TV shows, and anime — all in one place</p>
-    <div class="search-box-wrap">
-      <span class="material-icons-round">search</span>
-      <input id="search-input" placeholder="Title, genre, actor…" autocomplete="off" spellcheck="false" aria-label="Search for content"/>
-      <button id="search-clear" aria-label="Clear search">
+  <div class="search-page-top">
+    <div class="search-page-input-wrap" id="search-page-input-wrap">
+      <span class="search-page-icon material-icons-round">search</span>
+      <input id="search-input" placeholder="Search movies, shows, anime…" autocomplete="off" spellcheck="false" aria-label="Search for content" aria-autocomplete="list" aria-controls="search-inline-drop"/>
+      <button id="search-clear" aria-label="Clear search" style="display:none">
         <span class="material-icons-round">close</span>
       </button>
+      <!-- Inline dropdown for recent searches + autocomplete -->
+      <div id="search-inline-drop" class="search-inline-drop" role="listbox" aria-label="Suggestions"></div>
     </div>
     <div class="search-filter-row" role="group" aria-label="Search filters">
-      <div class="sf-chip on" data-f="all">All</div>
-      <div class="sf-chip" data-f="movie">Movies</div>
-      <div class="sf-chip" data-f="tv">TV Shows</div>
-      <div class="sf-chip" data-f="anime">Anime</div>
-      <div class="sf-chip" data-f="top">Top Rated</div>
-      <div class="sf-chip" data-f="recent">Recent</div>
+      <button class="sf-chip on" data-f="all">All</button>
+      <button class="sf-chip" data-f="movie">Movies</button>
+      <button class="sf-chip" data-f="tv">TV Shows</button>
+      <button class="sf-chip" data-f="anime">Anime</button>
+      <button class="sf-chip" data-f="top">Top Rated</button>
+      <button class="sf-chip" data-f="recent">Recent</button>
     </div>
   </div>
   <div id="search-results-area"></div>
@@ -913,6 +913,15 @@
     </button>
   </div>
 
+  <div class="pref-section pref-section-full" style="margin-top:2rem" id="vidsrc-test-section">
+    <h3><span class="material-icons-round">dns</span>VidSrc Server Test</h3>
+    <p class="pref-hint">Test which VidSrc servers work for you. Selected servers will be tried first when using VidSrc.</p>
+    <div id="vidsrc-domain-list" class="vidsrc-domain-list"></div>
+    <button class="pref-apply-btn" id="vidsrc-test-all-btn" style="margin-top:.75rem;font-size:.8rem;padding:.45rem 1rem">
+      <span class="material-icons-round">play_arrow</span>Test All Servers
+    </button>
+  </div>
+
   <div style="height:3rem"></div>
 </main>
 
@@ -937,14 +946,14 @@
         <span class="material-icons-round">close</span>
       </button>
       <div class="modal-top-spacer"></div>
+      <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
       <button class="modal-panel-toggle" id="left-panel-toggle" title="Toggle info panel" aria-label="Toggle info panel">
-        <span class="material-icons-round">dock_to_right</span>
+        <span class="material-icons-round">view_sidebar</span>
       </button>
       <button class="modal-panel-toggle" id="right-panel-toggle" title="Toggle episodes panel" aria-label="Toggle episodes panel">
-        <span class="material-icons-round">dock_to_left</span>
+        <span class="material-icons-round">view_sidebar</span>
       </button>
     </div>
-    <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
     <div class="modal-body">
       <!-- LEFT: poster + meta + cast -->
       <div class="modal-left-panel" id="modal-left-panel">
@@ -1004,15 +1013,31 @@
   <span id="tm"></span>
 </div>
 
-<!-- HOVER TRAILER PREVIEW -->
-<div id="hover-preview" aria-hidden="true">
-  <div class="hover-preview-inner">
-    <iframe id="hover-frame"
+<!-- NETFLIX-STYLE HOVER CARD -->
+<div id="netflix-card" aria-hidden="true">
+  <div class="nc-video">
+    <iframe id="nc-frame"
       sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
       allow="autoplay; encrypted-media"
       referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>
+    <img class="nc-backdrop" id="nc-backdrop" alt="">
+    <div class="nc-video-gradient"></div>
+  </div>
+  <div class="nc-info">
+    <div class="nc-title-row">
+      <div class="nc-title" id="nc-title"></div>
+      <span class="nc-type-pill" id="nc-type-pill"></span>
+    </div>
+    <div class="nc-action-row">
+      <button class="nc-btn nc-btn-play" id="nc-play" title="Play"><span class="material-icons-round">play_arrow</span></button>
+      <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save"><span class="material-icons-round">add</span></button>
+      <button class="nc-btn nc-btn-like" id="nc-like" title="Like"><span class="material-icons-round">thumb_up_off_alt</span></button>
+      <button class="nc-btn nc-btn-more" id="nc-more" title="More info"><span class="material-icons-round">expand_more</span></button>
+    </div>
+    <div class="nc-meta-row" id="nc-meta"></div>
+    <div class="nc-genres-row" id="nc-genres"></div>
   </div>
 </div>
 
@@ -1158,6 +1183,23 @@
     <div class="confirm-btns">
       <button class="confirm-btn-ok" id="confirm-ok">Confirm</button>
       <button class="confirm-btn-cancel" id="confirm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHARE MENU -->
+<div id="share-overlay" role="dialog" aria-label="Share options">
+  <div id="share-menu">
+    <div class="share-header">
+      <h3><span class="material-icons-round">share</span> Share</h3>
+      <button id="share-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    </div>
+    <div id="share-title-preview" class="share-title-preview"></div>
+    <div class="share-options">
+      <button class="share-opt" id="share-copy"><span class="material-icons-round">content_copy</span>Copy Link</button>
+      <button class="share-opt" id="share-twitter"><span class="material-icons-round">open_in_new</span>Share on X/Twitter</button>
+      <button class="share-opt" id="share-info-page"><span class="material-icons-round">info</span>Open Info Page</button>
+      <button class="share-opt" id="share-native" style="display:none"><span class="material-icons-round">ios_share</span>Share via…</button>
     </div>
   </div>
 </div>

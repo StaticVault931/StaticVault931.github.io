@@ -125,14 +125,14 @@ export function buildProviderBar(mediaId, type, season, episode) {
 
   bar.innerHTML =
     `<span class="prov-label">Source</span>` +
+    `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
+       <span class="material-icons-round" style="font-size:.9rem">skip_next</span> Next
+     </button>` +
     list.map(p =>
       `<button class="prov-btn${active.id === p.id ? ' on' : ''}${p.prio === 'high' ? ' prio-high' : p.prio === 'low' ? ' prio-low' : ''}"
         data-provider="${p.id}"
-        title="${p.label}${p.note ? ' · ' + p.note : ''}">${p.label}${p.note && p.prio === 'high' && p.id !== 'vidsrc' ? `<span class="prov-note">${p.note.includes('4K') ? '4K' : ''}</span>` : ''}</button>`
-    ).join('') +
-    `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
-       <span class="material-icons-round" style="font-size:.9rem">skip_next</span> Next
-     </button>`;
+        title="${p.label}${p.note ? ' · ' + p.note : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}</button>`
+    ).join('');
 
   // delegate in player.js via data-provider attr — handled in app.js
 }
@@ -154,6 +154,7 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
 
   iframe.removeAttribute('src');
 
+  iframe.onload = null;
   iframe.onload = () => {
     clearTimeout(_providerTimer);
     loading.classList.add('hidden');

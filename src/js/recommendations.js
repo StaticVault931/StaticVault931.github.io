@@ -1,6 +1,18 @@
-import { state } from './state.js';
+import { state, AGE_LEVELS } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, renderRow, skelCards, hideSection, showSection } from './ui.js';
+
+// Map TMDB vote_average to approximate age threshold (rough heuristic)
+// This supplements the full certification check done in openMedia
+function passesAgeFilter(m) {
+  const maxLevel = AGE_LEVELS[state.ageRating] ?? 2;
+  // If user is set to G (level 0), be strict: only very family-friendly
+  // For PG (1) or PG-13 (2), allow most content
+  // This is a soft filter — full cert check happens at play time
+  if (maxLevel <= 0 && (m.adult || (m.vote_average && m.vote_average < 5))) return false;
+  if (m.adult && maxLevel < 4) return false;
+  return true;
+}
 
 /* ── MAIN FOR YOU ROW ────────────────────────────────────────────── */
 export async function loadForYou() {
@@ -27,9 +39,11 @@ export async function loadForYou() {
       tmdb(`/${item.type || 'movie'}/${item.id}/recommendations`).catch(() => ({ results: [] }))
     );
 
+    // Use random page offset if feed randomize was requested
+    const randomPage = state._randomPage || 1;
     const [discoverRes, discoverTvRes, ...recResults] = await Promise.allSettled([
-      tmdb('/discover/movie', { sort_by: 'popularity.desc', with_genres: genreIds }),
-      tmdb('/discover/tv', { sort_by: 'popularity.desc', with_genres: genreIds }),
+      tmdb('/discover/movie', { sort_by: 'popularity.desc', with_genres: genreIds, page: randomPage }),
+      tmdb('/discover/tv', { sort_by: 'popularity.desc', with_genres: genreIds, page: randomPage }),
       ...recRequests,
     ]);
 
@@ -49,11 +63,13 @@ export async function loadForYou() {
     const recIdCounts = {};
     recItems.forEach(m => { recIdCounts[m.id] = (recIdCounts[m.id] || 0) + 3; });
 
+    const watchedIds = new Set(state.watched.map(x => x.id));
     const seen = new Set();
     const pool = [...recItems, ...discover, ...discoverTv].filter(m => {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
-      return !dislikedIds.has(m.id) && !likedIds.has(m.id) && !trendingRowIds.has(m.id) && !recentIds.has(m.id);
+      if (!passesAgeFilter(m)) return false;
+      return !dislikedIds.has(m.id) && !likedIds.has(m.id) && !trendingRowIds.has(m.id) && !recentIds.has(m.id) && !watchedIds.has(m.id);
     });
 
     pool.sort((a, b) => {
