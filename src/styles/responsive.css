@@ -1,0 +1,113 @@
+/* ── 1280px ───────────────────────────────────────────────────────── */
+@media (max-width: 1280px) {
+  :root { --card-w: 250px; }
+  #header, .section, .genre-wrap, #hero-content,
+  #page-search, #page-library, #page-prefs, #page-seeall {
+    padding-left: 2.25rem;
+    padding-right: 2.25rem;
+  }
+  #hero-dots { right: 2.25rem; }
+}
+
+/* ── 1024px ───────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  :root { --card-w: 230px; }
+  .modal-columns { grid-template-columns: 1fr 260px; }
+}
+
+/* ── 860px ────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .modal-columns { grid-template-columns: 1fr; }
+  .modal-side-col { border-top: 1px solid var(--border); padding-top: 1rem; }
+  .cast-row { display: grid; grid-template-columns: repeat(auto-fill, 72px); }
+}
+
+/* ── 720px ────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  :root { --card-w: 200px; }
+
+  #header { height: 58px; padding: 0 1rem; }
+  .logo { font-size: 1.55rem; }
+  .nav-tabs { display: none; }
+  .search-pill { display: none; }
+  .hbtn { width: 32px; height: 32px; }
+  .hbtn[data-page] { display: none; } /* hide page hbtns — use bottom nav */
+
+  /* Show bottom nav */
+  #bottom-nav { display: block; }
+  body { padding-bottom: 60px; }
+
+  #hero { height: 68vh; min-height: 420px; max-height: 640px; }
+  #hero-content { padding: 0 1rem 3.5rem; max-width: 100%; }
+  #hero-title { font-size: clamp(2.4rem, 9vw, 3.8rem); }
+  #hero-desc { font-size: .88rem; max-width: 100%; }
+  #hero-dots { right: 1rem; bottom: 1.4rem; }
+  .btn-play, .btn-info { padding: .58rem 1.2rem; font-size: .86rem; }
+
+  .section,
+  .genre-wrap,
+  #page-search,
+  #page-library,
+  #page-prefs,
+  #page-seeall { padding-left: 1rem; padding-right: 1rem; }
+
+  .genre-scroll { flex-wrap: nowrap; }
+
+  .card:hover { transform: scale(1.04) translateY(-5px); }
+
+  .modal-info { padding: .85rem 1rem; gap: .9rem; }
+  .modal-poster-wrap { width: 90px; }
+  #modal-title { font-size: clamp(1.5rem, 5vw, 2.2rem); }
+  .modal-columns { padding: 0 1rem 1.2rem; }
+  .ma { padding: .44rem .8rem; font-size: .76rem; }
+
+  .search-grid,
+  .lib-grid,
+  #seeall-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .related-grid { grid-template-columns: 1fr 1fr; }
+
+  #page-prefs { padding-top: 70px; }
+}
+
+/* ── 480px ────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  :root { --card-w: 82vw; }
+
+  .card-row { scroll-snap-type: x mandatory; }
+  .card { scroll-snap-align: start; }
+
+  .search-grid,
+  .lib-grid,
+  #seeall-grid { grid-template-columns: 1fr; }
+
+  .related-grid { grid-template-columns: 1fr 1fr; }
+
+  .hero-btns { gap: .4rem; }
+  .btn-play, .btn-info { padding: .52rem 1rem; font-size: .82rem; }
+
+  #modal { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; }
+  #modal-overlay { overflow-y: auto; }
+  .modal-info { flex-direction: column; }
+  .modal-poster-wrap { display: none; }
+
+  .modal-columns { grid-template-columns: 1fr; }
+}
+
+/* ── HOVER MEDIA ─────────────────────────────────────────────────── */
+@media (hover: none) {
+  .card:hover { transform: none; box-shadow: none; }
+  .card-ov { opacity: 1; }
+  .row-arrow { opacity: 1; pointer-events: all; }
+}
+
+/* ── REDUCED MOTION ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+  #hero-bg { animation: none; }
+}

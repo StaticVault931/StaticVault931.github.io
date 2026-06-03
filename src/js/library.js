@@ -1,0 +1,174 @@
+import { state, persist, isLiked, isInWatchlist } from './state.js';
+import { makeCard, skelCards, emptyState, toast } from './ui.js';
+import { tmdb } from './api.js';
+import { goPage } from './router.js';
+
+/* ── RENDER LIBRARY PAGE ─────────────────────────────────────────── */
+export function renderLibrary() {
+  renderContinueSection();
+  renderWatchlistSection();
+  renderLikedSection();
+  renderRecentSection();
+}
+
+function renderContinueSection() {
+  const sec = document.getElementById('lib-continue-sec');
+  const grid = document.getElementById('lib-continue-grid');
+  if (!grid) return;
+
+  const items = Object.values(state.continueWatching)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, 20);
+
+  if (!items.length) {
+    if (sec) sec.style.display = 'none';
+    return;
+  }
+  if (sec) sec.style.display = '';
+
+  grid.innerHTML = items.map(item => makeCard(item, item.type || 'movie')).join('');
+}
+
+function renderWatchlistSection() {
+  const grid = document.getElementById('lib-watchlist-grid');
+  if (!grid) return;
+
+  if (!state.watchlist.length) {
+    grid.innerHTML = emptyState('bookmark_add', 'Your watchlist is empty.', [
+      { action: 'go-home', label: 'Browse Trending' },
+      { action: 'go-search', label: 'Search' },
+    ]);
+    return;
+  }
+  grid.innerHTML = state.watchlist.map(m => makeCard(m, m.type || 'movie')).join('');
+}
+
+function renderLikedSection() {
+  const grid = document.getElementById('lib-liked-grid');
+  if (!grid) return;
+
+  if (!state.liked.length) {
+    grid.innerHTML = emptyState('favorite_border', "Nothing liked yet. Tap ❤ on any title.", [
+      { action: 'go-home', label: 'Browse Home' },
+    ]);
+    return;
+  }
+  grid.innerHTML = state.liked.map(m => makeCard(m, m.type || 'movie')).join('');
+}
+
+function renderRecentSection() {
+  const sec = document.getElementById('lib-recent-sec');
+  const grid = document.getElementById('lib-recent-grid');
+  if (!grid) return;
+
+  const items = state.recentlyViewed.slice(0, 24);
+  if (!items.length) {
+    if (sec) sec.style.display = 'none';
+    return;
+  }
+  if (sec) sec.style.display = '';
+  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie')).join('');
+}
+
+/* ── SEE ALL PAGE ────────────────────────────────────────────────── */
+export async function renderSeeAll() {
+  const { seeAll } = state;
+  const titleEl = document.getElementById('seeall-title');
+  const grid = document.getElementById('seeall-grid');
+  const moreBtn = document.getElementById('seeall-more');
+  if (!grid) return;
+
+  if (titleEl) titleEl.textContent = seeAll.title || 'Browse';
+
+  if (!seeAll.fetcher) {
+    grid.innerHTML = '<p class="muted-note">Could not load content.</p>';
+    if (moreBtn) moreBtn.style.display = 'none';
+    return;
+  }
+
+  grid.innerHTML = skelCards(12);
+  seeAll.loading = true;
+
+  try {
+    const data = await seeAll.fetcher(1);
+    const results = data.results || data.media || [];
+    seeAll.items = results;
+    seeAll.page = 1;
+    seeAll.totalPages = data.total_pages || 1;
+
+    if (!results.length) {
+      grid.innerHTML = '<p class="muted-note">Nothing to show here.</p>';
+      if (moreBtn) moreBtn.style.display = 'none';
+      return;
+    }
+
+    grid.innerHTML = results.map(m => {
+      const t = seeAll.type || (m.media_type === 'tv' ? 'tv' : m._anime ? 'anime' : 'movie');
+      return makeCard(m, t);
+    }).join('');
+
+    if (moreBtn) {
+      moreBtn.style.display = seeAll.page < seeAll.totalPages ? '' : 'none';
+    }
+  } catch (e) {
+    grid.innerHTML = '<p class="muted-note">Failed to load. Try again.</p>';
+  } finally {
+    seeAll.loading = false;
+  }
+}
+
+export async function loadMoreSeeAll() {
+  const { seeAll } = state;
+  const grid = document.getElementById('seeall-grid');
+  const moreBtn = document.getElementById('seeall-more');
+  if (!seeAll.fetcher || seeAll.loading) return;
+
+  seeAll.loading = true;
+  if (moreBtn) { moreBtn.disabled = true; moreBtn.textContent = 'Loading…'; }
+
+  try {
+    const nextPage = seeAll.page + 1;
+    const data = await seeAll.fetcher(nextPage);
+    const results = data.results || [];
+    seeAll.items = [...seeAll.items, ...results];
+    seeAll.page = nextPage;
+
+    if (grid) {
+      results.forEach(m => {
+        const t = seeAll.type || (m.media_type === 'tv' ? 'tv' : 'movie');
+        grid.insertAdjacentHTML('beforeend', makeCard(m, t));
+      });
+    }
+
+    if (moreBtn) {
+      moreBtn.disabled = false;
+      moreBtn.textContent = 'Load More';
+      moreBtn.style.display = nextPage < (seeAll.totalPages || 1) ? '' : 'none';
+    }
+  } catch {
+    if (moreBtn) { moreBtn.disabled = false; moreBtn.textContent = 'Load More'; }
+  } finally {
+    seeAll.loading = false;
+  }
+}
+
+/* ── DATA MANAGEMENT ─────────────────────────────────────────────── */
+export function clearSection(key, label) {
+  if (!confirm(`Clear your ${label}? This cannot be undone.`)) return;
+  state[key] = Array.isArray(state[key]) ? [] : {};
+  persist(key);
+  renderLibrary();
+  toast(`${label} cleared`, 'delete');
+}
+
+export function clearAllData() {
+  if (!confirm('Reset ALL StaticVault931 data? This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) return;
+  const keys = ['watchlist', 'liked', 'disliked', 'recentlyViewed', 'continueWatching',
+    'prefLikes', 'prefDislikes', 'prefGenres'];
+  keys.forEach(k => {
+    state[k] = Array.isArray(state[k]) ? [] : {};
+    persist(k);
+  });
+  renderLibrary();
+  toast('All data cleared', 'delete_forever');
+}

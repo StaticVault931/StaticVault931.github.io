@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>StaticVault931 — Your Personal Cinema</title>
+<meta name="description" content="StaticVault931 — Discover and stream movies, TV shows, and anime."/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="src/styles/base.css">
+<link rel="stylesheet" href="src/styles/layout.css">
+<link rel="stylesheet" href="src/styles/components.css">
+<link rel="stylesheet" href="src/styles/responsive.css">
+</head>
+<body>
+
+<!-- ════ LOADING SCREEN ════ -->
+<div id="loading-screen" role="status" aria-label="Loading StaticVault931">
+  <div class="ls-logo" aria-hidden="true">
+    <span class="s">Static</span><span class="v">Vault</span><span class="n">931</span>
+  </div>
+  <div class="ls-tagline">Your personal cinema, everywhere</div>
+  <div class="ls-bar-wrap"><div class="ls-bar-fill"></div></div>
+  <div class="ls-disclaimer">
+    <b>Content Disclaimer</b><br>
+    StaticVault931 is a discovery platform powered by third-party embed providers.
+    Some providers may display ads or content outside our control. Content ratings are provided for guidance only.
+  </div>
+  <button class="ls-enter-btn" id="ls-enter">Enter StaticVault931</button>
+  <div class="ls-credits">
+    Made by <a href="https://sites.google.com/view/staticquasar931/gm3z" target="_blank" rel="noopener">StaticQuasar931</a>
+    <span class="ls-sep">·</span>
+    Design by <a href="https://www.delirealms.store/" target="_blank" rel="noopener">Luuk</a>
+  </div>
+</div>
+
+<!-- ════ HEADER ════ -->
+<header id="header" role="banner">
+  <div class="logo" role="button" tabindex="0" aria-label="StaticVault931 home">
+    <span class="s">Static</span><span class="v">Vault</span><span class="n">931</span>
+  </div>
+
+  <nav class="nav-tabs" id="nav-tabs" aria-label="Main navigation">
+    <div class="nav-tab on" data-page="home" role="button" tabindex="0">Home</div>
+    <div class="nav-tab" data-page="movies" role="button" tabindex="0">Movies</div>
+    <div class="nav-tab" data-page="tv" role="button" tabindex="0">TV Shows</div>
+    <div class="nav-tab" data-page="anime" role="button" tabindex="0">Anime</div>
+    <div class="nav-tab" data-page="search" role="button" tabindex="0">Search</div>
+    <div class="nav-tab" data-page="library" role="button" tabindex="0">Library</div>
+    <div class="nav-tab" data-page="prefs" role="button" tabindex="0">Customize Feed</div>
+  </nav>
+
+  <div class="header-right">
+    <div class="search-pill" id="header-search-pill" role="button" tabindex="0" aria-label="Search">
+      <span class="material-icons-round">search</span>
+      <span class="pill-text">Search…</span>
+    </div>
+    <button class="hbtn" data-page="library" aria-label="Library">
+      <span class="material-icons-round">video_library</span>
+    </button>
+    <button class="hbtn" data-page="prefs" aria-label="Customize Feed">
+      <span class="material-icons-round">tune</span>
+    </button>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: HOME
+════════════════════════════════════════════════════════════════ -->
+<main class="page active" id="page-home">
+
+  <!-- Hero -->
+  <section id="hero" aria-label="Featured content">
+    <div id="hero-bg" aria-hidden="true"></div>
+    <div id="hero-content">
+      <div class="hero-meta-pills">
+        <span class="hero-pill hp-fire">
+          <span class="material-icons-round" style="font-size:.66rem">local_fire_department</span>Trending
+        </span>
+        <span class="hero-pill hp-type" id="h-type">Movie</span>
+        <span class="hero-pill hp-score" id="h-score"></span>
+      </div>
+      <div id="hero-title">Loading…</div>
+      <div id="hero-desc"></div>
+      <div class="hero-btns">
+        <button class="btn-play" id="hero-play-btn" aria-label="Play now">
+          <span class="material-icons-round">play_arrow</span>Play Now
+        </button>
+        <button class="btn-info" id="hero-info-btn" aria-label="More info">
+          <span class="material-icons-round">info_outline</span>More Info
+        </button>
+      </div>
+    </div>
+    <div id="hero-dots" role="tablist" aria-label="Featured slides"></div>
+  </section>
+
+  <!-- Genre rail -->
+  <div class="genre-wrap">
+    <div class="genre-scroll" id="genre-scroll" role="list" aria-label="Browse by genre"></div>
+  </div>
+
+  <!-- Genre results -->
+  <div class="section" id="genre-results-section" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">filter_list</span>
+        <span id="genre-results-title">Genre</span>
+      </div>
+      <button class="see-all-btn" id="genre-clear-btn" aria-label="Clear genre filter">
+        Clear <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="card-row" id="genre-results-row"></div>
+    </div>
+  </div>
+
+  <!-- Continue Watching -->
+  <div class="section" id="sec-continue" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">play_circle</span>Continue Watching
+      </div>
+      <button class="see-all-btn" data-lib-jump="continue" aria-label="See all continue watching">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-continue" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-continue"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-continue" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- For You -->
+  <div class="section" id="sec-foryou">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">auto_awesome</span>For You
+      </div>
+      <button class="see-all-btn" data-page="prefs" aria-label="Customize recommendations">
+        Customize <span class="material-icons-round">tune</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-foryou" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-foryou"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-foryou" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trending -->
+  <div class="section" id="sec-trending">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">local_fire_department</span>Trending This Week
+      </div>
+      <button class="see-all-btn" data-see-all="trending" data-see-all-title="Trending This Week" aria-label="See all trending">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-trending" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-trending"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-trending" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New in Cinemas -->
+  <div class="section" id="sec-new">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">fiber_new</span>New in Cinemas
+      </div>
+      <button class="see-all-btn" data-see-all="movies-new" data-see-all-title="New in Cinemas" aria-label="See all new movies">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-new" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-new"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-new" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Rated -->
+  <div class="section" id="sec-toprated">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">workspace_premium</span>All-Time Top Rated
+      </div>
+      <button class="see-all-btn" data-see-all="movies-top" data-see-all-title="Top Rated Movies" aria-label="See all top rated">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-toprated" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-toprated"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-toprated" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popular TV -->
+  <div class="section" id="sec-tv-pop">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">tv</span>Popular TV Shows
+      </div>
+      <button class="see-all-btn" data-see-all="tv-popular" data-see-all-title="Popular TV Shows" aria-label="See all popular TV">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-tv-pop" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-tv-pop"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-tv-pop" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Airing Today -->
+  <div class="section" id="sec-airing">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">live_tv</span>Airing Today
+      </div>
+      <button class="see-all-btn" data-see-all="tv-airing" data-see-all-title="Airing Today" aria-label="See all airing today">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-airing" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-airing"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-airing" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Picks -->
+  <div class="section" id="sec-action">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">sports_martial_arts</span>Action Picks
+      </div>
+      <button class="see-all-btn" data-see-all="genre-28" data-see-all-title="Action" aria-label="See all action">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-action" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-action"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-action" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comedy Picks -->
+  <div class="section" id="sec-comedy">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">sentiment_very_satisfied</span>Comedy Picks
+      </div>
+      <button class="see-all-btn" data-see-all="genre-35" data-see-all-title="Comedy" aria-label="See all comedy">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-comedy" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-comedy"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-comedy" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Horror Picks -->
+  <div class="section" id="sec-horror">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">skull</span>Horror Picks
+      </div>
+      <button class="see-all-btn" data-see-all="genre-27" data-see-all-title="Horror" aria-label="See all horror">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-horror" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-horror"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-horror" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recently Viewed -->
+  <div class="section" id="sec-recent" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">history</span>Recently Viewed
+      </div>
+      <button class="see-all-btn" data-lib-jump="recent" aria-label="See all recently viewed">
+        See all <span class="material-icons-round">chevron_right</span>
+      </button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l">
+        <button data-scroll-row="row-recent" data-scroll-dir="-1" aria-label="Scroll left">
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+      <div class="card-row" id="row-recent"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-recent" data-scroll-dir="1" aria-label="Scroll right">
+          <span class="material-icons-round">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: MOVIES
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-movies">
+  <div style="padding-top:74px"></div>
+
+  <div class="section" id="sec-movies-pop">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">movie</span>Popular Movies</div>
+      <button class="see-all-btn" data-see-all="movies-popular" data-see-all-title="Popular Movies">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-pop" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-pop"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-pop" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-movies-top">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">workspace_premium</span>Top Rated Movies</div>
+      <button class="see-all-btn" data-see-all="movies-top" data-see-all-title="Top Rated Movies">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-top" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-top"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-top" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-movies-new">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">fiber_new</span>Now Playing</div>
+      <button class="see-all-btn" data-see-all="movies-new" data-see-all-title="Now Playing">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-new" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-new"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-new" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-movies-up">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">upcoming</span>Upcoming</div>
+      <button class="see-all-btn" data-see-all="movies-upcoming" data-see-all-title="Upcoming Movies">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-up" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-up"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-up" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-movies-action">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">sports_martial_arts</span>Action Movies</div>
+      <button class="see-all-btn" data-see-all="genre-28" data-see-all-title="Action Movies">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-action" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-action"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-action" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-movies-thriller">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">visibility</span>Top Rated Thrillers</div>
+      <button class="see-all-btn" data-see-all="genre-53" data-see-all-title="Thrillers">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-movies-thriller" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-movies-thriller"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-movies-thriller" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: TV SHOWS
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-tv">
+  <div style="padding-top:74px"></div>
+
+  <div class="section" id="sec-tv-popular">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">tv</span>Popular TV Shows</div>
+      <button class="see-all-btn" data-see-all="tv-popular" data-see-all-title="Popular TV Shows">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-popular" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-tv-popular"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-popular" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-tv-top">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">workspace_premium</span>Top Rated TV</div>
+      <button class="see-all-btn" data-see-all="tv-top" data-see-all-title="Top Rated TV">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-top" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-tv-top"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-top" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-tv-air">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">live_tv</span>Airing Today</div>
+      <button class="see-all-btn" data-see-all="tv-airing" data-see-all-title="Airing Today">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-air" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-tv-air"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-air" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-tv-crime">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">policy</span>Crime &amp; Drama</div>
+      <button class="see-all-btn" data-see-all="genre-80" data-see-all-title="Crime &amp; Drama">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-crime" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-tv-crime"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-crime" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-tv-scifi">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">rocket_launch</span>Sci-Fi &amp; Fantasy</div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-scifi" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-tv-scifi"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-scifi" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: ANIME
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-anime">
+  <div style="padding-top:74px"></div>
+
+  <div class="section" id="sec-anime-trend">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">local_fire_department</span>Trending Anime</div>
+      <button class="see-all-btn" data-see-all="anime-trending" data-see-all-title="Trending Anime">See all <span class="material-icons-round">chevron_right</span></button>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-anime-trend" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-anime-trend"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-anime-trend" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-anime-top">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">workspace_premium</span>Top Rated Anime</div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-anime-top" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-anime-top"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-anime-top" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-anime-airing">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">fiber_new</span>Currently Airing</div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-anime-airing" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-anime-airing"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-anime-airing" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-anime-action">
+    <div class="sec-header">
+      <div class="sec-title"><span class="material-icons-round sec-icon">sports_martial_arts</span>Action Anime</div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l"><button data-scroll-row="row-anime-action" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+      <div class="card-row" id="row-anime-action"></div>
+      <div class="row-arrow row-arrow-r"><button data-scroll-row="row-anime-action" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+    </div>
+  </div>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: SEARCH
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-search">
+  <div class="search-hero">
+    <h1>Find Anything</h1>
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">Movies, TV shows, and anime — all in one place</p>
+    <div class="search-box-wrap">
+      <span class="material-icons-round">search</span>
+      <input id="search-input" placeholder="Title, genre, actor…" autocomplete="off" spellcheck="false" aria-label="Search for content"/>
+      <button id="search-clear" aria-label="Clear search">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="search-filter-row" role="group" aria-label="Search filters">
+      <div class="sf-chip on" data-f="all">All</div>
+      <div class="sf-chip" data-f="movie">Movies</div>
+      <div class="sf-chip" data-f="tv">TV Shows</div>
+      <div class="sf-chip" data-f="anime">Anime</div>
+      <div class="sf-chip" data-f="top">Top Rated</div>
+      <div class="sf-chip" data-f="recent">Recent</div>
+    </div>
+  </div>
+  <div id="search-results-area"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: LIBRARY
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-library">
+  <div class="lib-header">
+    <h1>My Library</h1>
+    <p>Your watchlist, liked titles, and viewing history</p>
+  </div>
+
+  <!-- Continue Watching -->
+  <div class="lib-section" id="lib-continue-sec">
+    <div class="lib-section-header">
+      <div class="lib-section-title" id="lib-continue">
+        <span class="material-icons-round">play_circle</span>Continue Watching
+      </div>
+      <button class="lib-clear-btn" id="btn-clear-continue" aria-label="Clear continue watching">
+        <span class="material-icons-round">close</span> Clear
+      </button>
+    </div>
+    <div class="lib-grid" id="lib-continue-grid"></div>
+  </div>
+
+  <!-- Watchlist -->
+  <div class="lib-section">
+    <div class="lib-section-header">
+      <div class="lib-section-title" id="lib-watchlist">
+        <span class="material-icons-round">bookmark</span>Watchlist
+      </div>
+      <button class="lib-clear-btn" id="btn-clear-watchlist" aria-label="Clear watchlist">
+        <span class="material-icons-round">close</span> Clear
+      </button>
+    </div>
+    <div class="lib-grid" id="lib-watchlist-grid"></div>
+  </div>
+
+  <!-- Liked -->
+  <div class="lib-section">
+    <div class="lib-section-header">
+      <div class="lib-section-title" id="lib-liked">
+        <span class="material-icons-round">favorite</span>Liked
+      </div>
+      <button class="lib-clear-btn" id="btn-clear-liked" aria-label="Clear liked">
+        <span class="material-icons-round">close</span> Clear
+      </button>
+    </div>
+    <div class="lib-grid" id="lib-liked-grid"></div>
+  </div>
+
+  <!-- Recently Viewed -->
+  <div class="lib-section" id="lib-recent-sec">
+    <div class="lib-section-header">
+      <div class="lib-section-title" id="lib-recent">
+        <span class="material-icons-round">history</span>Recently Viewed
+      </div>
+      <button class="lib-clear-btn" id="btn-clear-recent" aria-label="Clear recently viewed">
+        <span class="material-icons-round">close</span> Clear
+      </button>
+    </div>
+    <div class="lib-grid" id="lib-recent-grid"></div>
+  </div>
+
+  <!-- Data management -->
+  <div class="lib-data-section">
+    <h3>Data &amp; Privacy</h3>
+    <div class="data-btn-row">
+      <button class="data-btn" id="btn-clear-disliked">Clear Disliked</button>
+      <button class="data-btn danger" id="btn-reset-all">Reset All Data</button>
+    </div>
+  </div>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: CUSTOMIZE FEED
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-prefs">
+  <h1>Customize Your Feed</h1>
+  <p>Tell us what you love and hate. We'll use this to personalize what you see.</p>
+
+  <div class="pref-section">
+    <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
+    <div class="pref-input-wrap">
+      <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+      <div class="pref-ac-drop" id="pref-like-ac"></div>
+    </div>
+    <div class="pref-tag-list" id="pref-likes-list"></div>
+  </div>
+
+  <div class="pref-section">
+    <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
+    <div class="pref-input-wrap">
+      <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+      <div class="pref-ac-drop" id="pref-dis-ac"></div>
+    </div>
+    <div class="pref-tag-list" id="pref-dislikes-list"></div>
+  </div>
+
+  <div class="pref-section">
+    <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
+    <div class="pref-genres-wrap genre-scroll" id="pref-genres" style="flex-wrap:wrap"></div>
+  </div>
+
+  <div class="pref-section">
+    <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
+    <div id="pref-age-row"></div>
+  </div>
+
+  <button class="pref-apply-btn" id="pref-apply-btn" aria-label="Apply preferences">
+    <span class="material-icons-round">check</span>Apply &amp; Refresh Feed
+  </button>
+
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: SEE ALL
+════════════════════════════════════════════════════════════════ -->
+<main class="page" id="page-seeall">
+  <button class="seeall-back-btn" data-page="home" aria-label="Go back">
+    <span class="material-icons-round">arrow_back</span> Back
+  </button>
+  <h1 id="seeall-title">Browse</h1>
+  <div id="seeall-grid"></div>
+  <button id="seeall-more" style="display:none">Load More</button>
+  <div style="height:3rem"></div>
+</main>
+
+<!-- ════ MODAL ════ -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-label="Content details">
+  <div id="modal">
+    <button id="modal-close" aria-label="Close">
+      <span class="material-icons-round">close</span>
+    </button>
+
+    <!-- Provider bar -->
+    <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
+
+    <!-- Player -->
+    <div style="position:relative">
+      <div class="player-wrap">
+        <div class="player-loading" id="player-loading">
+          <div class="spin"></div>
+          <p>Loading player…</p>
+        </div>
+        <iframe id="player-frame"
+          allowfullscreen
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+          referrerpolicy="no-referrer"
+          title="Content player">
+        </iframe>
+      </div>
+      <!-- Age warning (overlays player) -->
+      <div id="age-warn" style="display:none" role="alertdialog" aria-labelledby="age-warn-title">
+        <h2 id="age-warn-title">Age Restricted</h2>
+        <p id="age-warn-msg">This content may be above your selected age rating.</p>
+        <div class="warn-btns">
+          <button class="warn-proceed" id="warn-proceed-btn">Watch Anyway</button>
+          <button class="warn-back" id="warn-back-btn">Go Back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal info -->
+    <div class="modal-content">
+      <div class="modal-info">
+        <div class="modal-poster-wrap" id="modal-poster">
+          <div class="modal-ph sk" style="aspect-ratio:2/3;width:100%;border-radius:6px;"></div>
+        </div>
+        <div class="modal-meta">
+          <div id="modal-title" class="sk" style="height:2.4rem;width:62%;border-radius:4px;margin-bottom:.55rem;"></div>
+          <div class="modal-tags" id="modal-tags"></div>
+          <div class="modal-actions" id="modal-actions"></div>
+          <div class="modal-ratings" id="modal-ratings"></div>
+          <div id="modal-plot"></div>
+        </div>
+      </div>
+
+      <!-- Two-column body -->
+      <div class="modal-columns">
+        <div class="modal-main-col" id="modal-main-col">
+          <!-- Episodes or More Like This rendered here -->
+        </div>
+        <div class="modal-side-col" id="modal-side-col">
+          <div class="cast-section-label">Cast</div>
+          <div class="cast-row" id="modal-cast-row"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" role="status" aria-live="polite">
+  <span class="material-icons-round" id="ti">info</span>
+  <span id="tm"></span>
+</div>
+
+<!-- BOTTOM NAV (mobile) -->
+<nav id="bottom-nav" aria-label="Mobile navigation">
+  <div class="bottom-nav-inner">
+    <button class="bottom-nav-btn on" data-page="home" aria-label="Home">
+      <span class="material-icons-round">home</span>Home
+    </button>
+    <button class="bottom-nav-btn" data-page="search" aria-label="Search">
+      <span class="material-icons-round">search</span>Search
+    </button>
+    <button class="bottom-nav-btn" data-page="library" aria-label="Library">
+      <span class="material-icons-round">video_library</span>Library
+    </button>
+    <button class="bottom-nav-btn" data-page="prefs" aria-label="Customize">
+      <span class="material-icons-round">tune</span>Customize
+    </button>
+  </div>
+</nav>
+
+<script type="module" src="src/js/app.js"></script>
+</body>
+</html>
