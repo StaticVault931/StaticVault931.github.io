@@ -340,10 +340,36 @@ function closeInlineDrop() {
   if (drop) drop.style.display = 'none';
 }
 
+/* ── SEARCH TIPS (rotate randomly in placeholder) ───────────────── */
+const SEARCH_TIPS = [
+  'Try "laugh" to find comedy content that might make you smile',
+  'Search "marvel" to find any Marvel movie or show',
+  'Type a year like "2024" to see recent releases',
+  'Search an actor\'s name to find their movies',
+  'Try "anime thriller" to combine genres',
+  'Type a director\'s name to find their work',
+  'Search "award winning" to find critically acclaimed films',
+  'Try "based on book" to find literary adaptations',
+  'Type "sequel" to find part 2s and continuations',
+  'Search "family friendly" to find content for all ages',
+  'Try "animated" for Pixar, Disney, Studio Ghibli and more',
+  'Type a franchise name like "star wars" or "harry potter"',
+];
+
+export function rotateTip() {
+  const inp = document.getElementById('search-input');
+  if (!inp || inp.value) return;
+  const tip = SEARCH_TIPS[Math.floor(Math.random() * SEARCH_TIPS.length)];
+  inp.placeholder = tip;
+}
+
 /* ── DEFAULT STATE (no query) ────────────────────────────────────── */
 export async function loadSearchDefault() {
   const area = document.getElementById('search-results-area');
   if (!area) return;
+
+  // Rotate tip
+  rotateTip();
 
   const recents = state.recentSearches || [];
   const recentHtml = recents.length ? `
@@ -465,6 +491,18 @@ async function fetchSearchPage(q, page) {
   }
 
   all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+  // Apply language filter
+  if (_filters.language) {
+    all = all.filter(x => x.original_language === _filters.language || !_filters.language);
+  }
+
+  // Apply sortBy filter
+  if (_filters.sortBy === 'vote_average.desc') {
+    all.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+  } else if (_filters.sortBy === 'release_date.desc') {
+    all.sort((a, b) => new Date(b.release_date || b.first_air_date || 0) - new Date(a.release_date || a.first_air_date || 0));
+  }
 
   // Fuzzy fallbacks if first page has too few results
   if (page === 1 && all.length < 4 && _sfActive !== 'anime') {

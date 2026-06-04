@@ -45,7 +45,7 @@ function renderContinueSection() {
     const epInfo = item.type === 'tv' || item.type === 'anime'
       ? `<div class="cw-ep-badge">${item.season ? `S${item.season}` : ''}${item.episode ? ` E${item.episode}` : ''}</div>`
       : '';
-    return card.replace('</div>', `${epInfo}</div>`);
+    return card.replace('class="card-poster">', `class="card-poster">${epInfo}`);
   }).join('');
 }
 

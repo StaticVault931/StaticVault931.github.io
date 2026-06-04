@@ -1,4 +1,4 @@
-import { state, AGE_LEVELS } from './state.js';
+import { state, AGE_LEVELS, getImpressionPenalty } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, renderRow, skelCards, hideSection, showSection } from './ui.js';
 
@@ -87,12 +87,22 @@ export async function loadForYou() {
         if (state.prefGenres.length)
           s += (m.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
         s += ((m.vote_average || 0) / 20);
+        s -= getImpressionPenalty(m.id); // subtract penalty for over-shown content
         return s;
       };
       return score(b) - score(a);
     });
 
-    const items = pool.slice(0, 18);
+    // Inject 20-25% outside-preference content for discovery
+    const inPref = pool.filter(m => (m.genre_ids || []).some(g => state.prefGenres.includes(g)));
+    const outPref = pool.filter(m => !inPref.includes(m));
+    const totalWanted = 18;
+    const mixCount = Math.floor(totalWanted * 0.25);
+    const inPrefItems = inPref.slice(0, totalWanted - mixCount);
+    const outPrefItems = outPref.slice(0, mixCount);
+    // Slight shuffle to intersperse discovery content
+    const mixed = [...inPrefItems, ...outPrefItems].sort(() => Math.random() - 0.3);
+    const items = mixed.slice(0, totalWanted);
 
     if (!items.length) {
       rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Adjust your preferences for better recommendations.</p>';

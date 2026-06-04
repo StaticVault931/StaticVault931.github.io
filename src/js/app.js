@@ -7,7 +7,7 @@ import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from '
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
-import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters } from './search.js';
+import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
@@ -141,7 +141,7 @@ function closeLegal() {
 
 /* ── SETTINGS (must be before init IIFE to avoid TDZ) ───────────── */
 const SV_SETTINGS = [
-  { id: 'disableHoverTrailer', label: 'Hover Trailers',       desc: 'Preview trailers when hovering cards for 1s',           default: true,  icon: 'play_circle' },
+  { id: 'showHoverTrailer', label: 'Hover Trailers',       desc: 'Preview trailers when hovering cards for 1s',           default: true,  icon: 'play_circle' },
   { id: 'defaultInfoMode',     label: 'Info Page by Default', desc: 'Open full info screen instead of player',               default: false, icon: 'info' },
   { id: 'compactMode',         label: 'Compact Grid Mode',    desc: 'Show content as a grid (no horizontal scroll)',         default: false, icon: 'grid_view' },
   { id: 'autoNextProvider',    label: 'Auto-Switch Source',   desc: 'Try next source automatically if current one fails',    default: true,  icon: 'swap_horiz' },
@@ -190,8 +190,8 @@ const SHORTCUTS = [
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
-  injectPages();      // inject page-movies, page-tv, page-anime, page-seeall before footer
   injectOverlays();   // inject modals/overlays before anything else
+  requestAnimationFrame(() => injectPages()); // defer page injection to after first paint
   initTheme();
   applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
   applyLoadingScreenState();
@@ -224,9 +224,10 @@ const SHORTCUTS = [
   // so next visit is always instant
   if ('requestIdleCallback' in window) {
     requestIdleCallback(() => {
-      const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
-      const entries = Object.values(cache);
-      if (!entries.length) return; // No cache to warm
+      const rowKeys = Object.keys(localStorage).filter(k => k.startsWith('sv_row_'));
+      if (!rowKeys.length) return; // No cache to warm
+      const entries = rowKeys.map(k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }).filter(Boolean);
+      if (!entries.length) return;
       const oldest = Math.min(...entries.map(e => e.ts || 0));
       // If cache is > 12 min old, silently refresh it
       if (Date.now() - oldest > 12 * 60 * 1000) {
@@ -257,8 +258,8 @@ const SHORTCUTS = [
     return false;
   };
 
-  if (_is404()) {
-    location.replace('/404.html');
+  if (_is404() && !location.pathname.includes('404')) {
+    location.replace('/404.html' + location.search);
     return; // stop init
   }
 
@@ -370,8 +371,15 @@ function registerAllLoaders() {
   registerLoader('anime', loadAnimePage);
   registerLoader('search', () => {
     loadSearchDefault();
+    rotateTip(); // show a helpful tip in the placeholder
     buildSearchFilters(document.getElementById('sf-advanced-wrap'));
     setTimeout(() => document.getElementById('search-input')?.focus(), 100);
+    // Rotate tips every 4s while placeholder is empty
+    clearInterval(window._tipInterval);
+    window._tipInterval = setInterval(() => {
+      const inp = document.getElementById('search-input');
+      if (!inp?.value) rotateTip();
+    }, 4000);
   });
 
   // Advanced filters toggle
@@ -540,21 +548,16 @@ function _scheduleRowLoad(rowId, secId, fetchFn, type) {
   const row = document.getElementById(rowId);
   if (!row) return;
 
-  // Check if already visible (within 600px of viewport bottom)
   const target = sec || row;
-  const rect = target.getBoundingClientRect();
-  if (rect.top < window.innerHeight + 600) {
-    // Visible or nearly visible — load now
-    _loadRow(rowId, secId, fetchFn, type);
-    return;
-  }
 
-  // Off-screen — observe and load when scrolled near
+  // Use IntersectionObserver with 600px rootMargin — it handles "visible now" rows
+  // immediately on observe, eliminating the need for a forced getBoundingClientRect read.
   const obs = new IntersectionObserver(([entry], observer) => {
     if (!entry.isIntersecting) return;
     observer.disconnect();
+    _lazyObs.delete(rowId);
     _loadRow(rowId, secId, fetchFn, type);
-  }, { rootMargin: '500px 0px' });
+  }, { rootMargin: '600px 0px' });
 
   obs.observe(target);
   _lazyObs.set(rowId, obs);
@@ -577,7 +580,9 @@ function _loadRow(rowId, secId, fetchFn, type) {
       const impressionFiltered = filterByImpressions(items);
 
       // Dedup: skip items already shown in rows above
-      const deduped = impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id));
+      // Cross-session dedup: only filter in maximum repeat tolerance mode
+      const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
+      const deduped = impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id) && !shownData[m.id]);
       const toRender = deduped.length >= 4 ? deduped : impressionFiltered.filter(m => m.id);
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
@@ -585,7 +590,9 @@ function _loadRow(rowId, secId, fetchFn, type) {
       _saveRowCache(rowId, final);
       // Record impressions for shown content (not searches, only passive browsing)
       recordImpressions(final);
-      requestAnimationFrame(disambiguateTitles);
+      // Mark items as shown for cross-session dedup
+      final.forEach(m => _markShown(m.id));
+      scheduledisambiguateTitles();
     })
     .catch(err => {
       console.warn(`[SV] Row ${rowId}:`, err?.message || err);
@@ -594,28 +601,53 @@ function _loadRow(rowId, secId, fetchFn, type) {
 }
 
 /* ── HOME ROW CACHE (stale-while-revalidate) ─────────────────────── */
-const _ROW_CACHE_KEY = 'sv_home_v3';
+const _ROW_CACHE_KEY = 'sv_home_v3'; // kept for idle cache-warming compat
 const _ROW_CACHE_TTL = 25 * 60 * 1000; // 25 minutes — long enough to feel instant on return
 
 function _saveRowCache(rowId, items) {
   try {
-    const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
-    cache[rowId] = { items, ts: Date.now() };
-    localStorage.setItem(_ROW_CACHE_KEY, JSON.stringify(cache));
+    localStorage.setItem(`sv_row_${rowId}`, JSON.stringify({ items, ts: Date.now() }));
   } catch {}
 }
 
 function _getRowCache(rowId) {
   try {
-    const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
-    const entry = cache[rowId];
-    if (!entry || Date.now() - entry.ts > _ROW_CACHE_TTL) return null;
-    return entry.items;
+    const raw = localStorage.getItem(`sv_row_${rowId}`);
+    if (!raw) return null;
+    const { items, ts } = JSON.parse(raw);
+    if (Date.now() - ts > _ROW_CACHE_TTL) { localStorage.removeItem(`sv_row_${rowId}`); return null; }
+    return items;
   } catch { return null; }
 }
 
 function _clearRowCache() {
-  try { localStorage.removeItem(_ROW_CACHE_KEY); } catch {}
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('sv_row_')).forEach(k => localStorage.removeItem(k));
+    localStorage.removeItem(_ROW_CACHE_KEY); // also clear legacy key
+  } catch {}
+}
+
+/* ── CROSS-SESSION SHOWN ID TRACKING ────────────────────────────── */
+function _getShownIds() {
+  try {
+    const data = JSON.parse(localStorage.getItem('sv_shown_ids') || '{}');
+    const cutoff = Date.now() - 24 * 3600000; // 24 hours
+    Object.keys(data).forEach(k => { if (data[k] < cutoff) delete data[k]; });
+    return data;
+  } catch { return {}; }
+}
+
+function _markShown(id) {
+  try {
+    const data = _getShownIds();
+    data[id] = Date.now();
+    if (Object.keys(data).length > 500) {
+      const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 300);
+      localStorage.setItem('sv_shown_ids', JSON.stringify(Object.fromEntries(sorted)));
+    } else {
+      localStorage.setItem('sv_shown_ids', JSON.stringify(data));
+    }
+  } catch {}
 }
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
@@ -931,6 +963,12 @@ async function loadSeasonalRow() {
 }
 
 /* ── TITLE YEAR DISAMBIGUATION ───────────────────────────────────── */
+let _disambTimer = null;
+function scheduledisambiguateTitles() {
+  clearTimeout(_disambTimer);
+  _disambTimer = setTimeout(disambiguateTitles, 300);
+}
+
 function disambiguateTitles() {
   const cards = document.querySelectorAll('#page-home .card[data-title][data-year]');
   const titleMap = new Map(); // lowercase title → array of { card, year }
@@ -1141,7 +1179,9 @@ function loadPrefsPage() {
   buildVidsrcDomainList();
   buildAgeRatingUI();
   initPrefAutocomplete();
-  buildSettingsUI();
+  if (!document.getElementById('sv-settings-grid')?.children.length) {
+    buildSettingsUI(); // only build if not already built
+  }
 }
 
 function buildAgeRatingUI() {
@@ -1201,6 +1241,7 @@ function applySetting(id, val) {
   if (id === 'streamMode') {
     document.body.classList.toggle('sv-stream-mode', val);
     if (val) {
+      _streamIds.clear(); _streamPage = 1;
       initStreamMode();
     } else {
       _streamObs?.disconnect();
@@ -2280,6 +2321,31 @@ function initEventDelegation() {
     const expanded = sec.classList.toggle('expanded');
     if (icon) icon.textContent = expanded ? 'fullscreen_exit' : 'fullscreen';
   });
+
+  // Impression tracking via IntersectionObserver — count when cards are 50%+ visible
+  const impressionObs = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const card = entry.target;
+      const id = card.dataset.id;
+      if (id && !isNaN(+id)) {
+        recordImpression(+id);
+      }
+      impressionObs.unobserve(card); // only count once per session
+    });
+  }, { threshold: 0.5 });
+
+  // Observe new cards as they're added to the DOM
+  const cardObserver = new MutationObserver(mutations => {
+    mutations.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.nodeType !== 1) return;
+        if (node.matches?.('.card[data-id]')) impressionObs.observe(node);
+        node.querySelectorAll?.('.card[data-id]').forEach(c => impressionObs.observe(c));
+      });
+    });
+  });
+  cardObserver.observe(document.getElementById('page-home') || document.body, { childList: true, subtree: true });
 }
 
 /* ── LIKE/WATCHLIST HELPERS ──────────────────────────────────────── */
@@ -2649,6 +2715,10 @@ function _startWatchTogetherCountdown(startTs, mediaId, mediaType) {
 
     if (skipBtn) skipBtn.addEventListener('click', () => {
       if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
+      const countEl2 = document.getElementById('wt-count');
+      if (countEl2) countEl2.closest('.watch-together-cd')?.remove();
+      const loading = document.getElementById('player-loading');
+      if (loading) loading.classList.add('hidden');
       _wtPlayFromStart(mediaId, mediaType);
     }, { once: true });
 
@@ -3348,13 +3418,13 @@ function populateTestPanel() {
         </div>
       </div>
 
-      <div class="dev-section">
+      <div class="dev-section" id="dev-themes-section">
         <div class="dev-sec-title">Themes
           <div class="dev-btn-row" style="display:inline-flex;margin-left:.5rem">
-            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='dark'">Dark</button>
-            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='light'">Light</button>
-            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='midnight'">Midnight</button>
-            <button class="dev-btn dev-btn-sm" onclick="document.documentElement.dataset.theme='warm'">Warm</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="dark">Dark</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="light">Light</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="midnight">Midnight</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="warm">Warm</button>
           </div>
         </div>
       </div>
@@ -3391,6 +3461,12 @@ function populateTestPanel() {
     document.getElementById('dev-close')?.addEventListener('click', () => {
       document.body.classList.remove('test-mode');
       panel.style.display = 'none';
+    });
+
+    // Theme buttons via event delegation (no inline onclick)
+    panel.addEventListener('click', e => {
+      const t = e.target.closest('[data-set-theme]');
+      if (t) document.documentElement.dataset.theme = t.dataset.setTheme;
     });
 
     const _toggle = (btnId, bodyClass, onLabel, offLabel) => {
@@ -3433,8 +3509,8 @@ function populateTestPanel() {
 
     // Hover trailer toggle
     document.getElementById('dev-btn-no-hover')?.addEventListener('click', function() {
-      const setting = getSetting('disableHoverTrailer');
-      setSetting('disableHoverTrailer', !setting);
+      const setting = getSetting('showHoverTrailer');
+      setSetting('showHoverTrailer', !setting);
       this.textContent = `Hover Trailer: ${!setting ? 'ON' : 'OFF'}`;
       this.classList.toggle('dev-btn-active', !setting);
     });
@@ -3632,7 +3708,7 @@ function initHoverTrailer() {
   document.addEventListener('mouseover', e => {
     if (document.getElementById('modal-overlay')?.classList.contains('open')) return;
     if (window.matchMedia('(hover: none)').matches) return;
-    if (!getSetting('disableHoverTrailer')) return; // setting = false means disabled
+    if (!getSetting('showHoverTrailer')) return;
 
     const card = e.target.closest('.card[data-id][data-type]');
     const ncCard = e.target.closest('#netflix-card');
@@ -3666,8 +3742,11 @@ function initHoverTrailer() {
     if (e.target === document.documentElement) clearHoverTrailer();
   });
 
-  // Scroll closes the hover card immediately
-  window.addEventListener('scroll', clearHoverTrailer, { passive: true });
+  // Scroll closes the hover card immediately — guard against duplicate listeners
+  if (!window._svScrollHoverBound) {
+    window._svScrollHoverBound = true;
+    window.addEventListener('scroll', clearHoverTrailer, { passive: true });
+  }
 
   // Leaving the netflix card itself
   document.getElementById('netflix-card')?.addEventListener('mouseleave', e => {
@@ -3746,7 +3825,7 @@ async function showNetflixCard(card) {
   const title = card.dataset.title || '';
   const year = card.dataset.year || '';
   const rating = card.dataset.rating || '';
-  const poster = card.dataset.poster || '';
+  const poster = (card.dataset.poster || '').trim() || null;
   const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV Show' : 'Film';
 
   const titleEl = document.getElementById('nc-title');
@@ -3769,7 +3848,7 @@ async function showNetflixCard(card) {
     ].filter(Boolean).join('');
   }
   if (backdrop) {
-    const backdropPath = card.dataset.backdrop;
+    const backdropPath = (card.dataset.backdrop || '').trim() || null;
     if (backdropPath) {
       backdrop.src = `https://image.tmdb.org/t/p/w500${backdropPath}`;
       backdrop.style.display = '';
@@ -3888,7 +3967,7 @@ function positionNetflixCard(card, nc) {
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
   const ncW = 460; // bigger card
-  const ncH = 430;
+  const ncH = Math.min(nc.offsetHeight || 500, window.innerHeight * 0.85);
 
   // Ideal: centered on the card
   let left = rect.left + (rect.width / 2) - (ncW / 2);
@@ -3918,7 +3997,7 @@ function positionNetflixCard(card, nc) {
 
   nc.style.left = `${left}px`;
   nc.style.top = `${top}px`;
-  nc.style.width = `${ncW}px`;
+  nc.style.width = `${ncW}px`; // always set width
 }
 
 async function fetchTrailerKey(id, type) {
@@ -3937,6 +4016,10 @@ async function fetchTrailerKey(id, type) {
     key = '__none__';
   }
   _hoverTrailerCache.set(id, key);
+  if (_hoverTrailerCache.size > 200) {
+    const keys = [..._hoverTrailerCache.keys()].slice(0, 100);
+    keys.forEach(k => _hoverTrailerCache.delete(k));
+  }
   return key;
 }
 
@@ -3966,6 +4049,10 @@ async function fetchRichDetails(id, type) {
       _cert: cert,
     };
     _genreCache.set(id, rich);
+    if (_genreCache.size > 200) {
+      const keys = [..._genreCache.keys()].slice(0, 100);
+      keys.forEach(k => _genreCache.delete(k));
+    }
     return rich;
   } catch {
     return null;
@@ -4078,5 +4165,27 @@ function initKeyboard() {
     } else if (e.key === 'r' || e.key === 'R') {
       if (state.currentPage === 'home') animatedRefreshFeed();
     }
+  });
+
+  // YouTube postMessage watch-time tracking — reward completed watches
+  window.addEventListener('message', e => {
+    if (e.origin !== 'https://www.youtube.com') return;
+    try {
+      const d = JSON.parse(e.data);
+      // playerState 0 = ended — user watched it (or most of it)
+      if (d.event === 'infoDelivery' && d.info?.playerState === 0 && state.currentMedia) {
+        const { id } = state.currentMedia;
+        if (id) {
+          // Reward watching: reduce impression count so content can surface again
+          const imp = state.impressions[id];
+          if (imp && typeof imp === 'object') {
+            state.impressions[id] = { ...imp, count: Math.max(0, imp.count - 10) };
+          } else if (typeof state.impressions[id] === 'number') {
+            state.impressions[id] = Math.max(0, (state.impressions[id] || 0) - 10);
+          }
+          persist('impressions');
+        }
+      }
+    } catch {}
   });
 }

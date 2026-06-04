@@ -4,11 +4,19 @@ if (!window._svAdBlockDisabled) {
 
 /* Block all popup/new-window attempts from embeds */
 const _nativeOpen = window.open;
+const ALLOWED_OPEN_DOMAINS = ['youtube.com', 'twitter.com', 'x.com', 'themoviedb.org', 'anilist.co'];
 window.open = function(url, target, features) {
-  // Allow explicit same-origin opens (e.g., auth flows in our own context)
-  if (url && (url.startsWith('/') || url.startsWith(location.origin))) {
+  if (!url) return null;
+  // Allow same-origin opens
+  if (url.startsWith('/') || url.startsWith(location.origin)) {
     return _nativeOpen.call(this, url, target, features);
   }
+  try {
+    const hostname = new URL(url).hostname;
+    if (ALLOWED_OPEN_DOMAINS.some(d => hostname.endsWith(d))) {
+      return _nativeOpen.call(this, url, target, features);
+    }
+  } catch {}
   return null;
 };
 

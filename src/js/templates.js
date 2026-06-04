@@ -55,7 +55,7 @@ export function injectOverlays() {
             </div>
             <iframe id="player-frame"
               sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
-              allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *"
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
               referrerpolicy="no-referrer"
               title="Content player">
             </iframe>
@@ -97,7 +97,7 @@ export function injectOverlays() {
   <div class="nc-video">
     <iframe id="nc-frame"
       sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-      allow="autoplay *; encrypted-media *; picture-in-picture *"
+      allow="autoplay; encrypted-media; picture-in-picture"
       referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>
@@ -198,7 +198,7 @@ export function injectOverlays() {
     </div>
     <div class="trailer-ov-video">
       <iframe id="trailer-ov-frame"
-        allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *"
+        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
         allowfullscreen
         referrerpolicy="no-referrer"
         title="Trailer">
@@ -264,7 +264,7 @@ export function injectOverlays() {
             <div class="info-trailer-inner">
               <iframe id="info-trailer-frame"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-                allow="autoplay *; encrypted-media *; fullscreen *"
+                allow="autoplay; encrypted-media; fullscreen"
                 referrerpolicy="no-referrer"
                 title="Trailer">
               </iframe>
