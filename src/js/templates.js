@@ -55,7 +55,6 @@ export function injectOverlays() {
             </div>
             <iframe id="player-frame"
               sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
-              allowfullscreen
               allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
               referrerpolicy="no-referrer"
               title="Content player">

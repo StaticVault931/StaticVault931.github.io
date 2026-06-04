@@ -1,13 +1,13 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
-import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete } from './search.js';
+import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
@@ -153,21 +153,24 @@ const SV_SETTINGS = [
 
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
 const SHORTCUTS = [
-  { key: '/', desc: 'Focus search bar', group: 'Navigation' },
-  { key: 'F', desc: 'Open search (Find)', group: 'Navigation' },
-  { key: 'H', desc: 'Go to Home', group: 'Navigation' },
-  { key: 'L', desc: 'Go to Library', group: 'Navigation' },
-  { key: '1–6', desc: 'Jump to page by number', group: 'Navigation' },
-  { key: 'T', desc: 'Cycle theme', group: 'Navigation' },
-  { key: 'W / S', desc: 'Scroll up / down', group: 'Navigation' },
-  { key: '← / A', desc: 'Previous hero slide', group: 'Hero' },
-  { key: '→ / D', desc: 'Next hero slide', group: 'Hero' },
-  { key: 'Esc', desc: 'Close modal / overlay', group: 'Modal' },
-  { key: 'N', desc: 'Try next video source', group: 'Modal' },
-  { key: 'I', desc: 'Toggle info panel', group: 'Modal' },
-  { key: 'Shift+click Apply', desc: 'Refresh without leaving page', group: 'Tips' },
-  { key: 'Shift+click Share', desc: 'Copy link instantly', group: 'Tips' },
-  { key: '?', desc: 'Show keyboard shortcuts', group: 'Tips' },
+  // Navigation — left side
+  { key: 'H',          desc: 'Go to Home',                   group: 'Navigation' },
+  { key: 'L',          desc: 'Go to Library',                group: 'Navigation' },
+  { key: 'T',          desc: 'Cycle theme',                  group: 'Navigation' },
+  { key: '1–6',        desc: 'Jump to page by number',       group: 'Navigation' },
+  { key: 'W / ↑',      desc: 'Scroll up',                    group: 'Navigation' },
+  { key: 'S / ↓',      desc: 'Scroll down',                  group: 'Navigation' },
+  { key: '/ or F',     desc: 'Open search',                  group: 'Navigation' },
+  { key: '← / A',      desc: 'Previous hero slide',          group: 'Navigation' },
+  { key: '→ / D',      desc: 'Next hero slide',              group: 'Navigation' },
+  // Content
+  { key: 'Esc',        desc: 'Close any modal or overlay',   group: 'Content' },
+  { key: 'I',          desc: 'Toggle Info / Player view',    group: 'Content' },
+  { key: 'N',          desc: 'Try next video source',        group: 'Content' },
+  // Tips
+  { key: 'Shift+Apply', desc: 'Refresh feed without redirect', group: 'Tips' },
+  { key: 'Shift+Share', desc: 'Copy link directly',           group: 'Tips' },
+  { key: '?',           desc: 'Show this shortcuts screen',   group: 'Tips' },
 ];
 
 /* ── INIT ────────────────────────────────────────────────────────── */
@@ -193,6 +196,15 @@ const SHORTCUTS = [
   // Start home data loading
   loadHero().catch(() => {});
   loadHomeRows().catch(() => {});
+
+  // Safety retry — if rows are still empty after 3s (initial load failed), try again
+  setTimeout(() => {
+    const trendRow = document.getElementById('row-trending');
+    if (!trendRow?.querySelector('.card')) {
+      _homeLoading = false; // force reset lock
+      loadHomeRows().catch(() => {});
+    }
+  }, 3000);
 
   // URL param deep-link — supports ?watch=type&name=slug&id=X, ?id=X&type=Y, ?page=X
   const sp = new URLSearchParams(location.search);
@@ -293,7 +305,18 @@ function registerAllLoaders() {
   registerLoader('anime', loadAnimePage);
   registerLoader('search', () => {
     loadSearchDefault();
+    buildSearchFilters(document.getElementById('sf-advanced-wrap'));
     setTimeout(() => document.getElementById('search-input')?.focus(), 100);
+  });
+
+  // Advanced filters toggle
+  document.getElementById('sf-advanced-toggle')?.addEventListener('click', function() {
+    const wrap = document.getElementById('sf-advanced-wrap');
+    if (!wrap) return;
+    const open = wrap.style.display !== 'none';
+    wrap.style.display = open ? 'none' : '';
+    this.classList.toggle('on', !open);
+    if (!open) buildSearchFilters(wrap);
   });
   registerLoader('library', renderLibrary);
   registerLoader('prefs', loadPrefsPage);
@@ -468,7 +491,7 @@ function renderContinueRow() {
     return;
   }
   if (sec) sec.style.display = '';
-  row.innerHTML = items.map(item => makeCard(item, item.type || 'movie', { showProgress: true })).join('');
+  row.innerHTML = items.map(item => makeCard(item, item.type || 'movie', { showProgress: false })).join('');
 }
 
 function renderRecentRow() {
@@ -612,25 +635,25 @@ function loadPrefsPage() {
 function buildAgeRatingUI() {
   const container = document.getElementById('pref-age-row');
   if (!container) return;
-  // Film ratings → TV equivalents shown as hint
-  const ratings = [
-    { r: 'G',     hint: 'TV-Y / TV-G' },
-    { r: 'PG',    hint: 'TV-PG' },
-    { r: 'PG-13', hint: 'TV-14' },
-    { r: 'R',     hint: 'TV-MA' },
-    { r: 'NC-17', hint: 'Adults only' },
-  ];
-  container.innerHTML = ratings.map(({ r, hint }) => `
-    <button class="age-btn${state.ageRating === r ? ' on' : ''}" data-age="${r}" title="${hint}">
-      ${r}<span class="age-btn-hint">${hint}</span>
-    </button>
-  `).join('');
+  const curLevel = AGE_LEVELS[state.ageRating] ?? 4;
+
+  container.innerHTML = ALL_RATINGS.map(({ r, level, desc }) => {
+    const active = AGE_LEVELS[state.ageRating] === level;
+    const allowed = level <= curLevel;
+    return `<button class="age-btn${active ? ' on' : ''}${allowed ? ' age-allowed' : ''}"
+      data-age="${r}" data-level="${level}" title="${desc}">
+      <span class="age-btn-code">${r}</span>
+      <span class="age-btn-hint">${desc}</span>
+    </button>`;
+  }).join('');
+
   container.querySelectorAll('.age-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.ageRating = btn.dataset.age;
       persist('ageRating');
-      container.querySelectorAll('.age-btn').forEach(b => b.classList.toggle('on', b.dataset.age === state.ageRating));
+      buildAgeRatingUI(); // re-render
       buildRatingDescriptions();
+      window._prefsDirty = true;
     });
   });
 }
@@ -2048,14 +2071,41 @@ export async function openInfoPage(id, type, hint = {}) {
     const ovEl = document.getElementById('info-overview');
     if (ovEl) ovEl.textContent = details.overview || '';
 
-    // Side: ratings + details
+    // Side: full ratings + extra details
     const ratingsEl = document.getElementById('info-ratings');
     if (ratingsEl) {
-      ratingsEl.innerHTML = [
-        ratingVal ? `<div class="r-chip"><div class="rv ${ratingVal >= 9 ? 'rv-great' : ratingVal >= 7 ? 'rv-gold' : 'rv-ok'}">${ratingVal.toFixed(1)}</div><div class="rs">TMDB</div></div>` : '',
-        details.vote_count >= 10 ? `<div class="r-chip"><div class="rv">${details.vote_count >= 1000 ? (details.vote_count/1000).toFixed(1)+'K' : details.vote_count}</div><div class="rs">Votes</div></div>` : '',
-        details.popularity >= 5 ? `<div class="r-chip"><div class="rv">${Math.round(details.popularity)}</div><div class="rs">Popularity</div></div>` : '',
-      ].filter(Boolean).join('');
+      // Get certification
+      let cert = '';
+      if (type === 'movie') cert = (details.release_dates?.results || []).find(r => r.iso_3166_1 === 'US')?.release_dates?.[0]?.certification || '';
+      else cert = (details.content_ratings?.results || []).find(r => r.iso_3166_1 === 'US')?.rating || '';
+
+      const budget = details.budget > 0 ? `$${(details.budget / 1e6).toFixed(0)}M` : null;
+      const revenue = details.revenue > 0 ? `$${(details.revenue / 1e6).toFixed(0)}M` : null;
+      const networks = (details.networks || []).slice(0, 2).map(n => n.name).join(', ');
+      const prodCos = (details.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
+      const creators = (details.created_by || []).map(c => c.name).join(', ');
+      const keywords = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 8).map(k => k.name);
+
+      ratingsEl.innerHTML = `
+        <div class="info-ratings-inner">
+          <div class="modal-ratings">
+            ${ratingVal ? `<div class="r-chip"><div class="rv ${ratingVal >= 9 ? 'rv-great' : ratingVal >= 7 ? 'rv-gold' : 'rv-ok'}">${ratingVal.toFixed(1)}</div><div class="rs">TMDB Score</div></div>` : ''}
+            ${details.vote_count >= 10 ? `<div class="r-chip"><div class="rv">${details.vote_count >= 1000 ? (details.vote_count/1000).toFixed(1)+'K' : details.vote_count}</div><div class="rs">Votes</div></div>` : ''}
+            ${details.number_of_seasons > 1 ? `<div class="r-chip"><div class="rv">${details.number_of_seasons}</div><div class="rs">Seasons</div></div>` : ''}
+            ${details.number_of_episodes ? `<div class="r-chip"><div class="rv">${details.number_of_episodes}</div><div class="rs">Episodes</div></div>` : ''}
+            ${cert ? `<div class="r-chip"><div class="rv">${cert}</div><div class="rs">Rating</div></div>` : ''}
+          </div>
+          <div class="info-extra-details">
+            ${details.status ? `<div class="info-detail-row"><span class="info-detail-key">Status</span><span class="info-detail-val">${esc(details.status)}</span></div>` : ''}
+            ${details.original_language ? `<div class="info-detail-row"><span class="info-detail-key">Language</span><span class="info-detail-val">${esc(details.original_language.toUpperCase())}</span></div>` : ''}
+            ${creators ? `<div class="info-detail-row"><span class="info-detail-key">Creator</span><span class="info-detail-val">${esc(creators)}</span></div>` : ''}
+            ${networks ? `<div class="info-detail-row"><span class="info-detail-key">Network</span><span class="info-detail-val">${esc(networks)}</span></div>` : ''}
+            ${prodCos ? `<div class="info-detail-row"><span class="info-detail-key">Studio</span><span class="info-detail-val">${esc(prodCos)}</span></div>` : ''}
+            ${budget ? `<div class="info-detail-row"><span class="info-detail-key">Budget</span><span class="info-detail-val">${budget}</span></div>` : ''}
+            ${revenue ? `<div class="info-detail-row"><span class="info-detail-key">Revenue</span><span class="info-detail-val">${revenue}</span></div>` : ''}
+          </div>
+          ${keywords.length ? `<div class="info-keywords">${keywords.map(k => `<span class="info-genre">${esc(k)}</span>`).join('')}</div>` : ''}
+        </div>`;
     }
 
     // Side: actions
@@ -2215,13 +2265,22 @@ function initShortcutsModal() {
   const grid = document.getElementById('shortcuts-grid');
   if (grid) {
     const groups = [...new Set(SHORTCUTS.map(s => s.group))];
-    grid.innerHTML = groups.map(g => `
+    // Split groups evenly into 2 columns
+    const half = Math.ceil(groups.length / 2);
+    const leftGroups = groups.slice(0, half);
+    const rightGroups = groups.slice(half);
+
+    const renderGroup = (g) => `
       <div class="sc-group">
         <div class="sc-group-label">${g}</div>
         ${SHORTCUTS.filter(s => s.group === g).map(s =>
           `<div class="sc-item"><kbd class="sc-key">${esc(s.key)}</kbd><span class="sc-desc">${esc(s.desc)}</span></div>`
         ).join('')}
-      </div>`).join('');
+      </div>`;
+
+    grid.innerHTML = `
+      <div class="sc-col">${leftGroups.map(renderGroup).join('')}</div>
+      <div class="sc-col">${rightGroups.map(renderGroup).join('')}</div>`;
   }
   ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
   document.getElementById('shortcuts-close')?.addEventListener('click', () => ov.classList.remove('open'));
@@ -3054,7 +3113,15 @@ function initKeyboard() {
         toast(`Switched to ${next.label}`, 'swap_horiz');
       }
     } else if (e.key === 'i' || e.key === 'I') {
-      document.getElementById('left-panel-toggle')?.click();
+      // Toggle between info page and player modal
+      if (document.getElementById('info-overlay')?.classList.contains('open')) {
+        closeInfoPage();
+        if (state.currentInfoMedia) openMedia(state.currentInfoMedia.id, state.currentInfoMedia.type, { _forcePlayer: true });
+      } else if (document.getElementById('modal-overlay')?.classList.contains('open') && state.currentMedia) {
+        const { id, type } = state.currentMedia;
+        closeModal();
+        openInfoPage(id, type);
+      }
     }
   });
 }

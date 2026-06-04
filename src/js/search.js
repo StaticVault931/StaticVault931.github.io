@@ -1,10 +1,142 @@
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
-import { state, addRecentSearch, clearRecentSearches } from './state.js';
+import { state, GENRES, addRecentSearch, clearRecentSearches } from './state.js';
 
 let _debounce = null;
 let _sfActive = 'all';
 let _searchState = { query: '', page: 1, results: [], loading: false, done: false };
+
+// Advanced filters
+let _filters = {
+  genre: null,       // TMDB genre id
+  yearFrom: null,
+  yearTo: null,
+  minRating: null,   // 0–10
+  contentType: 'all', // all / movie / tv / anime
+};
+
+export function getSearchFilters() { return { ..._filters }; }
+
+export function buildSearchFilters(container) {
+  if (!container) return;
+  const currentYear = new Date().getFullYear();
+  container.innerHTML = `
+    <div class="sf-advanced" id="sf-advanced">
+      <div class="sf-filter-row">
+        <label class="sf-filter-label">Genre
+          <select class="sf-filter-sel" id="sf-genre">
+            <option value="">Any</option>
+            ${GENRES.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+          </select>
+        </label>
+        <label class="sf-filter-label">Type
+          <select class="sf-filter-sel" id="sf-ctype">
+            <option value="all">All</option>
+            <option value="movie">Movies</option>
+            <option value="tv">TV Shows</option>
+            <option value="anime">Anime</option>
+          </select>
+        </label>
+        <label class="sf-filter-label">Min Rating
+          <select class="sf-filter-sel" id="sf-rating">
+            <option value="">Any</option>
+            <option value="9">★ 9+</option>
+            <option value="8">★ 8+</option>
+            <option value="7">★ 7+</option>
+            <option value="6">★ 6+</option>
+            <option value="5">★ 5+</option>
+          </select>
+        </label>
+        <label class="sf-filter-label">Year From
+          <select class="sf-filter-sel" id="sf-year-from">
+            <option value="">Any</option>
+            ${Array.from({length: 40}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+          </select>
+        </label>
+        <label class="sf-filter-label">Year To
+          <select class="sf-filter-sel" id="sf-year-to">
+            <option value="">Any</option>
+            ${Array.from({length: 40}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+          </select>
+        </label>
+        <button class="sf-filter-clear" id="sf-filter-clear" title="Clear all filters">
+          <span class="material-icons-round">filter_alt_off</span> Clear
+        </button>
+      </div>
+    </div>`;
+
+  container.querySelectorAll('.sf-filter-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      _filters.genre = document.getElementById('sf-genre')?.value || null;
+      _filters.contentType = document.getElementById('sf-ctype')?.value || 'all';
+      _filters.minRating = document.getElementById('sf-rating')?.value ? parseFloat(document.getElementById('sf-rating').value) : null;
+      _filters.yearFrom = document.getElementById('sf-year-from')?.value ? parseInt(document.getElementById('sf-year-from').value) : null;
+      _filters.yearTo = document.getElementById('sf-year-to')?.value ? parseInt(document.getElementById('sf-year-to').value) : null;
+      // Re-trigger search or browse
+      const inp = document.getElementById('search-input');
+      const q = inp?.value.trim();
+      if (q) {
+        import('./search.js').then(m => m.doSearch?.(q)).catch(() => {
+          document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
+        });
+      } else {
+        browseByFilters();
+      }
+    });
+  });
+
+  document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
+    _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all' };
+    container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
+    const inp = document.getElementById('search-input');
+    if (inp?.value.trim()) loadSearchDefault();
+    else loadSearchDefault();
+  });
+}
+
+async function browseByFilters() {
+  const area = document.getElementById('search-results-area');
+  if (!area) return;
+  area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
+
+  try {
+    const params = { sort_by: 'popularity.desc' };
+    if (_filters.genre) params.with_genres = _filters.genre;
+    if (_filters.minRating) params['vote_average.gte'] = _filters.minRating;
+    if (_filters.yearFrom && _filters.contentType !== 'tv') params['primary_release_date.gte'] = `${_filters.yearFrom}-01-01`;
+    if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
+    if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
+    if (_filters.yearTo && _filters.contentType === 'tv') params['first_air_date.lte'] = `${_filters.yearTo}-12-31`;
+
+    let items = [];
+    if (_filters.contentType === 'anime') {
+      const Q = `query{Page(perPage:20){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,${_filters.genre ? `genre:"${_filters.genre}"` : ''}){id title{romaji english}coverImage{large}averageScore startDate{year}popularity}}}`;
+      const d = await aniQuery(Q);
+      items = (d?.data?.Page?.media || []).map(m => ({ ...normalizeAnime(m), _type: 'anime' }));
+    } else if (_filters.contentType === 'tv') {
+      const d = await tmdb('/discover/tv', params);
+      items = (d.results || []).map(x => ({ ...x, _type: 'tv' }));
+    } else {
+      const [mv, tv] = await Promise.allSettled([
+        _filters.contentType !== 'tv' ? tmdb('/discover/movie', params) : Promise.resolve({ results: [] }),
+        _filters.contentType !== 'movie' ? tmdb('/discover/tv', params) : Promise.resolve({ results: [] }),
+      ]);
+      const movies = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, _type: 'movie' })) : [];
+      const shows = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, _type: 'tv' })) : [];
+      items = [...movies, ...shows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    }
+
+    if (!items.length) {
+      area.innerHTML = `<div class="search-empty"><span class="material-icons-round">search_off</span><p>No content matches these filters.</p></div>`;
+      return;
+    }
+    area.innerHTML = `
+      <div class="search-section-title"><span class="material-icons-round">filter_list</span>Filtered Results (${items.length})</div>
+      <div class="search-grid">${items.slice(0, 24).map(m => makeCard(m, m._type || (m.media_type === 'tv' ? 'tv' : 'movie'))).join('')}</div>`;
+  } catch {
+    area.innerHTML = `<div class="search-empty"><span class="material-icons-round">wifi_off</span><p>Could not load filtered content.</p></div>`;
+  }
+}
 
 /* ── QUERY NORMALISER ────────────────────────────────────────────── */
 function normalizeQuery(q) {

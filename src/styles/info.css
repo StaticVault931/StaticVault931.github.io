@@ -14,7 +14,7 @@
 #info-panel {
   min-height: 100%;
   background: var(--bg);
-  max-width: 1200px;
+  max-width: 1440px;  /* wider */
   margin: 0 auto;
   position: relative;
 }
@@ -168,9 +168,9 @@
 /* ── MAIN CONTENT ─────────────────────────────────────────────────── */
 .info-content {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 2rem;
-  padding: 2rem 2.5rem 3rem;
+  grid-template-columns: 1fr 320px;
+  gap: 2.5rem;
+  padding: 2rem 3rem 4rem;
 }
 .info-col-main { min-width: 0; }
 .info-col-side { display: flex; flex-direction: column; gap: 1.2rem; }
@@ -253,10 +253,16 @@
 
 /* ── SIDE PANEL ──────────────────────────────────────────────────── */
 .info-ratings-wrap {
-  display: flex; flex-wrap: wrap; gap: .4rem;
-  padding: .8rem; background: var(--s2); border-radius: 8px;
+  background: var(--s2); border-radius: 8px;
   border: 1px solid var(--border);
+  overflow: hidden;
 }
+.info-ratings-inner { padding: .8rem; }
+.info-extra-details { margin-top: .75rem; display: flex; flex-direction: column; gap: .3rem; }
+.info-detail-row { display: flex; justify-content: space-between; gap: .5rem; font-size: .78rem; }
+.info-detail-key { color: var(--muted); font-weight: 700; flex-shrink: 0; }
+.info-detail-val { color: var(--text); text-align: right; }
+.info-keywords { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 .info-actions {
   display: flex; flex-direction: column; gap: .4rem;
 }

@@ -29,12 +29,25 @@ export const GENRES = [
 ];
 
 export const AGE_LEVELS = {
-  'G': 0, 'TV-Y': 0, 'TV-G': 0,
-  'PG': 1, 'TV-Y7': 1, 'TV-PG': 1,
-  'PG-13': 2, 'TV-14': 2,
-  'R': 3, 'TV-MA': 3,
-  'NC-17': 4,
+  'TV-Y':   0,
+  'TV-Y7':  1,
+  'G':      2, 'TV-G': 2,
+  'PG':     3, 'TV-PG': 3,
+  'PG-13':  4, 'TV-14': 4,
+  'R':      5, 'TV-MA': 5,
+  'NC-17':  6,
 };
+
+// All ratings in display order
+export const ALL_RATINGS = [
+  { r: 'TV-Y',   level: 0, desc: 'All children' },
+  { r: 'TV-Y7',  level: 1, desc: 'Ages 7+' },
+  { r: 'G',      level: 2, desc: 'All ages / TV-G' },
+  { r: 'PG',     level: 3, desc: 'Parental guidance / TV-PG' },
+  { r: 'PG-13',  level: 4, desc: 'Ages 13+ / TV-14' },
+  { r: 'R',      level: 5, desc: 'Restricted / TV-MA' },
+  { r: 'NC-17',  level: 6, desc: 'Adults only' },
+];
 
 /* ── APP STATE ───────────────────────────────────────────────────── */
 export const state = {
