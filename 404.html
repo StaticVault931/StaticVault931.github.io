@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>404 — StaticVault931</title>
+<meta name="robots" content="noindex"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050505;
+    color: #fff;
+    font-family: 'Nunito', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    overflow: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(229,9,20,.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .num {
+    font-family: 'Bebas Neue', Impact, sans-serif;
+    font-size: clamp(8rem, 25vw, 18rem);
+    line-height: .85;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, #e50914 0%, #ff6b6b 50%, #e50914 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    user-select: none;
+    animation: glow 3s ease-in-out infinite alternate;
+  }
+  @keyframes glow {
+    from { filter: drop-shadow(0 0 20px rgba(229,9,20,.3)); }
+    to   { filter: drop-shadow(0 0 60px rgba(229,9,20,.7)); }
+  }
+  .emoji { font-size: clamp(2.5rem, 8vw, 5rem); margin: .5rem 0; animation: bounce 2s ease-in-out infinite; }
+  @keyframes bounce {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-12px); }
+  }
+  h1 {
+    font-family: 'Bebas Neue', Impact, sans-serif;
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: .5rem;
+  }
+  p {
+    color: rgba(255,255,255,.55);
+    font-size: clamp(.85rem, 2vw, 1.1rem);
+    max-width: 460px;
+    line-height: 1.7;
+    margin-bottom: 2rem;
+  }
+  .btns { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .7rem 1.8rem;
+    border-radius: 4px;
+    font-family: 'Nunito', sans-serif;
+    font-size: .9rem;
+    font-weight: 800;
+    text-decoration: none;
+    transition: all .2s;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary {
+    background: #e50914;
+    color: #fff;
+    box-shadow: 0 6px 30px rgba(229,9,20,.4);
+  }
+  .btn-primary:hover { background: #f6121d; transform: translateY(-2px); box-shadow: 0 10px 40px rgba(229,9,20,.5); }
+  .btn-secondary {
+    background: rgba(255,255,255,.08);
+    color: #fff;
+    border: 1.5px solid rgba(255,255,255,.2);
+    backdrop-filter: blur(8px);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,.14); transform: translateY(-2px); }
+  .popcorn {
+    position: fixed;
+    bottom: -20px;
+    font-size: 2rem;
+    animation: float linear infinite;
+    pointer-events: none;
+    user-select: none;
+    opacity: .6;
+  }
+  @keyframes float {
+    from { transform: translateY(0) rotate(0deg); opacity: .6; }
+    to   { transform: translateY(-110vh) rotate(360deg); opacity: 0; }
+  }
+  .credit {
+    position: fixed;
+    bottom: 1rem;
+    font-size: .72rem;
+    color: rgba(255,255,255,.25);
+  }
+  .credit a { color: rgba(255,255,255,.4); text-decoration: none; }
+  .credit a:hover { color: rgba(255,255,255,.7); }
+</style>
+</head>
+<body>
+
+<div class="num">404</div>
+<div class="emoji">🍿</div>
+<h1>Scene Not Found</h1>
+<p>Looks like this page went on an unscheduled intermission.<br>
+Don't worry — the show goes on back home.</p>
+
+<div class="btns">
+  <a href="/" class="btn btn-primary">🎬 Back to StaticVault</a>
+  <a href="/?page=search" class="btn btn-secondary">🔍 Search Content</a>
+</div>
+
+<div class="credit">
+  <a href="https://staticvault931.github.io/">StaticVault931</a> ·
+  Made by <a href="https://sites.google.com/view/staticquasar931/gm3z">StaticQuasar931</a>
+</div>
+
+<script>
+  const emojis = ['🎬','🍿','🎭','🎥','📽️','⭐','🎞️','🎦'];
+  function spawnPopcorn() {
+    const el = document.createElement('div');
+    el.className = 'popcorn';
+    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.animationDuration = (4 + Math.random() * 5) + 's';
+    el.style.animationDelay = (Math.random() * 3) + 's';
+    el.style.fontSize = (1.2 + Math.random() * 1.8) + 'rem';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 9000);
+  }
+  setInterval(spawnPopcorn, 800);
+  for (let i = 0; i < 5; i++) setTimeout(spawnPopcorn, i * 200);
+</script>
+</body>
+</html>

@@ -140,17 +140,21 @@ function closeLegal() {
 
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
 const SHORTCUTS = [
-  { key: '/', desc: 'Open search', group: 'Navigation' },
+  { key: '/', desc: 'Focus search bar', group: 'Navigation' },
+  { key: 'F', desc: 'Open search (Find)', group: 'Navigation' },
   { key: 'H', desc: 'Go to Home', group: 'Navigation' },
   { key: 'L', desc: 'Go to Library', group: 'Navigation' },
-  { key: 'S', desc: 'Go to Search', group: 'Navigation' },
+  { key: '1–6', desc: 'Jump to page by number', group: 'Navigation' },
   { key: 'T', desc: 'Cycle theme', group: 'Navigation' },
-  { key: 'Esc', desc: 'Close modal / dialog', group: 'Modal' },
-  { key: 'N', desc: 'Try next provider', group: 'Modal' },
-  { key: 'I', desc: 'Toggle info panel', group: 'Modal' },
+  { key: 'W / S', desc: 'Scroll up / down', group: 'Navigation' },
   { key: '← / A', desc: 'Previous hero slide', group: 'Hero' },
   { key: '→ / D', desc: 'Next hero slide', group: 'Hero' },
-  { key: '?', desc: 'Show this help screen', group: 'Help' },
+  { key: 'Esc', desc: 'Close modal / overlay', group: 'Modal' },
+  { key: 'N', desc: 'Try next video source', group: 'Modal' },
+  { key: 'I', desc: 'Toggle info panel', group: 'Modal' },
+  { key: 'Shift+click Apply', desc: 'Refresh without leaving page', group: 'Tips' },
+  { key: 'Shift+click Share', desc: 'Copy link instantly', group: 'Tips' },
+  { key: '?', desc: 'Show keyboard shortcuts', group: 'Tips' },
 ];
 
 /* ── INIT ────────────────────────────────────────────────────────── */
@@ -251,7 +255,16 @@ function initHeader() {
 
 /* ── PAGE LOADERS ────────────────────────────────────────────────── */
 function registerAllLoaders() {
-  registerLoader('home', () => { /* already loaded at init */ });
+  registerLoader('home', () => {
+    // Always refresh local rows (instant from localStorage)
+    renderContinueRow();
+    renderRecentRow();
+    // If main rows still show skeletons or are empty, reload them
+    const trendRow = document.getElementById('row-trending');
+    if (!trendRow || !trendRow.querySelector('.card')) {
+      loadHomeRows().catch(() => {});
+    }
+  });
   registerLoader('movies', loadMoviesPage);
   registerLoader('tv', loadTvPage);
   registerLoader('anime', loadAnimePage);
@@ -407,8 +420,6 @@ async function loadHomeRows() {
       .catch(() => {}),
     loadForYou(),
   ]);
-
-  if (gen !== _homeGen) return; // cancelled by a newer load
 
   // ── BATCH 2: just below the fold — load right after ─────────────────
   Promise.allSettled([
@@ -577,16 +588,24 @@ function loadPrefsPage() {
 function buildAgeRatingUI() {
   const container = document.getElementById('pref-age-row');
   if (!container) return;
-  const ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17'];
-  container.innerHTML = ratings.map(r => `
-    <button class="age-btn${state.ageRating === r ? ' on' : ''}" data-age="${r}">${r}</button>
+  // Film ratings → TV equivalents shown as hint
+  const ratings = [
+    { r: 'G',     hint: 'TV-Y / TV-G' },
+    { r: 'PG',    hint: 'TV-PG' },
+    { r: 'PG-13', hint: 'TV-14' },
+    { r: 'R',     hint: 'TV-MA' },
+    { r: 'NC-17', hint: 'Adults only' },
+  ];
+  container.innerHTML = ratings.map(({ r, hint }) => `
+    <button class="age-btn${state.ageRating === r ? ' on' : ''}" data-age="${r}" title="${hint}">
+      ${r}<span class="age-btn-hint">${hint}</span>
+    </button>
   `).join('');
   container.querySelectorAll('.age-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.ageRating = btn.dataset.age;
       persist('ageRating');
       container.querySelectorAll('.age-btn').forEach(b => b.classList.toggle('on', b.dataset.age === state.ageRating));
-      toast(`Content rating set to ${state.ageRating}`, 'child_care');
       buildRatingDescriptions();
     });
   });
@@ -770,8 +789,14 @@ export async function openMedia(id, type, hint = {}) {
 function showAgeWarning(rating, useId, type) {
   const warn = document.getElementById('age-warn');
   if (!warn) return;
+  const ratingBadge = document.getElementById('age-warn-rating');
   const msg = document.getElementById('age-warn-msg');
-  if (msg) msg.textContent = `This content is rated "${rating}" which is above your selected rating of "${state.ageRating}".`;
+  const allowTypeBtn = document.getElementById('warn-allow-type-btn');
+  if (ratingBadge) ratingBadge.textContent = rating;
+  if (msg) msg.textContent = `This content is rated "${rating}" — above your setting of "${state.ageRating}".`;
+  if (allowTypeBtn) allowTypeBtn.textContent = `Update rating to ${rating}`;
+  // Store for allow handlers
+  if (state.currentMedia) state.currentMedia._contentRating = rating;
   warn.style.display = 'flex';
 }
 
@@ -1140,6 +1165,25 @@ function initEventDelegation() {
   // Age warn buttons
   document.getElementById('warn-proceed-btn')?.addEventListener('click', () => {
     document.getElementById('age-warn').style.display = 'none';
+    if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
+  });
+  document.getElementById('warn-allow-type-btn')?.addEventListener('click', () => {
+    // Raise content rating to match this specific content
+    const aw = document.getElementById('age-warn');
+    if (!aw) return;
+    aw.style.display = 'none';
+    // Set rating to NC-17 so this type shows up
+    const newRating = state.currentMedia?._contentRating || 'R';
+    state.ageRating = newRating;
+    persist('ageRating');
+    toast(`Content rating updated to ${newRating}`, 'child_care');
+    if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
+  });
+  document.getElementById('warn-allow-all-btn')?.addEventListener('click', () => {
+    state.ageRating = 'NC-17';
+    persist('ageRating');
+    document.getElementById('age-warn').style.display = 'none';
+    toast('All content ratings unlocked', 'lock_open');
     if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
   });
   document.getElementById('warn-back-btn')?.addEventListener('click', closeModal);
@@ -1777,16 +1821,16 @@ function initShortcutsModal() {
 }
 
 /* ── TESTING MODE ────────────────────────────────────────────────── */
-// Activation: click the FOOTER logo 5× within 3s, then type "931931"
+// Step 1: Footer logo (bottom bar text) × 5 within 3s
+// Step 2: Type "938938" at any time within 15s of step 1
+// Must be on Library or CYF page when entering code
 let _testFooterClicks = 0;
 let _testClickTimer = null;
 let _testCodeArmed = false;
 let _testCodeTyped = '';
-const TEST_CODE = '931931';
+const TEST_CODE = '938938'; // changed from 931931
 
 function initTestMode() {
-  // Step 1: Footer logo 5× within 3 seconds
-  // (footer logo is injected by the existing HTML — it's in #footer .footer-logo)
   document.getElementById('footer')?.addEventListener('click', e => {
     if (!e.target.closest('.footer-logo, .footer-bottom')) return;
     _testFooterClicks++;
@@ -1795,24 +1839,37 @@ function initTestMode() {
       _testFooterClicks = 0;
       _testCodeArmed = true;
       _testCodeTyped = '';
-      toast('Type the code…', 'lock');
+      // Navigate to library as step 1.5
+      goPage('library');
       _testClickTimer = setTimeout(() => { _testCodeArmed = false; _testCodeTyped = ''; }, 15000);
     } else {
       _testClickTimer = setTimeout(() => { _testFooterClicks = 0; }, 2500);
     }
   });
 
-  // Step 2: Type "931931" while code is armed
   document.addEventListener('keydown', e => {
-    if (!_testCodeArmed || e.target.matches('input,textarea')) return;
+    if (!_testCodeArmed || e.target.matches('input,textarea,select')) return;
+    // Only accept digit keys to build the code
     if (/^[0-9]$/.test(e.key)) {
       _testCodeTyped += e.key;
+      if (_testCodeTyped.length > TEST_CODE.length * 2) {
+        _testCodeTyped = _testCodeTyped.slice(-TEST_CODE.length * 2);
+      }
       if (_testCodeTyped.endsWith(TEST_CODE)) {
+        // Must be on library or prefs page
+        const page = state.currentPage;
+        if (page !== 'library' && page !== 'prefs') {
+          _testCodeArmed = false; _testCodeTyped = '';
+          return;
+        }
         clearTimeout(_testClickTimer);
         _testCodeArmed = false; _testCodeTyped = ''; _testFooterClicks = 0;
         const on = document.body.classList.toggle('test-mode');
-        toast(on ? '🧪 Dev Mode ON' : '🧪 Dev Mode OFF', 'science');
         if (on) { populateTestPanel(); goPage('prefs'); }
+        else {
+          const panel = document.getElementById('dev-test-panel');
+          if (panel) panel.style.display = 'none';
+        }
       }
     } else if (e.key === 'Escape') {
       _testCodeArmed = false; _testCodeTyped = '';
@@ -1849,7 +1906,7 @@ function buildTestProviderRow(p) {
 }
 
 function populateTestPanel() {
-  // Inject the test section into the CYF page (if not already there)
+  // Create panel once; CSS shows it when test-mode is active on prefs/library
   let panel = document.getElementById('dev-test-panel');
   if (!panel) {
     panel = document.createElement('div');
@@ -1897,8 +1954,26 @@ function populateTestPanel() {
         <div class="dev-providers-grid" id="dev-providers-grid"></div>
       </div>`;
 
+    // Append to prefs page; library gets a reference copy
     const prefsPage = document.getElementById('page-prefs');
     if (prefsPage) prefsPage.appendChild(panel);
+    // Also append a clone to library page
+    const libPage = document.getElementById('page-library');
+    if (libPage) {
+      const clone = panel.cloneNode(false);
+      clone.id = 'dev-test-panel-lib';
+      clone.className = 'dev-test-panel';
+      clone.style.cssText = 'display:none;margin-top:2.5rem;border:1.5px dashed rgba(229,9,20,.35);border-radius:10px;overflow:hidden;background:rgba(229,9,20,.04);';
+      clone.innerHTML = `<div class="dev-panel-header" style="padding:.45rem 1rem;font-size:.72rem">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--red)"><path d="M9.4 3L7 8H3l7.5 13 2-7.5H17L9.4 3z"/></svg>
+        <span>Dev Mode Active — Go to <button style="background:none;border:none;color:var(--red);font-weight:800;cursor:pointer;font-size:.72rem;text-decoration:underline" onclick="goPage&&goPage('prefs')">Customize Feed</button> to open the testing panel</span>
+      </div>`;
+      libPage.appendChild(clone);
+      // Show the lib clone when test mode is on
+      new MutationObserver(() => {
+        clone.style.display = document.body.classList.contains('test-mode') ? 'block' : 'none';
+      }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Wire up buttons (single init)
     document.getElementById('dev-close')?.addEventListener('click', () => {
@@ -2476,6 +2551,13 @@ function initKeyboard() {
     } else if (e.key === 'l' || e.key === 'L') {
       goPage('library');
     } else if (e.key === 's' || e.key === 'S') {
+      // S scrolls down
+      window.scrollBy({ top: window.innerHeight * 0.6, behavior: 'smooth' });
+    } else if (e.key === 'w' || e.key === 'W') {
+      // W scrolls up
+      window.scrollBy({ top: -window.innerHeight * 0.6, behavior: 'smooth' });
+    } else if (e.key === 'f' || e.key === 'F') {
+      // F opens search (Find)
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 100);
     } else if (e.key === 'n' || e.key === 'N') {

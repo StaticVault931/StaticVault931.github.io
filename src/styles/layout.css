@@ -818,6 +818,16 @@
   transition: all .18s;
 }
 .age-btn:hover { border-color: var(--border3); color: var(--text); background: var(--s3); }
+.age-btn-hint {
+  display: block;
+  font-size: .58rem;
+  font-weight: 700;
+  color: var(--dim);
+  margin-top: 2px;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+.age-btn.on .age-btn-hint { color: rgba(255,255,255,.7); }
 .age-btn.on {
   background: var(--red);
   border-color: var(--red);

@@ -21,15 +21,14 @@ export function injectOverlays() {
       <button id="modal-close" aria-label="Close">
         <span class="material-icons-round">close</span>
       </button>
-      <div class="modal-top-spacer"></div>
       <button class="modal-panel-toggle" id="left-panel-toggle" title="Toggle info panel" aria-label="Toggle info panel">
         <span class="material-icons-round">view_sidebar</span>
       </button>
-      <button class="modal-panel-toggle" id="right-panel-toggle" title="Toggle episodes panel" aria-label="Toggle episodes panel">
+      <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
+      <button class="modal-panel-toggle modal-panel-toggle-r" id="right-panel-toggle" title="Toggle episodes panel" aria-label="Toggle episodes panel">
         <span class="material-icons-round">view_sidebar</span>
       </button>
     </div>
-    <div class="provider-bar" id="provider-bar" aria-label="Video sources"></div>
     <div class="modal-body">
       <div class="modal-left-panel" id="modal-left-panel">
         <div class="modal-poster-wrap" id="modal-poster">
@@ -63,10 +62,13 @@ export function injectOverlays() {
             </iframe>
           </div>
           <div id="age-warn" style="display:none" role="alertdialog" aria-labelledby="age-warn-title">
+            <span class="age-warn-rating" id="age-warn-rating"></span>
             <h2 id="age-warn-title">Age Restricted</h2>
-            <p id="age-warn-msg">This content may be above your selected age rating.</p>
+            <p id="age-warn-msg">This content is above your selected age rating.</p>
             <div class="warn-btns">
               <button class="warn-proceed" id="warn-proceed-btn">Watch Anyway</button>
+              <button class="warn-allow-type" id="warn-allow-type-btn">Allow this rating</button>
+              <button class="warn-allow-all" id="warn-allow-all-btn">Allow all content</button>
               <button class="warn-back" id="warn-back-btn">Go Back</button>
             </div>
           </div>

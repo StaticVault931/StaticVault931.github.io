@@ -401,19 +401,18 @@
 .modal-left-panel.panel-collapsed  { width: 0 !important; min-width: 0 !important; overflow: hidden; border: none; padding: 0; }
 .modal-right-panel.panel-collapsed { width: 0 !important; min-width: 0 !important; overflow: hidden; border: none; padding: 0; }
 
-/* Provider bar — sits below the modal top-bar as its own row */
+/* Provider bar — inside modal top bar, flex:1 takes middle space */
 .provider-bar {
   display: flex;
   align-items: center;
-  gap: .35rem;
-  padding: .42rem .7rem;
-  background: var(--s1);
-  border-bottom: 1px solid var(--border);
+  gap: .3rem;
+  padding: 0 .4rem;
+  background: transparent;
   overflow-x: auto;
   scrollbar-width: none;
   flex-wrap: nowrap;
-  flex-shrink: 0;
-  z-index: 10;
+  flex: 1;
+  min-width: 0;
 }
 .provider-bar::-webkit-scrollbar { display: none; }
 .prov-label {
@@ -1123,7 +1122,11 @@
   overflow: hidden;
   background: rgba(229,9,20,.04);
 }
-body.test-mode #dev-test-panel { display: block; }
+/* Show on both CYF and Library pages when test mode is active */
+body.test-mode #page-prefs #dev-test-panel,
+body.test-mode #page-library #dev-test-panel { display: block; }
+/* Also show if directly in body (fallback) */
+body.test-mode > #dev-test-panel { display: block; }
 .dev-panel-header {
   display: flex;
   align-items: center;

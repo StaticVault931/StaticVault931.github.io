@@ -141,13 +141,22 @@ export async function loadBecauseYouLiked() {
           </div>
         </div>`;
 
-      // Insert after For You section
-      const forYou = document.getElementById('sec-foryou');
-      if (forYou && forYou.parentNode) {
-        forYou.parentNode.insertBefore(sec, forYou.nextSibling);
+      // Scatter "Because You Liked" rows throughout the page (not all next to each other)
+      // Target anchor sections to insert after (spaced out through the page)
+      const anchors = ['sec-new', 'sec-action', 'sec-drama', 'sec-scifi'];
+      const anchorIdx = picks.indexOf(item);
+      const anchorId = anchors[anchorIdx % anchors.length];
+      const anchor = document.getElementById(anchorId);
+      if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(sec, anchor.nextSibling);
       } else {
-        const home = document.getElementById('page-home');
-        if (home) home.appendChild(sec);
+        const forYou = document.getElementById('sec-foryou');
+        if (forYou && forYou.parentNode) {
+          forYou.parentNode.insertBefore(sec, forYou.nextSibling);
+        } else {
+          const home = document.getElementById('page-home');
+          if (home) home.appendChild(sec);
+        }
       }
     }
 
