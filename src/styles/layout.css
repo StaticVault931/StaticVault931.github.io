@@ -1019,3 +1019,67 @@
 }
 .lib-tab:hover { color: var(--text); }
 .lib-tab.on { color: var(--text); border-bottom-color: var(--red); }
+
+/* ── CYF SETTINGS ──────────────────────────────────────────────── */
+.sv-settings-grid { display: flex; flex-direction: column; gap: .5rem; }
+.sv-setting-row {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .65rem .9rem;
+  background: var(--s2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .15s;
+}
+.sv-setting-row:hover { background: var(--s3); }
+.sv-setting-icon { font-size: 1.1rem !important; color: var(--red); flex-shrink: 0; }
+.sv-setting-info { flex: 1; min-width: 0; }
+.sv-setting-label { display: block; font-size: .88rem; font-weight: 800; }
+.sv-setting-desc { display: block; font-size: .72rem; color: var(--muted); margin-top: 1px; }
+.sv-toggle {
+  width: 44px; height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--s4);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .2s;
+}
+.sv-toggle.on { background: var(--red); }
+.sv-toggle-knob {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s var(--ease);
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.sv-toggle.on .sv-toggle-knob { transform: translateX(20px); }
+/* Apply settings effects */
+body.sv-reduced-motion *, body.sv-reduced-motion *::before, body.sv-reduced-motion *::after {
+  animation-duration: .01ms !important;
+  transition-duration: .01ms !important;
+}
+body.sv-compact-mode .card-row {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)) !important;
+  overflow-x: unset !important;
+  flex-wrap: unset !important;
+  gap: .65rem !important;
+  height: auto !important;
+}
+body.sv-compact-mode .row-arrow { display: none; }
+body.sv-hide-ratings .card-rating { display: none !important; }
+
+/* ── FOR YOU EXPAND ────────────────────────────────────────────── */
+.foryou-expand-btn { margin-left: auto; }
+#sec-foryou.expanded .card-row {
+  flex-wrap: wrap !important;
+  height: auto !important;
+  max-height: none !important;
+}
+#sec-foryou.expanded .row-arrow { display: none; }

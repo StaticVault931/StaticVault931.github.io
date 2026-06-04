@@ -1,5 +1,6 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
+import { injectPages } from './pages.js';
 import { state, persist, GENRES, AGE_LEVELS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -159,8 +160,10 @@ const SHORTCUTS = [
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  injectPages();      // inject page-movies, page-tv, page-anime, page-seeall before footer
   injectOverlays();   // inject modals/overlays before anything else
   initTheme();
+  applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
   applyLoadingScreenState();
   initEventDelegation();
   initKeyboard();
@@ -308,37 +311,12 @@ async function loadHero() {
   } catch {}
 }
 
-/* ── ROW LOAD GENERATION (prevents stale responses overwriting fresh content) */
-let _homeGen = 0;
-
-/* ── ROW DEDUP ───────────────────────────────────────────────────── */
+/* ── ROW DEDUP (tracks IDs rendered per home-page load) ─────────── */
 const _homeSeenIds = new Set();
+const _lazyObs = new Map(); // kept for compatibility
 
-/* ── LAZY ROW HELPER (observer-based, for truly off-screen rows) ─── */
-const _lazyObs = new Map();
-
-function lazyRow(rowId, secId, fetchFn, type) {
-  const row = document.getElementById(rowId);
-  const sec = secId ? document.getElementById(secId) : null;
-  if (!row) return;
-
-  _lazyObs.get(rowId)?.disconnect();
-  _lazyObs.delete(rowId);
-  if (sec) sec.style.display = '';
-
-  const obs = new IntersectionObserver((entries, observer) => {
-    if (!entries[0].isIntersecting) return;
-    observer.disconnect();
-    _lazyObs.delete(rowId);
-    _loadRow(rowId, secId, fetchFn, type);
-  }, { rootMargin: '800px 0px' }); // large margin so most rows pre-load
-
-  obs.observe(sec || row);
-  _lazyObs.set(rowId, obs);
-}
-
-/* ── DIRECT ROW FETCH (always loads, no observer) ────────────────── */
-function _loadRow(rowId, secId, fetchFn, type, gen) {
+/* ── ROW FETCH HELPER ────────────────────────────────────────────── */
+function _loadRow(rowId, secId, fetchFn, type) {
   const row = document.getElementById(rowId);
   const sec = secId ? document.getElementById(secId) : null;
   if (!row) return Promise.resolve();
@@ -346,114 +324,96 @@ function _loadRow(rowId, secId, fetchFn, type, gen) {
 
   return fetchFn()
     .then(items => {
-      // Stale — a newer loadHomeRows() call has started
-      if (gen !== undefined && gen !== _homeGen) return;
-
       if (!items || !items.length) {
         if (sec) sec.style.display = 'none';
         return;
       }
-      // Soft dedup — prefer unique items but fall back to originals if all are dupes
+      // Dedup: skip items already shown in rows above, fallback to all if fully duped
       const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
-      const toRender = deduped.length ? deduped : items;
+      const toRender = deduped.length >= 4 ? deduped : items;
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       renderRow(rowId, toRender.slice(0, 14), type);
     })
     .catch(err => {
-      if (gen !== undefined && gen !== _homeGen) return;
-      console.warn(`Row ${rowId} failed:`, err?.message || err);
-      if (row && row.innerHTML.includes('csk-poster')) {
-        // Still showing skeleton — replace with subtle retry notice
-        row.innerHTML = '<div class="row-load-err">Could not load · <button onclick="location.reload()">Retry</button></div>';
-      }
+      console.warn(`[SV] Row ${rowId}:`, err?.message || err);
+      // Keep skeleton visible — don't hide section on error
     });
 }
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
+let _homeLoading = false;
+
 async function loadHomeRows() {
-  // Increment generation — any in-flight loads from previous call become stale
-  const gen = ++_homeGen;
+  if (_homeLoading) return; // prevent concurrent calls
+  _homeLoading = true;
   _homeSeenIds.clear();
-  _lazyObs.forEach(obs => obs.disconnect());
+  _lazyObs.forEach(o => o.disconnect());
   _lazyObs.clear();
 
-  // Show skeletons for ALL rows immediately
-  const allRowIds = [
-    'row-trending', 'row-foryou', 'row-continue', 'row-recent',
-    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
-    'row-action', 'row-comedy', 'row-horror', 'row-drama',
-    'row-scifi', 'row-animated', 'row-home-anime',
-  ];
-  allRowIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.innerHTML = skelCards(6);
-      const sec = el.closest('.section');
-      if (sec) sec.style.display = '';
-    }
-  });
+  try {
+    // Show skeletons for all rows immediately
+    const allRowIds = [
+      'row-trending', 'row-foryou', 'row-continue', 'row-recent',
+      'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
+      'row-action', 'row-comedy', 'row-horror', 'row-drama',
+      'row-scifi', 'row-animated', 'row-home-anime',
+    ];
+    allRowIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.innerHTML = skelCards(6);
+        const sec = el.closest('.section');
+        if (sec) sec.style.display = '';
+      }
+    });
 
-  // Instant local data
-  renderContinueRow();
-  renderRecentRow();
+    // Local data — instant
+    renderContinueRow();
+    renderRecentRow();
 
-  // Genre preferences for personalized rows
-  const prefG = state.prefGenres;
-  const gOpts = (genreId, extra = {}) => ({
-    with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
-    sort_by: 'popularity.desc',
-    ...extra,
-  });
-  const rng = state._randomPage || 1;
+    // Genre preferences for personalized rows
+    const prefG = state.prefGenres;
+    const gOpts = (genreId, extra = {}) => ({
+      with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
+      sort_by: 'popularity.desc',
+      ...extra,
+    });
+    const rng = state._randomPage || 1;
+    const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
 
-  const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
-
-  // ── BATCH 1: visible above the fold — load immediately ─────────────
-  await Promise.allSettled([
-    tmdb('/trending/all/week')
-      .then(d => {
-        if (gen !== _homeGen) return; // stale
+    // Load ALL rows in parallel — no lazy loading, no generation checks
+    // Trending & For You load first (await), everything else fires immediately
+    const [trendResult] = await Promise.allSettled([
+      tmdb('/trending/all/week').then(d => {
         const items = (d.results || []).slice(0, 14);
         items.forEach(m => _homeSeenIds.add(m.id));
         renderRow('row-trending', items, null, true);
-      })
-      .catch(() => {}),
-    loadForYou(),
-  ]);
-
-  // ── BATCH 2: just below the fold — load right after ─────────────────
-  Promise.allSettled([
-    _loadRow('row-new',      'sec-new',      () => tmdb('/movie/now_playing', { page: rng }).then(d => d.results || []), 'movie',  gen),
-    _loadRow('row-toprated', 'sec-toprated', () => tmdb('/movie/top_rated',   { page: rng }).then(d => d.results || []), 'movie',  gen),
-    _loadRow('row-tv-pop',   'sec-tv-pop',   () => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []), 'tv',     gen),
-    _loadRow('row-airing',   'sec-airing',   () => tmdb('/tv/airing_today').then(d => d.results || []),                  'tv',     gen),
-  ]);
-
-  // ── BATCH 3: genre rows — slight delay so batch 2 gets bandwidth ────
-  setTimeout(() => {
-    if (gen !== _homeGen) return;
-    Promise.allSettled([
-      _loadRow('row-action',   'sec-action',   () => tmdb('/discover/movie', gOpts(28,  { page: rng })).then(d => d.results || []), 'movie', gen),
-      _loadRow('row-comedy',   'sec-comedy',   () => tmdb('/discover/movie', gOpts(35,  { page: rng })).then(d => d.results || []), 'movie', gen),
-      _loadRow('row-horror',   'sec-horror',   () => tmdb('/discover/movie', gOpts(27,  { page: rng })).then(d => d.results || []), 'movie', gen),
-      _loadRow('row-drama',    'sec-drama',    () => tmdb('/discover/movie', gOpts(18,  { sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng })).then(d => d.results || []), 'movie', gen),
-      _loadRow('row-scifi',    'sec-scifi',    () => tmdb('/discover/movie', gOpts(878, { page: rng })).then(d => d.results || []), 'movie', gen),
-      _loadRow('row-animated', 'sec-animated', () => tmdb('/discover/movie', gOpts(16,  { page: rng })).then(d => d.results || []), 'movie', gen),
+        return items;
+      }),
+      loadForYou(),
     ]);
-  }, 400);
 
-  // ── BATCH 4: anime (AniList has separate rate limits) ────────────────
-  setTimeout(() => {
-    if (gen !== _homeGen) return;
-    _loadRow('row-home-anime', 'sec-home-anime', () =>
-      aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime', gen);
-  }, 800);
+    // Fire all remaining rows in parallel — NO await, NO setTimeout
+    Promise.allSettled([
+      _loadRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), 'movie'),
+      _loadRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), 'movie'),
+      _loadRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), 'tv'),
+      _loadRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []),                   'tv'),
+      _loadRow('row-action',    'sec-action',    () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          'movie'),
+      _loadRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          'movie'),
+      _loadRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          'movie'),
+      _loadRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), 'movie'),
+      _loadRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         'movie'),
+      _loadRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          'movie'),
+      _loadRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime'),
+    ]);
 
-  // ── Because You Liked rows (personalized) ───────────────────────────
-  setTimeout(() => {
-    if (gen !== _homeGen) return;
+    // Because You Liked — load after trending is done
     loadBecauseYouLiked().catch(() => {});
-  }, 600);
+
+  } finally {
+    _homeLoading = false;
+  }
 }
 
 function renderContinueRow() {
@@ -617,6 +577,7 @@ function loadPrefsPage() {
   buildVidsrcDomainList();
   buildAgeRatingUI();
   initPrefAutocomplete();
+  buildSettingsUI();
 }
 
 function buildAgeRatingUI() {
@@ -641,6 +602,70 @@ function buildAgeRatingUI() {
       persist('ageRating');
       container.querySelectorAll('.age-btn').forEach(b => b.classList.toggle('on', b.dataset.age === state.ageRating));
       buildRatingDescriptions();
+    });
+  });
+}
+
+/* ── CYF SETTINGS ────────────────────────────────────────────────── */
+const SV_SETTINGS = [
+  { id: 'disableHoverTrailer', label: 'Hover Trailers', desc: 'Show trailer previews when hovering over cards', default: true, icon: 'play_circle' },
+  { id: 'defaultInfoMode', label: 'Open as Info Page', desc: 'Open full info screen instead of player by default', default: false, icon: 'info' },
+  { id: 'compactMode', label: 'Compact Grid Mode', desc: 'Show content in a grid instead of horizontal rows', default: false, icon: 'grid_view' },
+  { id: 'autoNextProvider', label: 'Auto-Switch Provider', desc: 'Automatically try next source if current one fails', default: true, icon: 'swap_horiz' },
+  { id: 'showRatings', label: 'Show Ratings on Cards', desc: 'Display star ratings on content cards', default: true, icon: 'star' },
+  { id: 'disableAgeFilter', label: 'Disable Age Filter', desc: 'Show all content regardless of your age rating setting', default: false, icon: 'no_adult_content' },
+  { id: 'showProgressBar', label: 'Progress Bars', desc: 'Show watch progress bars on Continue Watching cards', default: true, icon: 'linear_scale' },
+  { id: 'reducedMotion', label: 'Reduce Animations', desc: 'Minimize animations and transitions', default: false, icon: 'motion_photos_off' },
+];
+
+function getSetting(id) {
+  const defaults = Object.fromEntries(SV_SETTINGS.map(s => [s.id, s.default]));
+  const saved = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+  return id in saved ? saved[id] : defaults[id];
+}
+
+function setSetting(id, val) {
+  const saved = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+  saved[id] = val;
+  localStorage.setItem('sv_settings', JSON.stringify(saved));
+  applySetting(id, val);
+}
+
+function applySetting(id, val) {
+  if (id === 'reducedMotion') document.body.classList.toggle('sv-reduced-motion', val);
+  if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
+  if (id === 'showRatings') document.body.classList.toggle('sv-hide-ratings', !val);
+  if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
+}
+
+function applyAllSettings() {
+  SV_SETTINGS.forEach(s => applySetting(s.id, getSetting(s.id)));
+}
+
+function buildSettingsUI() {
+  const grid = document.getElementById('sv-settings-grid');
+  if (!grid) return;
+  grid.innerHTML = SV_SETTINGS.map(s => {
+    const on = getSetting(s.id);
+    return `<label class="sv-setting-row" title="${esc(s.desc)}">
+      <span class="material-icons-round sv-setting-icon">${s.icon}</span>
+      <div class="sv-setting-info">
+        <span class="sv-setting-label">${esc(s.label)}</span>
+        <span class="sv-setting-desc">${esc(s.desc)}</span>
+      </div>
+      <button class="sv-toggle${on ? ' on' : ''}" data-setting="${esc(s.id)}" role="switch" aria-checked="${on}" aria-label="${esc(s.label)}">
+        <span class="sv-toggle-knob"></span>
+      </button>
+    </label>`;
+  }).join('');
+
+  grid.querySelectorAll('.sv-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.setting;
+      const newVal = !getSetting(id);
+      setSetting(id, newVal);
+      btn.classList.toggle('on', newVal);
+      btn.setAttribute('aria-checked', String(newVal));
     });
   });
 }
@@ -1484,6 +1509,16 @@ function initEventDelegation() {
     goPage('search');
     setTimeout(() => document.getElementById('search-input')?.focus(), 150);
   });
+
+  // For You expand/fullscreen button
+  document.getElementById('foryou-expand-btn')?.addEventListener('click', () => {
+    const sec = document.getElementById('sec-foryou');
+    const btn = document.getElementById('foryou-expand-btn');
+    const icon = btn?.querySelector('.material-icons-round');
+    if (!sec) return;
+    const expanded = sec.classList.toggle('expanded');
+    if (icon) icon.textContent = expanded ? 'fullscreen_exit' : 'fullscreen';
+  });
 }
 
 /* ── LIKE/WATCHLIST HELPERS ──────────────────────────────────────── */
@@ -1853,10 +1888,11 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   // Clear stale "Because You Liked" sections
   document.querySelectorAll('[id^="sec-because-"]').forEach(el => el.remove());
 
-  // Disconnect lazy observers so rows reload
+  // Clear observers and allow loadHomeRows to run again
   _lazyObs.forEach(obs => obs.disconnect());
   _lazyObs.clear();
   _homeSeenIds.clear();
+  _homeLoading = false; // release lock so loadHomeRows can run
 
   if (randomize) {
     // Add random page offset to API calls via a temp state var
@@ -1867,9 +1903,9 @@ function refreshFeed(randomize = false, stayOnPage = false) {
     toast('Feed updated!', 'check');
   }
 
-  loadForYou().catch(() => {});
-  loadBecauseYouLiked().catch(() => {});
   if (!stayOnPage) goPage('home');
+  // Reload all home rows (lock is released above)
+  loadHomeRows().catch(() => {});
   else toast(randomize ? 'Feed randomized! Scroll to see changes.' : 'Feed updated!', randomize ? 'shuffle' : 'check');
   // Reload lazy rows
   setTimeout(() => loadHomeRows().catch(() => {}), 200);
@@ -2288,7 +2324,8 @@ let _hoverCurrentId = null;
 function initHoverTrailer() {
   document.addEventListener('mouseover', e => {
     if (document.getElementById('modal-overlay')?.classList.contains('open')) return;
-    if (window.matchMedia('(hover: none)').matches) return; // skip touch devices
+    if (window.matchMedia('(hover: none)').matches) return;
+    if (!getSetting('disableHoverTrailer')) return; // setting = false means disabled
 
     const card = e.target.closest('.card[data-id][data-type]');
     const ncCard = e.target.closest('#netflix-card');

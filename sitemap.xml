@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://staticvault931.github.io/</loc>
-    <xhtml:link rel="canonical" href="https://staticvault931.github.io/"/>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
@@ -30,17 +28,11 @@
   <url>
     <loc>https://staticvault931.github.io/?page=library</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://staticvault931.github.io/?page=prefs</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
-  </url>
-  <!-- Example individual content pages (dynamically generated) -->
-  <url>
-    <loc>https://staticvault931.github.io/?watch=movie&amp;name=trending-movies&amp;id=popular</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
   </url>
 </urlset>
