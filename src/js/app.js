@@ -156,6 +156,12 @@ const SV_SETTINGS = [
   { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
 ];
 
+/* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
+let _streamPage = 1;
+let _streamIds = new Set();
+let _streamLoading = false;
+let _streamObs = null;
+
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
 const SHORTCUTS = [
   // Navigation — left side
@@ -792,11 +798,8 @@ function applySetting(id, val) {
   if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
 }
 
-/* ── STREAM MODE (infinite scroll feed) ──────────────────────────── */
-let _streamPage = 1;
-let _streamIds = new Set();
-let _streamLoading = false;
-let _streamObs = null;
+/* ── STREAM MODE (infinite scroll feed) — declarations moved above ── */
+// (variables declared at top of file to avoid TDZ in applyAllSettings)
 
 function initStreamMode() {
   _streamPage = 1;
