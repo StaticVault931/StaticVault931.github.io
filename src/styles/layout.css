@@ -406,9 +406,13 @@
   pointer-events: all;
   transition: opacity .22s;
 }
-/* Show more prominently on row-wrap hover, keep slightly visible otherwise */
-.row-wrap:hover .row-arrow { opacity: 1; }
+/* Arrows stay visible while ANYTHING in the row-wrap is hovered.
+   The :has() selector keeps arrows visible even when cursor is on a card. */
+.row-wrap:hover .row-arrow,
+.row-wrap:has(.card:hover) .row-arrow,
 .row-arrow:hover { opacity: 1; }
+/* Fallback for browsers without :has() — keep arrows slightly visible */
+.row-arrow { opacity: .55; }
 .row-arrow.hidden { opacity: 0 !important; pointer-events: none !important; }
 .row-arrow-l {
   left: -4px;
@@ -1307,3 +1311,29 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   max-height: none !important;
 }
 #sec-foryou.expanded .row-arrow { display: none; }
+
+/* ── SEARCH DID YOU MEAN ────────────────────────────────────────── */
+.search-did-you-mean {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding: .65rem 1rem;
+  background: rgba(245,197,24,.08);
+  border: 1px solid rgba(245,197,24,.2);
+  border-radius: var(--r);
+  margin-bottom: 1rem;
+  font-size: .82rem;
+  color: var(--gold);
+  font-weight: 700;
+}
+.search-did-you-mean .material-icons-round { font-size: 1rem; flex-shrink: 0; }
+.search-clear-filters-btn {
+  background: var(--gold);
+  border: none;
+  border-radius: 3px;
+  color: #000;
+  padding: .22rem .7rem;
+  font-size: .75rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.search-clear-filters-btn:hover { opacity: .85; }

@@ -442,11 +442,41 @@ export async function doSearch(q) {
     _searchState.loading = false;
 
     if (!items.length) {
+      // Check if filters are active — if so, try without filters as "Did you mean"
+      const hasActiveFilters = _filters.genre || _filters.minRating ||
+        _filters.yearFrom || _filters.yearTo || _filters.language ||
+        (_filters.contentType && _filters.contentType !== 'all');
+
+      if (hasActiveFilters) {
+        // Try search without filters
+        const savedFilters = { ..._filters };
+        _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null };
+        const fallbackItems = await fetchSearchPage(q, 1).catch(() => []);
+        _filters = savedFilters; // restore
+
+        if (fallbackItems.length) {
+          area.innerHTML = `
+            <div class="search-did-you-mean">
+              <span class="material-icons-round">info_outline</span>
+              <span>No results with current filters. Did you mean:</span>
+              <button class="search-clear-filters-btn" id="didyoumean-clear">Show all results</button>
+            </div>
+            <div class="search-section-title"><span class="material-icons-round">auto_awesome</span>Results without filters</div>
+            <div class="search-grid">${fallbackItems.slice(0, 12).map(m => makeCard(m, m._type || (m.media_type === 'tv' ? 'tv' : 'movie'))).join('')}</div>`;
+          document.getElementById('didyoumean-clear')?.addEventListener('click', () => {
+            _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null };
+            document.querySelectorAll('.sf-filter-sel').forEach(s => s.selectedIndex = 0);
+            doSearch(q);
+          });
+          return;
+        }
+      }
+
       area.innerHTML = `
         <div class="search-empty">
           <span class="material-icons-round">search_off</span>
           <p>No results for "<strong>${esc(q)}</strong>"</p>
-          <p class="muted-note">Try checking your spelling or use different keywords.</p>
+          <p class="muted-note">Try different keywords, check spelling, or clear filters.</p>
         </div>`;
       return;
     }

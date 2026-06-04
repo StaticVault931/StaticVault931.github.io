@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
@@ -191,6 +191,7 @@ const SHORTCUTS = [
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
   injectOverlays();   // inject modals/overlays before anything else
+  cleanState();       // remove corrupt null/empty items from all lists
   requestAnimationFrame(() => injectPages()); // defer page injection to after first paint
   initTheme();
   applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
@@ -2166,17 +2167,33 @@ function initEventDelegation() {
     toast('Repairing library…', 'build');
     let fixed = 0;
 
+    // Step 1: Remove corrupt entries (null ID, empty title, etc.)
+    let removed = 0;
+    const removeCorrupt = (key) => {
+      const before = state[key]?.length || 0;
+      state[key] = (state[key] || []).filter(item => {
+        const valid = item && +item.id > 0;
+        if (!valid) removed++;
+        return valid;
+      });
+      if (state[key].length !== before) persist(key);
+    };
+    ['liked', 'watchlist', 'disliked', 'watched', 'prefLikes', 'prefDislikes'].forEach(removeCorrupt);
+
+    // Step 2: Re-fetch missing metadata for items with incomplete data
     const repairList = async (list, key) => {
       for (const item of list) {
         if (!item.id || !item.type || item.type === 'anime') continue;
-        const hasMeta = item.poster_path || item.backdrop_path || item.title || item.name;
-        if (hasMeta) continue; // already has data
+        const needsRepair = !item.title && !item.name;
+        const hasPartialData = item.type && item.id;
+        if (!needsRepair && !hasPartialData) continue;
+        if (item.title && item.poster_path) continue; // already complete
         try {
           const d = await tmdb(`/${item.type}/${item.id}`);
-          item.title = d.title || d.name || item.title;
-          item.poster_path = d.poster_path || item.poster_path;
-          item.backdrop_path = d.backdrop_path || item.backdrop_path;
-          fixed++;
+          if (d.title || d.name) { item.title = d.title || d.name; fixed++; }
+          if (d.poster_path) item.poster_path = d.poster_path;
+          if (d.backdrop_path) item.backdrop_path = d.backdrop_path;
+          if (d.vote_average) item.vote_average = d.vote_average;
         } catch {}
       }
       persist(key);
@@ -2189,7 +2206,7 @@ function initEventDelegation() {
 
     renderLibrary();
     renderPrefLists();
-    toast(`Repair complete — fixed ${fixed} item${fixed !== 1 ? 's' : ''}`, 'check_circle');
+    toast(`Repair complete — removed ${removed} corrupt, fixed ${fixed} item${fixed !== 1 ? 's' : ''}`, 'check_circle');
   });
 
   // Export data
@@ -2353,10 +2370,14 @@ function handleLike(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
   const added = toggleLike(item);
   if (added) {
-    // Auto-add to "Titles I Love" in CYF (if not already there)
-    if (!state.prefLikes.some(x => x.id == id)) {
+    // Auto-add to "Titles I Love" in CYF — ONLY with valid, complete data
+    const numId = +item.id;
+    const hasTitle = !!(item.title || item.name);
+    if (isValidItem(item) && hasTitle && !state.prefLikes.some(x => x.id == id)) {
       state.prefLikes.push({
-        id: item.id, type: item.type || type, title: item.title || '',
+        id: numId,
+        type: item.type || type,
+        title: (item.title || item.name || '').trim(),
         poster: item.poster_path ? imgUrl(item.poster_path, 'w92') : '',
         score: 4,
       });
@@ -3033,7 +3054,7 @@ export async function openInfoPage(id, type, hint = {}) {
       trailerWrap.style.cursor = 'pointer';
       // Show poster as "click to play" teaser
       if (trailerFrame) {
-        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
       }
       if (trailerFallback) trailerFallback.style.display = 'none';
     } else {
@@ -3206,7 +3227,7 @@ function _tryTrailerKey(keys, idx, ytLink, posterImg) {
   frame.style.display = '';
 
   // Load this key
-  frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+  frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
   // Detect playback vs Error 153 via postMessage
   let resolved = false;
@@ -3924,7 +3945,7 @@ async function showNetflixCard(card) {
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
 
     // Use enablejsapi=1 so YouTube sends postMessage events
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
     // YouTube postMessage API: state 1 = playing, -1 = unstarted, 5 = cued
     const msgHandler = (e) => {

@@ -95,6 +95,37 @@ const PERSIST_MAP = {
   lastProvider:     'sv_last_provider',
 };
 
+/* ── ITEM VALIDATION ─────────────────────────────────────────────── */
+// A valid media item must have a numeric positive ID
+export function isValidItem(item) {
+  if (!item) return false;
+  const id = +item.id;
+  return !isNaN(id) && id > 0;
+}
+
+// Strip null/corrupt entries from arrays that hold media items
+export function cleanMediaArray(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(item => isValidItem(item));
+}
+
+// Run cleanup on loaded state to remove any corrupt entries
+export function cleanState() {
+  const lists = ['watchlist', 'liked', 'disliked', 'watched', 'prefLikes', 'prefDislikes'];
+  lists.forEach(key => {
+    const before = state[key]?.length || 0;
+    state[key] = cleanMediaArray(state[key]);
+    if (state[key].length !== before) persist(key); // save if anything removed
+  });
+  // Clean continueWatching
+  let cwChanged = false;
+  Object.keys(state.continueWatching).forEach(k => {
+    const entry = state.continueWatching[k];
+    if (!entry || !isValidItem(entry)) { delete state.continueWatching[k]; cwChanged = true; }
+  });
+  if (cwChanged) persist('continueWatching');
+}
+
 export function persist(key) {
   if (PERSIST_MAP[key]) store(PERSIST_MAP[key], state[key]);
 }
@@ -128,6 +159,7 @@ export function isInWatchlist(id) { return state.watchlist.some(x => x.id == id)
 export function isDisliked(id) { return state.disliked.some(x => x.id == id); }
 
 export function toggleLike(item) {
+  if (!isValidItem(item)) return false; // reject corrupt items
   const idx = state.liked.findIndex(x => x.id == item.id);
   if (idx >= 0) { state.liked.splice(idx, 1); persist('liked'); return false; }
   state.liked.push(item);
@@ -136,6 +168,7 @@ export function toggleLike(item) {
 }
 
 export function toggleWatchlist(item) {
+  if (!isValidItem(item)) return false; // reject corrupt items
   const idx = state.watchlist.findIndex(x => x.id == item.id);
   if (idx >= 0) { state.watchlist.splice(idx, 1); persist('watchlist'); return false; }
   state.watchlist.push(item);
@@ -144,6 +177,7 @@ export function toggleWatchlist(item) {
 }
 
 export function addDislike(item) {
+  if (!isValidItem(item)) return; // reject corrupt items
   if (!state.disliked.some(x => x.id == item.id)) {
     state.disliked.push(item);
     persist('disliked');

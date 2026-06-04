@@ -32,6 +32,9 @@ export function skelCards(n = 8) {
 
 /* ── CARD ────────────────────────────────────────────────────────── */
 export function makeCard(m, type, opts = {}) {
+  // Guard: don't render cards with null/invalid IDs
+  if (!m || !m.id || isNaN(+m.id) || +m.id <= 0) return '';
+
   const { numbered, showProgress = true, compact = false } = opts;
 
   const title = m.title || m.name || m.romaji || '';
