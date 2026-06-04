@@ -1,0 +1,270 @@
+/* ── INFO PAGE OVERLAY ─────────────────────────────────────────────── */
+#info-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 810;
+  background: rgba(0,0,0,.92);
+  display: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: fadeIn .22s var(--ease);
+}
+#info-overlay.open { display: block; }
+
+#info-panel {
+  min-height: 100%;
+  background: var(--bg);
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ── TOOLBAR ─────────────────────────────────────────────────────── */
+.info-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .9rem;
+  background: rgba(5,5,5,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+#info-close {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all .18s;
+}
+#info-close:hover { background: var(--red); border-color: var(--red); transform: rotate(90deg); }
+#info-close .material-icons-round { font-size: .95rem; }
+.info-toolbar-title {
+  flex: 1;
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 1.2rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.info-toolbar-btn {
+  display: flex; align-items: center; gap: .35rem;
+  padding: .38rem .9rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border2);
+  background: var(--s3);
+  color: var(--text);
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .18s;
+}
+.info-toolbar-btn:hover { background: var(--s4); border-color: var(--border3); }
+.info-toolbar-btn:first-of-type { background: var(--red); border-color: var(--red); color: #fff; }
+.info-toolbar-btn:first-of-type:hover { background: #f6121d; }
+.info-toolbar-btn .material-icons-round { font-size: .9rem; }
+.info-default-toggle {
+  display: flex; align-items: center; gap: .3rem;
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.info-default-toggle input { accent-color: var(--red); width: 14px; height: 14px; cursor: pointer; }
+
+/* ── HERO SECTION ────────────────────────────────────────────────── */
+.info-hero {
+  position: relative;
+  height: clamp(320px, 45vh, 560px);
+  overflow: hidden;
+  background: var(--s1);
+}
+.info-hero-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  display: block;
+}
+.info-hero-gradient {
+  position: absolute; inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(5,5,5,.4) 40%,
+    rgba(5,5,5,.9) 80%,
+    var(--bg) 100%
+  );
+  z-index: 2;
+}
+.info-hero-content {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5rem;
+  padding: 2rem 2.5rem;
+}
+.info-poster-wrap { flex-shrink: 0; }
+.info-poster {
+  width: 140px;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.7);
+  display: block;
+}
+.info-header { flex: 1; min-width: 0; }
+.info-tags { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .55rem; }
+.info-title {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  line-height: .95;
+  margin-bottom: .6rem;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,.7);
+}
+.info-meta-row {
+  display: flex; align-items: center; gap: .5rem;
+  flex-wrap: wrap; margin-bottom: .5rem;
+}
+.info-meta-item {
+  font-size: .8rem; font-weight: 700;
+  color: rgba(255,255,255,.8);
+  background: rgba(0,0,0,.35);
+  padding: .15rem .5rem;
+  border-radius: 3px;
+  backdrop-filter: blur(4px);
+}
+.info-genres { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .35rem; }
+.info-genre {
+  font-size: .72rem; font-weight: 700;
+  color: rgba(255,255,255,.65);
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.15);
+  padding: .18rem .5rem;
+  border-radius: 3px;
+}
+.info-overview {
+  font-size: .85rem;
+  color: rgba(255,255,255,.75);
+  line-height: 1.65;
+  max-width: 680px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── MAIN CONTENT ─────────────────────────────────────────────────── */
+.info-content {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 2rem;
+  padding: 2rem 2.5rem 3rem;
+}
+.info-col-main { min-width: 0; }
+.info-col-side { display: flex; flex-direction: column; gap: 1.2rem; }
+
+.info-section { margin-bottom: 2rem; }
+.info-section-label {
+  font-size: .72rem; font-weight: 900;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: .1em; margin-bottom: .7rem;
+  border-left: 2px solid var(--red); padding-left: .5rem;
+}
+
+/* ── TRAILER ─────────────────────────────────────────────────────── */
+.info-trailer-wrap { margin-bottom: 2rem; }
+.info-trailer-inner {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  position: relative;
+}
+#info-trailer-frame { width: 100%; height: 100%; border: none; display: block; }
+.info-trailer-fallback {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .5rem; background: var(--s2); color: var(--dim);
+}
+.info-trailer-fallback .material-icons-round { font-size: 2.5rem; }
+.info-trailer-fallback p { font-size: .82rem; }
+
+/* ── CAST ─────────────────────────────────────────────────────────── */
+.info-cast-row {
+  display: flex; flex-wrap: wrap; gap: .55rem;
+  max-height: none;
+}
+
+/* ── EPISODES ─────────────────────────────────────────────────────── */
+.info-ep-controls { margin-bottom: .65rem; }
+.info-season-sel {
+  background: var(--s3); border: 1.5px solid var(--border2);
+  color: var(--text); padding: .38rem .8rem;
+  border-radius: var(--r); font-size: .84rem; cursor: pointer;
+}
+.info-ep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: .6rem;
+}
+.info-ep-card {
+  display: flex; gap: .7rem;
+  background: var(--s2); border-radius: var(--r);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  cursor: pointer; transition: background .15s;
+}
+.info-ep-card:hover { background: var(--s3); }
+.info-ep-thumb {
+  width: 120px; flex-shrink: 0;
+  aspect-ratio: 16/9; object-fit: cover;
+}
+.info-ep-thumb-ph {
+  width: 120px; flex-shrink: 0;
+  aspect-ratio: 16/9;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--s3); color: var(--dim);
+}
+.info-ep-info { padding: .5rem .6rem; min-width: 0; }
+.info-ep-num { font-size: .66rem; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.info-ep-name { font-size: .82rem; font-weight: 800; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-ep-overview { font-size: .72rem; color: var(--muted); line-height: 1.4; }
+
+/* ── RELATED ─────────────────────────────────────────────────────── */
+.info-related-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: .55rem;
+}
+.info-related-grid .card { width: 100%; }
+
+/* ── SIDE PANEL ──────────────────────────────────────────────────── */
+.info-ratings-wrap {
+  display: flex; flex-wrap: wrap; gap: .4rem;
+  padding: .8rem; background: var(--s2); border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.info-actions {
+  display: flex; flex-direction: column; gap: .4rem;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .info-content { grid-template-columns: 1fr; }
+  .info-hero-content { flex-direction: column; align-items: flex-start; padding: 1.5rem; }
+  .info-poster { width: 100px; }
+  .info-toolbar-title { display: none; }
+}

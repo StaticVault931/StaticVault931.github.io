@@ -74,6 +74,7 @@
 <link rel="stylesheet" href="src/styles/layout.css">
 <link rel="stylesheet" href="src/styles/components.css">
 <link rel="stylesheet" href="src/styles/responsive.css">
+<link rel="stylesheet" href="src/styles/info.css">
 </head>
 <body>
 
@@ -699,58 +700,64 @@
 ════════════════════════════════════════════════════════════════ -->
 <main class="page" id="page-prefs">
   <h1>Customize Your Feed</h1>
-  <p>Tell us what you love and hate. We'll use this to personalize what you see.</p>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem;max-width:640px">Tell us what you like and dislike — we personalize everything based on this. Changes apply automatically when you leave.</p>
 
-  <div class="pref-grid">
-    <div class="pref-section">
-      <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
-      <div class="pref-input-wrap">
-        <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-        <div class="pref-ac-drop" id="pref-like-ac"></div>
+  <!-- Main 2-column layout: Left = titles + genres, Right = content rating -->
+  <div class="cyf-main-grid">
+
+    <!-- LEFT COLUMN: Titles + Genres -->
+    <div class="cyf-left-col">
+      <div class="pref-section">
+        <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
+        <div class="pref-input-wrap">
+          <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+          <div class="pref-ac-drop" id="pref-like-ac"></div>
+        </div>
+        <div class="pref-tag-list" id="pref-likes-list"></div>
       </div>
-      <div class="pref-tag-list" id="pref-likes-list"></div>
-    </div>
 
-    <div class="pref-section">
-      <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
-      <div class="pref-input-wrap">
-        <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-        <div class="pref-ac-drop" id="pref-dis-ac"></div>
+      <div class="pref-section">
+        <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
+        <div class="pref-input-wrap">
+          <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+          <div class="pref-ac-drop" id="pref-dis-ac"></div>
+        </div>
+        <div class="pref-tag-list" id="pref-dislikes-list"></div>
       </div>
-      <div class="pref-tag-list" id="pref-dislikes-list"></div>
-    </div>
 
-    <!-- Genres + Content Rating: side by side -->
-    <div class="pref-section-full pref-two-col">
-      <div class="pref-section pref-genres-section">
+      <div class="pref-section">
         <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
-        <p class="pref-hint">Click to toggle. Selected genres are highlighted.</p>
+        <p class="pref-hint">Click to toggle. Selected genres shape your recommendations.</p>
         <div class="pref-genres-wrap" id="pref-genres"></div>
       </div>
-      <div class="pref-section pref-rating-section">
+    </div>
+
+    <!-- RIGHT COLUMN: Content Rating -->
+    <div class="cyf-right-col">
+      <div class="pref-section">
         <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
-        <p class="pref-hint">Set the maximum content rating you want to see.</p>
+        <p class="pref-hint">Set the maximum content rating you want recommended.</p>
         <div id="pref-age-row"></div>
         <div class="pref-rating-descs" id="pref-rating-descs"></div>
       </div>
     </div>
   </div>
 
-  <div class="pref-actions-row">
-    <button class="pref-apply-btn" id="pref-apply-btn" aria-label="Apply preferences">
-      <span class="material-icons-round">check</span>Apply &amp; Refresh Feed
-    </button>
+  <!-- Actions row: Randomize (auto-apply replaces Apply button) -->
+  <div class="pref-actions-row" style="margin-top:1.5rem">
     <button class="pref-apply-btn pref-randomize-btn" id="pref-randomize-btn" aria-label="Randomize feed">
-      <span class="material-icons-round">shuffle</span>Randomize Feed
+      <span class="material-icons-round">shuffle</span>Mix Up My Feed
     </button>
+    <span class="pref-autosave-note">
+      <span class="material-icons-round">autorenew</span>Auto-saved &amp; applied on exit
+    </span>
   </div>
 
-  <div class="pref-section pref-section-full" id="sv-settings-section" style="margin-top:2rem">
-    <h3><span class="material-icons-round">settings</span>Player &amp; Display Settings</h3>
+  <!-- Settings section -->
+  <div class="pref-section" id="sv-settings-section" style="margin-top:2rem">
+    <h3><span class="material-icons-round">settings</span>Display &amp; Player Settings</h3>
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
   </div>
-
-  <!-- Source test section is available in Dev Mode (footer logo 5× + type 931931) -->
 
   <div style="height:3rem"></div>
 </main>

@@ -843,24 +843,34 @@
   transition: border-color .2s;
 }
 #season-sel:focus { border-color: var(--red); }
-.ep-grid {
+/* Horizontal scrolling episode row — takes full panel width */
+.ep-scroll-row {
   display: flex;
-  flex-direction: column;
-  gap: .3rem;
+  flex-direction: row;
+  gap: .45rem;
   padding: .5rem .6rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--s4) transparent;
+  scroll-snap-type: x mandatory;
 }
-.ep-grid::-webkit-scrollbar { width: 3px; }
-.ep-grid::-webkit-scrollbar-thumb { background: var(--s4); }
+.ep-scroll-row::-webkit-scrollbar { height: 3px; }
+.ep-scroll-row::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 2px; }
+/* Legacy grid class kept for compatibility */
+.ep-grid { display: flex; flex-direction: column; gap: .3rem; padding: .5rem .6rem; }
 .ep-card {
   display: flex;
-  gap: .55rem;
-  padding: .48rem .55rem;
+  flex-direction: column;
+  gap: 0;
+  width: 140px;
+  flex-shrink: 0;
   border-radius: var(--r);
   background: var(--s3);
   border: 1.5px solid transparent;
   cursor: pointer;
   transition: all .18s;
-  flex-shrink: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
 }
 .ep-card:hover { background: var(--s4); border-color: var(--border2); }
 .ep-card.on { border-color: var(--red); background: rgba(229,9,20,.08); }

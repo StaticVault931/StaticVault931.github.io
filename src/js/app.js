@@ -202,11 +202,16 @@ const SHORTCUTS = [
   const pageParam = sp.get('page');
   const searchParam = sp.get('search');
 
+  const modeParam = sp.get('mode');
   if (watchId && watchType) {
     document.getElementById('loading-screen')?.classList.add('out');
     setTimeout(async () => {
-      await openMedia(+watchId, watchType);
-      if (watchStart) handleWatchTogetherLink(watchStart);
+      if (modeParam === 'info') {
+        await openInfoPage(+watchId, watchType);
+      } else {
+        await openMedia(+watchId, watchType);
+        if (watchStart) handleWatchTogetherLink(watchStart);
+      }
     }, 400);
   } else if (pageParam) {
     setTimeout(() => goPage(pageParam), 100);
@@ -220,12 +225,15 @@ const SHORTCUTS = [
 
   // Handle browser back/forward
   window.addEventListener('popstate', e => {
-    if (e.state?.id && e.state?.type) {
+    if (e.state?.mode === 'info' && e.state?.id) {
+      openInfoPage(e.state.id, e.state.type);
+    } else if (e.state?.id && e.state?.type) {
       openMedia(e.state.id, e.state.type);
     } else if (e.state?.page) {
       goPage(e.state.page);
     } else {
       closeModal();
+      closeInfoPage();
     }
   });
 })();
@@ -439,10 +447,19 @@ function renderContinueRow() {
     trendSec.after(sec);
   }
 
-  // Use Object.entries so we can backfill the id from the key for old saves
+  // Use Object.entries to backfill `id` from the storage key for legacy entries
   const items = Object.entries(state.continueWatching)
-    .map(([key, val]) => ({ ...val, id: val.id ?? +key }))
-    .filter(item => item.id && !isNaN(item.id))
+    .map(([key, val]) => {
+      const numKey = +key;
+      return {
+        ...val,
+        id:          val.id ?? (isNaN(numKey) ? null : numKey),
+        media_type:  val.type || 'movie',  // for makeCard type detection
+        backdrop_path: val.backdrop_path || null,
+        poster_path:   val.poster_path || null,
+      };
+    })
+    .filter(item => item.id && !isNaN(item.id) && Number.isFinite(+item.id))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .slice(0, 12);
 
@@ -768,10 +785,15 @@ function setupAC(inputId, dropId, onSelect) {
 
 /* ── OPEN MEDIA / MODAL ──────────────────────────────────────────── */
 export async function openMedia(id, type, hint = {}) {
+  // Redirect to info page if that's the user's default preference
+  if (getSetting('defaultInfoMode') && !hint._forcePlayer) {
+    return openInfoPage(id, type, hint);
+  }
+
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
 
-  clearHoverTrailer(); // stop any active hover preview
+  clearHoverTrailer();
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   resetModal();
@@ -875,12 +897,10 @@ async function buildTvEpisodes(tmdbId, useId, details) {
           ${Array.from({ length: total }, (_, i) => `<option value="${i + 1}">Season ${i + 1}</option>`).join('')}
         </select>
       </div>
-      <div class="ep-grid" id="ep-grid">${skelCards(4)}</div>
-      <div class="ep-footer">
-        <button class="ep-jump-related" id="ep-jump-related" title="Jump to similar titles">
-          <span class="material-icons-round">arrow_downward</span> More Like This
-        </button>
-      </div>
+      <div class="ep-scroll-row" id="ep-grid">${skelCards(4)}</div>
+      <button class="ep-jump-related" id="ep-jump-related" style="display:none" title="Jump to similar titles">
+        <span class="material-icons-round">arrow_downward</span> More Like This
+      </button>
     </div>`;
 
   const sel = document.getElementById('season-sel');
@@ -910,12 +930,13 @@ async function fetchEpisodes(tmdbId, useId, season, highlightEp, autoLoad = true
           data-season="${season}"
           data-ep-tmdb="${tmdbId}"
           data-ep-use="${useId}"
-          role="button" tabindex="0">
-          ${th ? `<img class="ep-thumb" src="${th}" loading="lazy" alt="Episode ${ep.episode_number}">` : `<div class="ep-th-ph"><span class="material-icons-round">play_circle</span></div>`}
-          <div class="ep-info">
+          role="button" tabindex="0"
+          title="Ep ${ep.episode_number}: ${esc(ep.name || '')}">
+          ${th ? `<img class="ep-thumb" src="${th}" loading="lazy" alt="Ep ${ep.episode_number}" style="width:100%;height:78px;object-fit:cover;display:block;border-radius:var(--r) var(--r) 0 0">` : `<div class="ep-th-ph" style="width:100%;height:78px;display:flex;align-items:center;justify-content:center;background:var(--s4);border-radius:var(--r) var(--r) 0 0"><span class="material-icons-round">play_circle</span></div>`}
+          <div class="ep-info" style="padding:.3rem .4rem .4rem">
             <div class="ep-n">Ep ${ep.episode_number}${ep.vote_average ? ` · ★${ep.vote_average.toFixed(1)}` : ''}</div>
-            <div class="ep-name" title="${esc(ep.name)}">${esc(ep.name || 'Episode ' + ep.episode_number)}</div>
-            ${ep.runtime ? `<div class="ep-rt"><span class="material-icons-round">schedule</span>${ep.runtime}m</div>` : ''}
+            <div class="ep-name" title="${esc(ep.name)}" style="font-size:.7rem;white-space:normal;-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden">${esc(ep.name || 'Episode ' + ep.episode_number)}</div>
+            ${ep.runtime ? `<div class="ep-rt" style="font-size:.62rem;margin-top:2px"><span class="material-icons-round" style="font-size:.58rem">schedule</span>${ep.runtime}m</div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -1431,13 +1452,12 @@ function initEventDelegation() {
     }
   });
 
-  // Prefs apply — Shift+click to refresh without navigating home
-  document.getElementById('pref-apply-btn')?.addEventListener('click', e => {
-    refreshFeed(false, e.shiftKey);
-  });
+  // Auto-apply when leaving CYF page (set window._prefsDirty on pref changes)
+  window._autoApplyFeed = () => { window._prefsDirty = false; refreshFeed(false, true); };
 
-  // Feed randomize
+  // Feed randomize (stays in CYF, randomizes content)
   document.getElementById('pref-randomize-btn')?.addEventListener('click', e => {
+    window._prefsDirty = false;
     refreshFeed(true, e.shiftKey);
   });
 
@@ -1928,6 +1948,243 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   loadHomeRows().catch(() => {});
 }
 
+/* ── INFO PAGE ───────────────────────────────────────────────────── */
+export async function openInfoPage(id, type, hint = {}) {
+  const overlay = document.getElementById('info-overlay');
+  if (!overlay) return;
+
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Wire close/play/share buttons on first open
+  if (!overlay._wired) {
+    overlay._wired = true;
+    document.getElementById('info-close')?.addEventListener('click', closeInfoPage);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeInfoPage(); });
+    document.getElementById('info-play-btn')?.addEventListener('click', () => {
+      closeInfoPage();
+      if (state.currentInfoMedia) openMedia(state.currentInfoMedia.id, state.currentInfoMedia.type, state.currentInfoMedia);
+    });
+    document.getElementById('info-share-btn')?.addEventListener('click', () => {
+      if (state.currentInfoMedia) shareMedia();
+    });
+    document.getElementById('info-default-cb')?.addEventListener('change', function() {
+      setSetting('defaultInfoMode', this.checked);
+      toast(this.checked ? 'Info page is now default' : 'Player mode restored', 'settings');
+    });
+    document.getElementById('info-season-sel')?.addEventListener('change', function() {
+      if (state.currentInfoMedia) loadInfoEpisodes(state.currentInfoMedia.id, +this.value);
+    });
+  }
+
+  // Set default checkbox state
+  const cb = document.getElementById('info-default-cb');
+  if (cb) cb.checked = getSetting('defaultInfoMode');
+
+  try {
+    let details, credits;
+    if (type === 'anime') {
+      details = await fetchAnimeDetails(id);
+      credits = { cast: details._cast || [] };
+    } else {
+      [details, credits] = await Promise.all([
+        tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,keywords,release_dates,content_ratings' }),
+        tmdb(`/${type}/${id}/credits`),
+      ]);
+    }
+
+    const title = details.title || details.name || '';
+    const year = String(details.release_date || details.first_air_date || '').slice(0, 4);
+    state.currentInfoMedia = { id, type, title, details };
+
+    // Toolbar title
+    const tbTitle = document.getElementById('info-toolbar-title');
+    if (tbTitle) tbTitle.textContent = title;
+
+    // Hero backdrop
+    const heroImg = document.getElementById('info-hero-img');
+    if (heroImg && details.backdrop_path) {
+      heroImg.src = `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`;
+      heroImg.alt = title;
+    }
+
+    // Poster
+    const poster = document.getElementById('info-poster');
+    if (poster) {
+      poster.src = details.poster_path ? `https://image.tmdb.org/t/p/w342${details.poster_path}` : '';
+      poster.alt = title;
+      poster.style.display = details.poster_path ? '' : 'none';
+    }
+
+    // Tags + Title
+    const ratingVal = details.vote_average || 0;
+    const rColor = ratingVal >= 9 ? '#22c55e' : ratingVal >= 7 ? '#f5c518' : ratingVal >= 5 ? '#f97316' : '#f87171';
+    const tagsEl = document.getElementById('info-tags');
+    if (tagsEl) {
+      tagsEl.innerHTML = [
+        `<span class="m-tag ${type === 'movie' ? 's' : type === 'anime' ? 'a' : 'v'}">${type === 'movie' ? 'Movie' : type === 'anime' ? 'Anime' : 'TV Show'}</span>`,
+        year ? `<span class="m-tag">${year}</span>` : '',
+        ratingVal ? `<span class="m-tag" style="color:${rColor}">★ ${ratingVal.toFixed(1)}</span>` : '',
+      ].filter(Boolean).join('');
+    }
+    const titleEl = document.getElementById('info-title');
+    if (titleEl) titleEl.textContent = title;
+
+    // Meta row: runtime, seasons, status
+    const metaEl = document.getElementById('info-meta');
+    if (metaEl) {
+      const parts = [];
+      if (details.runtime) {
+        const h = Math.floor(details.runtime / 60), m = details.runtime % 60;
+        parts.push(h > 0 ? `${h}h ${m}m` : `${m}m`);
+      }
+      if (details.number_of_seasons) parts.push(`${details.number_of_seasons} Season${details.number_of_seasons > 1 ? 's' : ''}`);
+      if (details.status) parts.push(details.status);
+      const genres = (details.genres || []).slice(0, 4).map(g => `<span class="info-genre">${esc(g.name)}</span>`).join('');
+      metaEl.innerHTML = parts.map(p => `<span class="info-meta-item">${esc(p)}</span>`).join('') + (genres ? `<div class="info-genres">${genres}</div>` : '');
+    }
+
+    // Overview
+    const ovEl = document.getElementById('info-overview');
+    if (ovEl) ovEl.textContent = details.overview || '';
+
+    // Side: ratings + details
+    const ratingsEl = document.getElementById('info-ratings');
+    if (ratingsEl) {
+      ratingsEl.innerHTML = [
+        ratingVal ? `<div class="r-chip"><div class="rv ${ratingVal >= 9 ? 'rv-great' : ratingVal >= 7 ? 'rv-gold' : 'rv-ok'}">${ratingVal.toFixed(1)}</div><div class="rs">TMDB</div></div>` : '',
+        details.vote_count >= 10 ? `<div class="r-chip"><div class="rv">${details.vote_count >= 1000 ? (details.vote_count/1000).toFixed(1)+'K' : details.vote_count}</div><div class="rs">Votes</div></div>` : '',
+        details.popularity >= 5 ? `<div class="r-chip"><div class="rv">${Math.round(details.popularity)}</div><div class="rs">Popularity</div></div>` : '',
+      ].filter(Boolean).join('');
+    }
+
+    // Side: actions
+    const actionsEl = document.getElementById('info-actions');
+    if (actionsEl) {
+      const likedNow = isLiked(id), wlNow = isInWatchlist(id);
+      actionsEl.innerHTML = `
+        <button class="ma primary" onclick="document.getElementById('info-close').click();setTimeout(()=>window._openMediaFromInfo&&window._openMediaFromInfo(),100)">
+          <span class="material-icons-round">play_arrow</span>Watch Now
+        </button>
+        <button class="ma${wlNow ? ' saved' : ''}" id="info-wl-btn">
+          <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
+        </button>
+        <button class="ma${likedNow ? ' liked' : ''}" id="info-like-btn">
+          <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
+        </button>`;
+      document.getElementById('info-wl-btn')?.addEventListener('click', () => {
+        handleWatchlist(id, type, null, { id, type, title, poster_path: details.poster_path });
+        const btn = document.getElementById('info-wl-btn');
+        if (btn) { btn.className = `ma${isInWatchlist(id) ? ' saved' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_add'}</span>${isInWatchlist(id) ? 'Saved' : 'Save'}`; }
+      });
+      document.getElementById('info-like-btn')?.addEventListener('click', () => {
+        handleLike(id, type, null, { id, type, title, poster_path: details.poster_path });
+        const btn = document.getElementById('info-like-btn');
+        if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isLiked(id) ? 'favorite' : 'favorite_border'}</span>${isLiked(id) ? 'Liked' : 'Like'}`; }
+      });
+    }
+    window._openMediaFromInfo = () => openMedia(id, type, { title, poster_path: details.poster_path });
+
+    // Trailer
+    const trailerFrame = document.getElementById('info-trailer-frame');
+    const trailerFallback = document.getElementById('info-trailer-fallback');
+    const videos = details.videos?.results || [];
+    const trailerKey = (
+      videos.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
+      videos.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
+      videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
+    )?.key;
+
+    if (trailerKey && trailerFrame) {
+      trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+      if (trailerFallback) trailerFallback.style.display = 'none';
+    } else {
+      if (trailerFrame) trailerFrame.removeAttribute('src');
+      if (trailerFallback) trailerFallback.style.display = '';
+    }
+
+    // Cast
+    const cast = (credits?.cast || []).slice(0, 24);
+    const castRow = document.getElementById('info-cast-row');
+    if (castRow) {
+      castRow.innerHTML = cast.map(p => {
+        const ph = imgUrl(p.profile_path, 'w185');
+        return `<div class="cast-card">
+          ${ph ? `<img class="cast-img" src="${ph}" alt="${esc(p.name || '')}" loading="lazy">` : `<div class="cast-ph"><span class="material-icons-round">person</span></div>`}
+          <div class="cast-name" title="${esc(p.name || '')}">${esc(p.name || '')}</div>
+          <div class="cast-char" title="${esc(p.character || '')}">${esc(p.character || '')}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // TV episodes
+    const epsSection = document.getElementById('info-eps-section');
+    if (type === 'tv' && details.number_of_seasons) {
+      if (epsSection) epsSection.style.display = '';
+      const sel = document.getElementById('info-season-sel');
+      if (sel) {
+        sel.innerHTML = Array.from({ length: details.number_of_seasons }, (_, i) =>
+          `<option value="${i + 1}">Season ${i + 1}</option>`).join('');
+      }
+      await loadInfoEpisodes(id, 1);
+    } else {
+      if (epsSection) epsSection.style.display = 'none';
+    }
+
+    // Related
+    const relGrid = document.getElementById('info-related-grid');
+    if (relGrid) {
+      try {
+        const relData = await tmdb(`/${type}/${id}/recommendations`);
+        const relItems = (relData.results || []).slice(0, 8);
+        relGrid.innerHTML = relItems.map(m => makeCard(m, type, { compact: true })).join('');
+      } catch { relGrid.innerHTML = ''; }
+    }
+
+    // Update URL
+    const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
+    const slug = slugify(`${title} ${yr}`);
+    history.pushState({ id, type, mode: 'info' }, title, `${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&mode=info`);
+    updatePageSEO(title, type, details.overview, details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null);
+
+  } catch (e) {
+    console.error('[SV] Info page error:', e);
+  }
+}
+
+async function loadInfoEpisodes(showId, season) {
+  const grid = document.getElementById('info-ep-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="spin" style="margin:1rem auto"></div>';
+  try {
+    const d = await tmdb(`/tv/${showId}/season/${season}`);
+    const eps = d.episodes || [];
+    grid.innerHTML = eps.map(ep => {
+      const th = imgUrl(ep.still_path, 'w300');
+      return `<div class="info-ep-card">
+        ${th ? `<img class="info-ep-thumb" src="${th}" alt="Episode ${ep.episode_number}" loading="lazy">` : `<div class="info-ep-thumb-ph"><span class="material-icons-round">play_circle</span></div>`}
+        <div class="info-ep-info">
+          <div class="info-ep-num">Ep ${ep.episode_number}${ep.runtime ? ` · ${ep.runtime}m` : ''}</div>
+          <div class="info-ep-name">${esc(ep.name || '')}</div>
+          ${ep.overview ? `<div class="info-ep-overview">${esc(ep.overview.slice(0, 80))}…</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    grid.innerHTML = '<p class="muted-note">Could not load episodes.</p>';
+  }
+}
+
+export function closeInfoPage() {
+  const overlay = document.getElementById('info-overlay');
+  if (overlay) overlay.classList.remove('open');
+  document.body.style.overflow = '';
+  state.currentInfoMedia = null;
+  const frame = document.getElementById('info-trailer-frame');
+  if (frame) frame.removeAttribute('src');
+  resetPageSEO();
+}
+
 /* ── TRAILER FALLBACK ────────────────────────────────────────────── */
 function showTrailerFallback(key) {
   // Add a small "Watch on YouTube" button over the player without interrupting playback
@@ -2405,6 +2662,9 @@ function initHoverTrailer() {
   document.addEventListener('mouseleave', e => {
     if (e.target === document.documentElement) clearHoverTrailer();
   });
+
+  // Scroll closes the hover card immediately
+  window.addEventListener('scroll', clearHoverTrailer, { passive: true });
 
   // Leaving the netflix card itself
   document.getElementById('netflix-card')?.addEventListener('mouseleave', e => {

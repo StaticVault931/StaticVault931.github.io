@@ -696,6 +696,27 @@
 .data-btn.danger:hover { background: rgba(229,9,20,.15); color: var(--red); border-color: rgba(229,9,20,.35); }
 
 /* ── PAGE: PREFS ─────────────────────────────────────────────────── */
+/* ── CYF NEW LAYOUT ──────────────────────────────────────────────── */
+.cyf-main-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;  /* left: wide, right: content rating */
+  gap: 2rem;
+  align-items: start;
+}
+.cyf-left-col { display: flex; flex-direction: column; gap: 1.5rem; }
+.cyf-right-col { position: sticky; top: 80px; }
+
+.pref-autosave-note {
+  display: flex; align-items: center; gap: .35rem;
+  font-size: .75rem; color: var(--dim); font-weight: 700;
+}
+.pref-autosave-note .material-icons-round { font-size: .85rem; animation: spin 2s linear infinite; }
+
+@media (max-width: 900px) {
+  .cyf-main-grid { grid-template-columns: 1fr; }
+  .cyf-right-col { position: static; }
+}
+
 #page-prefs { padding: 80px 3.5rem 4rem; }
 #page-prefs h1 {
   font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;

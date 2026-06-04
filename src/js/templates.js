@@ -186,5 +186,88 @@ export function injectOverlays() {
   </div>`;
   frag.appendChild(share);
 
+  // ── INFO PAGE OVERLAY ─────────────────────────────────────────────
+  const info = document.createElement('div');
+  info.id = 'info-overlay';
+  info.setAttribute('role', 'dialog');
+  info.setAttribute('aria-modal', 'true');
+  info.setAttribute('aria-label', 'Content information');
+  info.innerHTML = `
+  <div id="info-panel">
+    <div class="info-toolbar">
+      <button id="info-close" aria-label="Close info"><span class="material-icons-round">close</span></button>
+      <div class="info-toolbar-title" id="info-toolbar-title"></div>
+      <button class="info-toolbar-btn" id="info-play-btn" title="Watch now">
+        <span class="material-icons-round">play_arrow</span> Watch
+      </button>
+      <button class="info-toolbar-btn info-wt-btn" id="info-watch-together" title="Watch Together">
+        <span class="material-icons-round">group</span>
+      </button>
+      <button class="info-toolbar-btn" id="info-share-btn" title="Share">
+        <span class="material-icons-round">share</span>
+      </button>
+      <label class="info-default-toggle" title="Make info page your default opening mode">
+        <input type="checkbox" id="info-default-cb"> Default
+      </label>
+    </div>
+    <div class="info-body">
+      <div class="info-hero" id="info-hero">
+        <div class="info-hero-gradient"></div>
+        <img class="info-hero-img" id="info-hero-img" alt="" loading="lazy">
+        <div class="info-hero-content">
+          <div class="info-poster-wrap">
+            <img class="info-poster" id="info-poster" alt="" loading="lazy">
+          </div>
+          <div class="info-header">
+            <div class="info-tags" id="info-tags"></div>
+            <h1 class="info-title" id="info-title"></h1>
+            <div class="info-meta-row" id="info-meta"></div>
+            <div class="info-overview" id="info-overview"></div>
+          </div>
+        </div>
+      </div>
+      <div class="info-content">
+        <div class="info-col-main">
+          <div class="info-trailer-wrap" id="info-trailer-wrap">
+            <div class="info-section-label">Trailer</div>
+            <div class="info-trailer-inner">
+              <iframe id="info-trailer-frame"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
+                allow="autoplay; encrypted-media; fullscreen"
+                referrerpolicy="no-referrer"
+                title="Trailer">
+              </iframe>
+              <div class="info-trailer-fallback" id="info-trailer-fallback" style="display:none">
+                <span class="material-icons-round">videocam_off</span>
+                <p>No trailer available</p>
+              </div>
+            </div>
+          </div>
+          <div class="info-section" id="info-cast-section">
+            <div class="info-section-label">Cast</div>
+            <div class="info-cast-row" id="info-cast-row"></div>
+          </div>
+          <div class="info-section" id="info-eps-section" style="display:none">
+            <div class="info-section-label">Episodes</div>
+            <div class="info-ep-controls">
+              <select id="info-season-sel" class="info-season-sel" aria-label="Select season"></select>
+            </div>
+            <div class="info-ep-grid" id="info-ep-grid"></div>
+          </div>
+          <div class="info-section" id="info-related-section">
+            <div class="info-section-label">More Like This</div>
+            <div class="info-related-grid" id="info-related-grid"></div>
+          </div>
+        </div>
+        <div class="info-col-side">
+          <div class="info-ratings-wrap" id="info-ratings"></div>
+          <div class="info-details" id="info-details"></div>
+          <div class="info-actions" id="info-actions"></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  frag.appendChild(info);
+
   document.body.appendChild(frag);
 }

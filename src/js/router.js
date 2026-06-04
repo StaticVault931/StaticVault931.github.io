@@ -65,6 +65,13 @@ export function goPage(p) {
   const pill = document.getElementById('header-search-pill');
   if (pill) pill.style.display = p === 'search' ? 'none' : '';
 
+  // Auto-apply CYF changes when navigating away from prefs
+  if (state.currentPage === 'prefs' && p !== 'prefs' && window._prefsDirty) {
+    window._prefsDirty = false;
+    // Trigger a soft feed refresh (stays on target page)
+    if (typeof window._autoApplyFeed === 'function') window._autoApplyFeed();
+  }
+
   state.currentPage = p;
   if (PAGE_LOADERS[p]) PAGE_LOADERS[p]();
 }
