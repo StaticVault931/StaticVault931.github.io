@@ -1231,6 +1231,23 @@ body.sv-compact-mode .card-row {
 body.sv-compact-mode .row-arrow { display: none; }
 body.sv-hide-ratings .card-rating { display: none !important; }
 
+/* ── PERSONALIZED ROW BADGE ──────────────────────────────────────── */
+.row-personalized-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: .58rem;
+  font-weight: 900;
+  color: var(--red);
+  background: rgba(229,9,20,.1);
+  border: 1px solid rgba(229,9,20,.2);
+  border-radius: 3px;
+  padding: .08rem .35rem;
+  margin-left: .4rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 /* ── FOR YOU EXPAND ────────────────────────────────────────────── */
 .foryou-expand-btn { margin-left: auto; }
 .foryou-expand-btn-big {

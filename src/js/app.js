@@ -155,6 +155,7 @@ const SV_SETTINGS = [
   { id: 'wideInfo',            label: 'Wide Info Page',       desc: 'Use full screen width for info page',                   default: true,  icon: 'open_in_full' },
   { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
   { id: 'repeatContent',       label: 'Repeat Tolerance',     desc: 'How often to re-show content you\'ve already seen',       default: 'medium', icon: 'repeat', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
+  { id: 'personalizeContent',  label: 'Personalized Feed',    desc: 'Tailor rows to your genres, likes, and viewing habits',   default: true,  icon: 'auto_awesome' },
 ];
 
 /* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
@@ -599,8 +600,10 @@ async function loadHomeRows() {
     'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
     'row-action', 'row-comedy', 'row-horror', 'row-drama',
     'row-scifi', 'row-animated', 'row-home-anime',
-    'row-top10', 'row-boredom', 'row-new-streaming', 'row-love-these',
-    'row-awards', 'row-tv-faves', 'row-retro-tv', 'row-binge-drama', 'row-seasonal',
+    'row-top10', 'row-boredom', 'row-new-streaming', 'row-love-these', 'row-seasonal',
+    'row-awards', 'row-tv-faves', 'row-retro-tv', 'row-binge-drama',
+    'row-weekend', 'row-hidden-gems', 'row-feel-good', 'row-intense',
+    'row-documentary', 'row-international', 'row-teen-drama', 'row-sci-fi-tv', 'row-comfort',
   ];
 
   // ── INSTANT RENDER FROM CACHE ──────────────────────────────────────
@@ -698,101 +701,166 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Load wave 2 with IntersectionObserver — only when scrolled near
   wave2.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
 
-  // ── WAVE 3: Curated rows — all deferred to scroll ─────────────────
-  // Use a random page offset per refresh so content is truly different each time
+  // ── WAVE 3: Curated rows — randomly selected, deferred to scroll ───
   const pRng = state._randomPage || 1;
-  const prefG = state.prefGenres;
   const prefGenreStr = prefG.length ? prefG.slice(0, 2).join('|') : '';
 
-  // Build personalized genre params (blends user prefs with specific genre)
+  // Top 10 — daily trending (always shown)
+  _scheduleRowLoad('row-top10', 'sec-top10', () =>
+    tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10)), null);
+
+  // Load curated rows (random selection, alt names, personalization-aware)
+  loadCuratedRows(prefG, prefGenreStr, pRng);
+
+  // Seasonal row
+  loadSeasonalRow();
+
+  // Because You Liked — personalized
+  setTimeout(() => loadBecauseYouLiked().catch(() => {}), 800);
+}
+
+/* ── ROW CATALOG with ALT NAMES ─────────────────────────────────── */
+// Each row has multiple label variants — picked randomly per session
+const ROW_CATALOG = [
+  // id, sectionId, type, altNames[], fetchFn (built in loadCuratedRows)
+  { id: 'row-boredom',       sec: 'sec-boredom',       type: 'movie', persona: true,
+    labels: ['Boredom Busters','Nothing to Watch? Try These','Just Watch Something Good','Pick Me Up','Entertainment Mode: ON','Quick Picks Just for You'] },
+  { id: 'row-new-streaming', sec: 'sec-new-streaming',  type: null,   persona: false,
+    labels: ['New on Streaming','Just Dropped','Fresh Arrivals','Hot Off the Press','Just Added','New This Week'] },
+  { id: 'row-love-these',    sec: 'sec-love-these',     type: null,   persona: true,
+    labels: ["We Think You'll Love These","Made for You","Your Next Obsession","Curated Just for You","Handpicked for Your Taste","You Might Be Into These"] },
+  { id: 'row-awards',        sec: 'sec-awards',         type: 'movie', persona: false,
+    labels: ['Award-Winning','Critics\' Picks','The Good Stuff','Critically Acclaimed','Best of the Best','Oscar Worthy'] },
+  { id: 'row-tv-faves',      sec: 'sec-tv-faves',       type: 'tv',   persona: false,
+    labels: ['Familiar TV Favorites','The Classics','Shows Everyone\'s Seen','You Know These','Timeless TV','All-Time Greats'] },
+  { id: 'row-retro-tv',      sec: 'sec-retro-tv',       type: 'tv',   persona: false,
+    labels: ['Retro TV','Back in the Day','Old School Classics','Throwback TV','Before Your Time','Nostalgia Trip'] },
+  { id: 'row-binge-drama',   sec: 'sec-binge-drama',    type: 'tv',   persona: true,
+    labels: ['Bingeworthy TV','Can\'t Stop Won\'t Stop','One More Episode','Warning: Addictive','Start Your Next Binge','5-Star Series'] },
+  { id: 'row-weekend',       sec: 'sec-weekend',        type: 'movie', persona: true,
+    labels: ['Perfect for the Weekend','Weekend Watch List','Movie Night Picks','Grab the Popcorn','Friday Night Vibes','Lazy Sunday Picks'] },
+  { id: 'row-hidden-gems',   sec: 'sec-hidden-gems',    type: null,   persona: false,
+    labels: ['Hidden Gems','Undiscovered Classics','Underrated Picks','Slept On','Cult Favorites','You Missed These'] },
+  { id: 'row-feel-good',     sec: 'sec-feel-good',      type: 'movie', persona: true,
+    labels: ['Feel-Good Picks','Good Vibes Only','Mood Lifters','Watch & Smile','Guaranteed to Cheer You Up','Happy Watching'] },
+  { id: 'row-intense',       sec: 'sec-intense',        type: null,   persona: true,
+    labels: ['Intense & Gripping','Edge of Your Seat','Buckle Up','Can\'t Look Away','Adrenaline Rush','Not for the Faint of Heart'] },
+  { id: 'row-documentary',   sec: 'sec-documentary',    type: 'movie', persona: false,
+    labels: ['True Stories','Real Life Is Stranger','Documentaries Worth Watching','Mind-Opening Docs','The Truth Behind It','Fact Not Fiction'] },
+  { id: 'row-international', sec: 'sec-international',  type: null,   persona: false,
+    labels: ['Around the World','Global Cinema','Not From Hollywood','International Hits','Foreign Language Gems','World\'s Best Cinema'] },
+  { id: 'row-teen-drama',    sec: 'sec-teen-drama',     type: 'tv',   persona: true,
+    labels: ['Teen Drama','Coming of Age','High School Never Ends','Teenage Fever','For the Drama Lovers','Campus & Chaos'] },
+  { id: 'row-sci-fi-tv',     sec: 'sec-sci-fi-tv',      type: 'tv',   persona: true,
+    labels: ['Sci-Fi That Hits Different','Beyond Reality','Future Is Here','Space & Beyond','The Future of TV','Alternate Universes'] },
+  { id: 'row-comfort',       sec: 'sec-comfort',        type: 'tv',   persona: true,
+    labels: ['Comfort TV','Old Reliables','Rewatch Worthy','Familiar Faces','Come Back to These','Your TV Safety Blanket'] },
+];
+
+// Labels are picked randomly per session (stored so they don't change mid-session)
+function getRowLabel(rowId, defaultLabels) {
+  const key = `sv_rl_${rowId}`;
+  let stored = sessionStorage.getItem(key);
+  if (!stored) {
+    stored = defaultLabels[Math.floor(Math.random() * defaultLabels.length)];
+    sessionStorage.setItem(key, stored);
+  }
+  return stored;
+}
+
+/* ── LOAD CURATED ROWS ───────────────────────────────────────────── */
+function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
+  const personalize = getSetting('personalizeContent') !== false; // default on
+
+  // Pick a random subset of rows to show (not all at once)
+  // Always show: top10, boredom, new-streaming, love-these
+  const alwaysShow = ['row-boredom', 'row-new-streaming', 'row-love-these', 'row-awards'];
+  // Pick 4-6 more from the catalog randomly
+  const optional = ROW_CATALOG.filter(r => !alwaysShow.includes(r.id));
+  const shuffled = optional.sort(() => Math.random() - 0.5);
+  // Use a seed based on date so the selection changes daily but is consistent within a day
+  const daySeed = Math.floor(Date.now() / (24 * 3600000));
+  const sessionKey = `sv_row_sel_${daySeed}`;
+  let selected = [];
+  try {
+    selected = JSON.parse(sessionStorage.getItem(sessionKey) || '[]');
+  } catch {}
+  if (!selected.length) {
+    selected = shuffled.slice(0, 5 + Math.floor(Math.random() * 3)).map(r => r.id);
+    sessionStorage.setItem(sessionKey, JSON.stringify(selected));
+  }
+
+  const activeIds = new Set([...alwaysShow, ...selected]);
+
+  // Hide sections not in active set, show ones that are
+  ROW_CATALOG.forEach(r => {
+    const sec = document.getElementById(r.sec);
+    if (sec) sec.style.display = activeIds.has(r.id) ? '' : 'none';
+  });
+
+  // Update labels with alt names
+  ROW_CATALOG.forEach(r => {
+    const secEl = document.getElementById(r.sec);
+    if (!secEl || !activeIds.has(r.id)) return;
+    const labelEl = secEl.querySelector('.sec-title');
+    if (labelEl && r.labels) {
+      const label = getRowLabel(r.id, r.labels);
+      // Preserve the icon
+      const icon = labelEl.querySelector('.material-icons-round, .sec-icon');
+      const iconHTML = icon ? icon.outerHTML : '';
+      labelEl.innerHTML = `${iconHTML}${label}${personalize && r.persona ? ' <span class="row-personalized-badge">✦ For You</span>' : ''}`;
+    }
+  });
+
+  // Build fetch functions
   const pOpts = (genre, extra = {}) => ({
     sort_by: 'popularity.desc',
-    with_genres: prefGenreStr ? `${genre}|${prefGenreStr}` : String(genre),
-    page: pRng,
+    with_genres: personalize && prefGenreStr2 ? `${genre}|${prefGenreStr2}` : String(genre),
+    page: pRng2,
     ...extra,
   });
 
-  // Top 10 — daily trending (numbered)
-  _scheduleRowLoad('row-top10', 'sec-top10', () =>
-    tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10).map((m, i) => ({ ...m, _rank: i + 1 }))), null);
+  const fetchMap = {
+    'row-boredom':       () => tmdb('/discover/movie', { with_genres: personalize && prefGenreStr2 ? `28|35|${prefGenreStr2}` : '28|35|12', sort_by: 'popularity.desc', 'vote_count.gte': 200, 'primary_release_date.gte': '2015-01-01', page: pRng2 }).then(d => d.results || []),
+    'row-new-streaming': async () => {
+      const [mv, tv] = await Promise.allSettled([tmdb('/movie/now_playing', { page: pRng2 }), tmdb('/tv/on_the_air', { page: pRng2 })]);
+      const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
+      const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+      const out = []; const max = Math.max(m.length, t.length);
+      for (let i = 0; i < max; i++) { if (m[i]) out.push(m[i]); if (t[i]) out.push(t[i]); }
+      return out;
+    },
+    'row-love-these':    async () => {
+      if (!personalize) return tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pRng2 }).then(d => d.results || []);
+      const picks = [...state.liked, ...state.prefLikes].filter(x => x.id && x.type !== 'anime').slice(0, 3);
+      if (!picks.length) return tmdb('/movie/top_rated', { page: pRng2 }).then(d => d.results || []);
+      const recs = await Promise.allSettled(picks.map(p => tmdb(`/${p.type || 'movie'}/${p.id}/recommendations`).then(d => d.results || [])));
+      const all = recs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+      const seen = new Set(); return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 14);
+    },
+    'row-awards':        () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 1500, 'vote_average.gte': 7.8, page: pRng2 }).then(d => d.results || []),
+    'row-tv-faves':      () => tmdb('/tv/top_rated', { page: pRng2 }).then(d => d.results || []),
+    'row-retro-tv':      () => tmdb('/discover/tv', { 'first_air_date.gte': '1970-01-01', 'first_air_date.lte': '2005-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: pRng2 }).then(d => d.results || []),
+    'row-binge-drama':   () => tmdb('/discover/tv', pOpts(18, { 'vote_count.gte': 100 })).then(d => d.results || []),
+    'row-weekend':       () => tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300, page: pRng2, ...(personalize && prefGenreStr2 ? { with_genres: prefGenreStr2 } : {}) }).then(d => d.results || []),
+    'row-hidden-gems':   () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 200, 'vote_count.lte': 2000, 'vote_average.gte': 7.5, page: pRng2 }).then(d => d.results || []),
+    'row-feel-good':     () => tmdb('/discover/movie', pOpts(35, { 'vote_count.gte': 200 })).then(d => d.results || []),
+    'row-intense':       () => tmdb('/discover/movie', { with_genres: '53|28', sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pRng2 }).then(d => d.results || []),
+    'row-documentary':   () => tmdb('/discover/movie', { with_genres: 99, sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: pRng2 }).then(d => d.results || []),
+    'row-international': () => tmdb('/discover/movie', { without_original_language: 'en', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }).then(d => d.results || []),
+    'row-teen-drama':    () => tmdb('/discover/tv', { with_genres: '18|10762', sort_by: 'popularity.desc', page: pRng2 }).then(d => d.results || []),
+    'row-sci-fi-tv':     () => tmdb('/discover/tv', pOpts(10765, { 'vote_count.gte': 100 })).then(d => d.results || []),
+    'row-comfort':       () => tmdb('/discover/tv', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, 'first_air_date.lte': `${new Date().getFullYear() - 3}-12-31`, page: pRng2, ...(personalize && prefGenreStr2 ? { with_genres: prefGenreStr2 } : {}) }).then(d => d.results || []),
+  };
 
-  // Boredom Busters — fun mix of action/comedy/adventure, slightly newer, personalized
-  _scheduleRowLoad('row-boredom', 'sec-boredom', () =>
-    tmdb('/discover/movie', {
-      with_genres: prefGenreStr ? `28|35|${prefGenreStr}` : '28|35|12',
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 200,
-      'primary_release_date.gte': '2015-01-01',
-      page: pRng,
-    }).then(d => d.results || []), 'movie');
-
-  // New on Streaming — blend now_playing + on_the_air
-  _scheduleRowLoad('row-new-streaming', 'sec-new-streaming', async () => {
-    const [mv, tv] = await Promise.allSettled([
-      tmdb('/movie/now_playing'),
-      tmdb('/tv/on_the_air'),
-    ]);
-    const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
-    const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
-    // Interleave
-    const out = [];
-    const max = Math.max(m.length, t.length);
-    for (let i = 0; i < max; i++) {
-      if (m[i]) out.push(m[i]);
-      if (t[i]) out.push(t[i]);
+  // Load each active row
+  activeIds.forEach(rowId => {
+    const fn = fetchMap[rowId];
+    const meta = ROW_CATALOG.find(r => r.id === rowId);
+    if (fn && meta) {
+      _scheduleRowLoad(rowId, meta.sec, fn, meta.type || null);
     }
-    return out;
-  }, null);
-
-  // We Think You'll Love — based on recommendations from liked content
-  _scheduleRowLoad('row-love-these', 'sec-love-these', async () => {
-    const picks = [...state.liked, ...state.prefLikes]
-      .filter(x => x.id && x.type !== 'anime').slice(0, 3);
-    if (!picks.length) {
-      // Fallback: high-rated personalized content
-      const d = await tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pRng, ...(prefGenreStr ? { with_genres: prefGenreStr } : {}) });
-      return d.results || [];
-    }
-    const recs = await Promise.allSettled(
-      picks.map(p => tmdb(`/${p.type || 'movie'}/${p.id}/recommendations`).then(d => d.results || []))
-    );
-    const all = recs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-    const seen = new Set();
-    return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 14);
-  }, null);
-
-  // Award-Winning — high score, lots of votes
-  _scheduleRowLoad('row-awards', 'sec-awards', () =>
-    tmdb('/discover/movie', {
-      sort_by: 'vote_average.desc',
-      'vote_count.gte': 1500,
-      'vote_average.gte': 7.8,
-      page: pRng,
-    }).then(d => d.results || []), 'movie');
-
-  // Familiar TV Favorites — top rated TV shows
-  _scheduleRowLoad('row-tv-faves', 'sec-tv-faves', () =>
-    tmdb('/tv/top_rated', { page: pRng }).then(d => d.results || []), 'tv');
-
-  // Retro TV — classics from 1970–2005
-  _scheduleRowLoad('row-retro-tv', 'sec-retro-tv', () =>
-    tmdb('/discover/tv', {
-      'first_air_date.gte': '1970-01-01',
-      'first_air_date.lte': '2005-12-31',
-      sort_by: 'vote_average.desc',
-      'vote_count.gte': 300,
-      page: pRng,
-    }).then(d => d.results || []), 'tv');
-
-  // Bingeworthy TV Dramas — drama TV, personalized
-  _scheduleRowLoad('row-binge-drama', 'sec-binge-drama', () =>
-    tmdb('/discover/tv', pOpts(18, { 'vote_count.gte': 100 })).then(d => d.results || []), 'tv');
-
-  // Seasonal row — changes based on current month
-  loadSeasonalRow();
-
-  // Because You Liked — personalized, after main rows settle
-  setTimeout(() => loadBecauseYouLiked().catch(() => {}), 800);
+  });
 }
 
 /* ── SEASONAL ROW ────────────────────────────────────────────────── */
@@ -1094,6 +1162,15 @@ function setSetting(id, val) {
 
 function applySetting(id, val) {
   if (id === 'repeatContent') state._repeatTolerance = val;
+  if (id === 'personalizeContent') {
+    // Clear row label cache so they refresh with/without personalization markers
+    const keys = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith('sv_rl_')) keys.push(k);
+    }
+    keys.forEach(k => sessionStorage.removeItem(k));
+  }
   if (id === 'reducedMotion') document.body.classList.toggle('sv-reduced-motion', val);
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
   if (id === 'streamMode') {
