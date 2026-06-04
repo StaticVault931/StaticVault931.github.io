@@ -9,6 +9,7 @@ import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHer
 import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
+import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
 const THEMES = ['dark', 'light', 'midnight', 'warm'];
@@ -156,6 +157,7 @@ const SV_SETTINGS = [
   { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
   { id: 'repeatContent',       label: 'Repeat Tolerance',     desc: 'How often to re-show content you\'ve already seen',       default: 'medium', icon: 'repeat', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
   { id: 'personalizeContent',  label: 'Personalized Feed',    desc: 'Tailor rows to your genres, likes, and viewing habits',   default: true,  icon: 'auto_awesome' },
+  { id: 'disableSandbox',      label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.', default: false, icon: 'security' },
 ];
 
 /* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
@@ -168,6 +170,9 @@ let _streamObs = null;
 const SHORTCUTS = [
   // Navigation — left side
   { key: 'H',          desc: 'Go to Home',                   group: 'Navigation' },
+  { key: 'M',          desc: 'Go to Movies',                 group: 'Navigation' },
+  { key: 'V',          desc: 'Go to TV Shows',               group: 'Navigation' },
+  { key: 'C',          desc: 'Go to Customize Feed',         group: 'Navigation' },
   { key: 'L',          desc: 'Go to Library',                group: 'Navigation' },
   { key: 'T / 0',      desc: 'Cycle theme',                  group: 'Navigation' },
   { key: '1–6',        desc: 'Jump to page by number',       group: 'Navigation' },
@@ -178,7 +183,7 @@ const SHORTCUTS = [
   { key: '← / A',      desc: 'Previous hero slide',          group: 'Navigation' },
   { key: '→ / D',      desc: 'Next hero slide',              group: 'Navigation' },
   // Content
-  { key: 'R',          desc: 'Animated refresh home feed',   group: 'Content' },
+  { key: 'R',          desc: 'Refresh feed (home) or page content', group: 'Content' },
   { key: 'Esc',        desc: 'Close any modal or overlay',   group: 'Content' },
   { key: 'I',          desc: 'Toggle Info / Player view',    group: 'Content' },
   { key: 'N',          desc: 'Try next video source',        group: 'Content' },
@@ -192,6 +197,7 @@ const SHORTCUTS = [
 (async function init() {
   injectOverlays();   // inject modals/overlays before anything else
   cleanState();       // remove corrupt null/empty items from all lists
+  initProfiles();     // ensure at least one profile exists
   requestAnimationFrame(() => injectPages()); // defer page injection to after first paint
   initTheme();
   applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
@@ -203,6 +209,7 @@ const SHORTCUTS = [
   initModalPanelToggles();
   initShortcutsModal();
   initTestMode();
+  initProfilesUI();
   buildRatingDescriptions();
   registerAllLoaders();
   registerAllSeeAll();
@@ -668,6 +675,7 @@ async function loadHomeRows() {
     'row-awards', 'row-tv-faves', 'row-retro-tv', 'row-binge-drama',
     'row-weekend', 'row-hidden-gems', 'row-feel-good', 'row-intense',
     'row-documentary', 'row-international', 'row-teen-drama', 'row-sci-fi-tv', 'row-comfort',
+    'row-discover-new',
   ];
 
   // ── INSTANT RENDER FROM CACHE ──────────────────────────────────────
@@ -813,6 +821,8 @@ const ROW_CATALOG = [
     labels: ['Sci-Fi That Hits Different','Beyond Reality','Future Is Here','Space & Beyond','The Future of TV','Alternate Universes'] },
   { id: 'row-comfort',       sec: 'sec-comfort',        type: 'tv',   persona: true,
     labels: ['Comfort TV','Old Reliables','Rewatch Worthy','Familiar Faces','Come Back to These','Your TV Safety Blanket'] },
+  { id: 'row-discover-new', sec: 'sec-discover-new',   type: null,   persona: false,
+    labels: ['Discover Something New', 'Never Seen Before?', 'Expand Your Horizons', 'Beyond Your Comfort Zone', 'Something Different', 'Try Something New Tonight', 'We Bet You Missed This', 'Off the Beaten Path'] },
 ];
 
 // Labels are picked randomly per session (stored so they don't change mid-session)
@@ -909,6 +919,12 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
     'row-teen-drama':    () => tmdb('/discover/tv', { with_genres: '18|10762', sort_by: 'popularity.desc', page: pRng2 }).then(d => d.results || []),
     'row-sci-fi-tv':     () => tmdb('/discover/tv', pOpts(10765, { 'vote_count.gte': 100 })).then(d => d.results || []),
     'row-comfort':       () => tmdb('/discover/tv', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, 'first_air_date.lte': `${new Date().getFullYear() - 3}-12-31`, page: pRng2, ...(personalize && prefGenreStr2 ? { with_genres: prefGenreStr2 } : {}) }).then(d => d.results || []),
+    'row-discover-new':  () => tmdb('/discover/movie', {
+      sort_by: 'popularity.desc',
+      ...(prefGenreStr2 ? { without_genres: prefGenreStr2 } : {}),
+      'vote_count.gte': 100,
+      page: Math.floor(Math.random() * 5) + 1,
+    }).then(d => d.results || []),
   };
 
   // Load each active row
@@ -928,7 +944,8 @@ const SEASONAL_THEMES = {
   3:  { label: 'Spring Blockbusters', icon: 'local_florist', genres: '28|12', type: 'movie' },
   4:  { label: 'Spring Picks', icon: 'sunny', genres: '35|12', type: 'movie' },
   5:  { label: 'Mind-Bending Thrillers', icon: 'psychology', genres: '53|9648', type: 'movie' },
-  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', keywords: '158718', genres: '35|18' },
+  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', genres: '35|18|10749', type: null,
+       keywords: '158718|210024', special: 'lgbtq' },
   7:  { label: 'Summer Action', icon: 'beach_access', genres: '28|12|35', type: 'movie' },
   8:  { label: 'Late Summer Thrillers', icon: 'thunderstorm', genres: '53|27', type: 'movie' },
   9:  { label: 'Back to School Drama', icon: 'school', genres: '18|10762', type: 'tv' },
@@ -957,6 +974,10 @@ async function loadSeasonalRow() {
   };
   if (theme.genres) params.with_genres = theme.genres;
   if (theme.keywords) params.with_keywords = theme.keywords;
+  if (theme.special === 'lgbtq') {
+    params.with_keywords = '158718,210024,209726';
+    delete params.with_genres;
+  }
 
   const endpoint = theme.type === 'tv' ? '/discover/tv' : '/discover/movie';
   _scheduleRowLoad('row-seasonal', null, () =>
@@ -1183,6 +1204,62 @@ function loadPrefsPage() {
   if (!document.getElementById('sv-settings-grid')?.children.length) {
     buildSettingsUI(); // only build if not already built
   }
+  buildProviderTestUI();
+}
+
+function buildProviderTestUI() {
+  const grid = document.getElementById('provider-test-grid');
+  if (!grid) return;
+  if (grid._built) return; // only build once
+  grid._built = true;
+
+  grid.innerHTML = PROVIDERS.map(p => {
+    const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
+    const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
+    const status = working[p.id] ? 'ok' : disabled.includes(p.id) ? 'off' : 'unknown';
+    const svgIcon = status === 'ok'
+      ? `<svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="8" cy="8" r="7" stroke="#22c55e" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/></svg>`
+      : status === 'off'
+      ? `<svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="8" cy="8" r="7" stroke="#f97316" stroke-width="1.5"/><path d="M5.5 10.5l5-5M10.5 10.5l-5-5" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/></svg>`
+      : `<svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="8" cy="8" r="7" stroke="var(--dim)" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="var(--dim)"/></svg>`;
+    return `<div class="ptest-row" data-pid="${p.id}">
+      <span class="ptest-icon" id="ptest-icon-${p.id}">${svgIcon}</span>
+      <span class="ptest-name">${p.label}</span>
+      ${p.note ? `<span class="ptest-note">${p.note}</span>` : ''}
+      <span class="ptest-status" id="ptest-status-${p.id}">${status === 'ok' ? 'OK' : status === 'off' ? 'Disabled' : 'Untested'}</span>
+      <button class="data-btn" style="font-size:.65rem;padding:.18rem .5rem" onclick="window._testProv('${p.id}')">Test</button>
+      <button class="data-btn ${disabled.includes(p.id) ? 'test-btn-warn' : ''}" style="font-size:.65rem;padding:.18rem .5rem" onclick="window._toggleProv('${p.id}')">
+        ${disabled.includes(p.id) ? 'Off' : 'On'}
+      </button>
+    </div>`;
+  }).join('');
+
+  // TMDB test
+  document.getElementById('test-tmdb-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('test-tmdb-btn');
+    if (btn) btn.textContent = 'Testing…';
+    try {
+      await tmdb('/trending/movie/week');
+      if (btn) { btn.textContent = '✓ TMDB OK'; btn.style.color = '#22c55e'; }
+    } catch {
+      if (btn) { btn.textContent = '✗ TMDB Failed'; btn.style.color = '#f87171'; }
+    }
+  });
+
+  document.getElementById('test-anilist-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('test-anilist-btn');
+    if (btn) btn.textContent = 'Testing…';
+    try {
+      await aniQuery(`query{Page(perPage:1){media(type:ANIME){id}}}`);
+      if (btn) { btn.textContent = '✓ AniList OK'; btn.style.color = '#22c55e'; }
+    } catch {
+      if (btn) { btn.textContent = '✗ AniList Failed'; btn.style.color = '#f87171'; }
+    }
+  });
+
+  document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', () => {
+    PROVIDERS.forEach(p => window._testProv(p.id));
+  });
 }
 
 function buildAgeRatingUI() {
@@ -1252,6 +1329,13 @@ function applySetting(id, val) {
   }
   if (id === 'showRatings') document.body.classList.toggle('sv-hide-ratings', !val);
   if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
+  if (id === 'disableSandbox') {
+    const frame = document.getElementById('player-frame');
+    if (frame) {
+      if (val) frame.removeAttribute('sandbox');
+      else frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
+    }
+  }
 }
 
 /* ── STREAM MODE (infinite scroll feed) — declarations moved above ── */
@@ -2339,6 +2423,14 @@ function initEventDelegation() {
     if (icon) icon.textContent = expanded ? 'fullscreen_exit' : 'fullscreen';
   });
 
+  // Cast member click opens person filmography page
+  document.addEventListener('click', e => {
+    const castCard = e.target.closest('.cast-card');
+    if (!castCard) return;
+    const personId = castCard.dataset.personId;
+    if (personId) openPersonPage(+personId);
+  });
+
   // Impression tracking via IntersectionObserver — count when cards are 50%+ visible
   const impressionObs = new IntersectionObserver(entries => {
     entries.forEach(entry => {
@@ -2882,8 +2974,10 @@ export async function openInfoPage(id, type, hint = {}) {
     document.getElementById('info-close')?.addEventListener('click', closeInfoPage);
     overlay.addEventListener('click', e => { if (e.target === overlay) closeInfoPage(); });
     document.getElementById('info-play-btn')?.addEventListener('click', () => {
+      if (!state.currentInfoMedia) return;
+      const { id, type } = state.currentInfoMedia;
       closeInfoPage();
-      if (state.currentInfoMedia) openMedia(state.currentInfoMedia.id, state.currentInfoMedia.type, state.currentInfoMedia);
+      setTimeout(() => openMedia(id, type, { _forcePlayer: true }), 80);
     });
     document.getElementById('info-share-btn')?.addEventListener('click', () => {
       if (state.currentInfoMedia) shareMedia();
@@ -3068,7 +3162,7 @@ export async function openInfoPage(id, type, hint = {}) {
     if (castRow) {
       castRow.innerHTML = cast.map(p => {
         const ph = imgUrl(p.profile_path, 'w185');
-        return `<div class="cast-card">
+        return `<div class="cast-card" data-person-id="${p.id || ''}" style="cursor:pointer" title="See filmography">
           ${ph ? `<img class="cast-img" src="${ph}" alt="${esc(p.name || '')}" loading="lazy">` : `<div class="cast-ph"><span class="material-icons-round">person</span></div>`}
           <div class="cast-name" title="${esc(p.name || '')}">${esc(p.name || '')}</div>
           <div class="cast-char" title="${esc(p.character || '')}">${esc(p.character || '')}</div>
@@ -3161,6 +3255,74 @@ async function loadInfoEpisodes(showId, season) {
   }
 }
 
+/* ── PERSON FILMOGRAPHY PAGE ─────────────────────────────────────── */
+export async function openPersonPage(personId) {
+  const ov = document.getElementById('person-overlay');
+  if (!ov) return;
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  if (!ov._wired) {
+    ov._wired = true;
+    document.getElementById('person-close')?.addEventListener('click', closePersonPage);
+    ov.addEventListener('click', e => { if (e.target === ov) closePersonPage(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) closePersonPage(); });
+    ov.addEventListener('click', e => {
+      const tab = e.target.closest('.person-tab');
+      if (!tab) return;
+      ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t === tab));
+      loadPersonCredits(ov._personId, tab.dataset.tab);
+    });
+  }
+
+  ov._personId = personId;
+  const nameEl = document.getElementById('person-name');
+  const metaEl = document.getElementById('person-meta');
+  const bioEl = document.getElementById('person-bio');
+  const photoEl = document.getElementById('person-photo');
+  if (nameEl) nameEl.textContent = 'Loading…';
+  if (bioEl) bioEl.textContent = '';
+
+  // Reset tab to Movies
+  ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'movie'));
+
+  try {
+    const [person] = await Promise.all([
+      tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' }),
+    ]);
+    if (nameEl) nameEl.textContent = person.name || '';
+    if (photoEl) {
+      photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w185') : '';
+      photoEl.style.display = person.profile_path ? '' : 'none';
+    }
+    if (metaEl) {
+      const dept = person.known_for_department || '';
+      const bday = person.birthday?.slice(0, 4) || '';
+      const place = person.place_of_birth || '';
+      metaEl.innerHTML = [dept, bday, place].filter(Boolean).map(s => `<span class="person-meta-item">${esc(s)}</span>`).join('');
+    }
+    if (bioEl) bioEl.textContent = person.biography || '';
+    ov._credits = person.combined_credits || {};
+    loadPersonCredits(personId, 'movie');
+  } catch {}
+}
+
+function loadPersonCredits(personId, type) {
+  const ov = document.getElementById('person-overlay');
+  const grid = document.getElementById('person-grid');
+  if (!grid || !ov._credits) return;
+  const items = (type === 'tv'
+    ? ov._credits.cast?.filter(m => m.media_type === 'tv')
+    : ov._credits.cast?.filter(m => m.media_type === 'movie')) || [];
+  items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  grid.innerHTML = items.slice(0, 30).map(m => makeCard(m, type)).join('');
+}
+
+function closePersonPage() {
+  document.getElementById('person-overlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 export function closeInfoPage() {
   const overlay = document.getElementById('info-overlay');
   if (overlay) overlay.classList.remove('open');
@@ -3182,15 +3344,19 @@ function openTrailerOverlay(key, title, details) {
     ov.addEventListener('click', e => { if (e.target === ov) closeTrailerOverlay(); });
   }
 
-  // Build list of ALL available keys, in priority order
+  // Build list of ALL available keys — YouTube first, Vimeo as fallback
   const videos = details?.videos?.results || [];
   const allKeys = [
     ...videos.filter(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official).map(v => v.key),
     ...videos.filter(v => v.site === 'YouTube' && v.type === 'Trailer' && !v.official).map(v => v.key),
     ...videos.filter(v => v.site === 'YouTube' && v.type === 'Teaser').map(v => v.key),
+    ...videos.filter(v => v.site === 'YouTube' && (v.type === 'Clip' || v.type === 'Featurette')).map(v => v.key),
     ...videos.filter(v => v.site === 'YouTube').map(v => v.key),
     key,
   ].filter((k, i, a) => k && a.indexOf(k) === i); // unique, defined
+
+  // Vimeo as last resort
+  const vimeoKeys = videos.filter(v => v.site === 'Vimeo').map(v => v.key).filter(Boolean);
 
   // Poster for fallback
   const posterImg = details?.backdrop_path
@@ -3205,17 +3371,30 @@ function openTrailerOverlay(key, title, details) {
   if (titleEl) titleEl.textContent = `${title || 'Trailer'}`;
   ov.classList.add('open');
 
-  // Try keys in sequence
-  _tryTrailerKey(allKeys, 0, ytLink, posterImg);
+  // Try keys in sequence (YouTube first, then Vimeo as last resort)
+  _tryTrailerKey(allKeys, 0, ytLink, posterImg, vimeoKeys);
 }
 
-function _tryTrailerKey(keys, idx, ytLink, posterImg) {
+function _tryTrailerKey(keys, idx, ytLink, posterImg, vimeoKeys) {
   const frame = document.getElementById('trailer-ov-frame');
   const fallback = document.getElementById('trailer-ov-fallback');
 
-  if (idx >= keys.length || !frame) {
-    // All keys failed — show fallback
-    if (frame) frame.style.display = 'none';
+  // If no frame, bail
+  if (!frame) return;
+
+  // All YouTube keys exhausted — try Vimeo
+  if (idx >= keys.length) {
+    if (vimeoKeys && vimeoKeys.length) {
+      const vk = vimeoKeys[0];
+      frame.style.display = '';
+      if (fallback) fallback.style.display = 'none';
+      frame.src = `https://player.vimeo.com/video/${vk}?autoplay=1&muted=1&loop=0&title=0&byline=0&portrait=0`;
+      // Vimeo can't be easily detected via postMessage, just trust it loaded
+      frame.onload = null;
+      return;
+    }
+    // All sources exhausted — show fallback with poster image
+    frame.style.display = 'none';
     if (fallback) fallback.style.display = '';
     if (ytLink && keys[0]) ytLink.href = `https://www.youtube.com/watch?v=${keys[0]}`;
     return;
@@ -3225,40 +3404,52 @@ function _tryTrailerKey(keys, idx, ytLink, posterImg) {
   if (ytLink) ytLink.href = `https://www.youtube.com/watch?v=${key}`;
   if (fallback) fallback.style.display = 'none';
   frame.style.display = '';
+  frame.onload = null;
 
-  // Load this key
-  frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+  // Try youtube-nocookie first (some Error 153 videos work there), then regular YouTube
+  const isEven = idx % 2 === 0;
+  const ytBase = isEven ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+  frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
-  // Detect playback vs Error 153 via postMessage
   let resolved = false;
+
   const msgHandler = (e) => {
-    if (e.origin !== 'https://www.youtube.com') return;
+    if (e.origin !== 'https://www.youtube.com' && e.origin !== 'https://www.youtube-nocookie.com') return;
     try {
       const d = JSON.parse(e.data);
-      if (!d.info) return;
-      const ps = d.info.playerState;
+
+      // onError event (Error 153 = not embeddable)
+      if (d.event === 'onError' || (d.func === 'onError')) {
+        resolved = true;
+        window.removeEventListener('message', msgHandler);
+        clearTimeout(retryTimer);
+        _tryTrailerKey(keys, idx + 1, ytLink, posterImg, vimeoKeys);
+        return;
+      }
+
+      // playerState via infoDelivery
+      const ps = d.info?.playerState;
       if (ps === 1 || ps === 3) {
         // Playing or buffering — success!
         resolved = true;
         window.removeEventListener('message', msgHandler);
         clearTimeout(retryTimer);
-      } else if (ps === -1 && d.info.error) {
-        // Error state — try next key
+      } else if (typeof ps === 'number' && ps < 0 && d.info?.error) {
         resolved = true;
         window.removeEventListener('message', msgHandler);
         clearTimeout(retryTimer);
-        _tryTrailerKey(keys, idx + 1, ytLink, posterImg);
+        _tryTrailerKey(keys, idx + 1, ytLink, posterImg, vimeoKeys);
       }
     } catch {}
   };
   window.addEventListener('message', msgHandler);
 
-  // 5 second timeout — if no playback, try next key
+  // 6 second timeout per key
   const retryTimer = setTimeout(() => {
     if (resolved) return;
     window.removeEventListener('message', msgHandler);
-    _tryTrailerKey(keys, idx + 1, ytLink, posterImg);
-  }, 5000);
+    _tryTrailerKey(keys, idx + 1, ytLink, posterImg, vimeoKeys);
+  }, 6000);
 }
 
 function closeTrailerOverlay() {
@@ -3323,6 +3514,196 @@ function initShortcutsModal() {
 
 /* ── TESTING MODE ────────────────────────────────────────────────── */
 // Step 1: Footer logo (bottom bar text) × 5 within 3s
+/* ── PROFILES ──────────────────────────────────────────────────────── */
+const PROFILE_COLORS = ['#e50914','#6366f1','#22c55e','#f59e0b','#06b6d4','#ec4899','#8b5cf6','#f97316'];
+let _editingProfileId = null;
+
+function initProfilesUI() {
+  document.getElementById('profile-header-btn')?.addEventListener('click', openProfilesOverlay);
+  document.getElementById('profiles-close')?.addEventListener('click', closeProfilesOverlay);
+  document.getElementById('profiles-overlay')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('profiles-overlay')) closeProfilesOverlay();
+  });
+  document.getElementById('profile-editor-close')?.addEventListener('click', closeProfileEditor);
+  document.getElementById('profile-editor-overlay')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('profile-editor-overlay')) closeProfileEditor();
+  });
+  document.getElementById('profiles-add-btn')?.addEventListener('click', () => openProfileEditor(null));
+  document.getElementById('profile-save-btn')?.addEventListener('click', saveProfileFromEditor);
+  document.getElementById('profile-delete-btn')?.addEventListener('click', deleteProfileFromEditor);
+  // Color picker
+  const colorRow = document.getElementById('profile-color-row');
+  if (colorRow) {
+    colorRow.innerHTML = PROFILE_COLORS.map(c =>
+      `<button class="profile-color-swatch" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`
+    ).join('');
+    colorRow.addEventListener('click', e => {
+      const sw = e.target.closest('[data-color]');
+      if (!sw) return;
+      colorRow.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s === sw));
+      const prev = document.getElementById('profile-avatar-preview');
+      if (prev) prev.style.background = sw.dataset.color;
+    });
+  }
+  document.getElementById('profile-change-avatar-btn')?.addEventListener('click', openPersonSearchForAvatar);
+  updateProfileHeaderBtn();
+}
+
+function updateProfileHeaderBtn() {
+  const profiles = getProfiles();
+  const active = profiles.find(p => p.id === getActiveProfileId()) || profiles[0];
+  const mini = document.getElementById('profile-avatar-mini');
+  if (!mini || !active) return;
+  mini.innerHTML = active.avatar
+    ? `<img src="${esc(active.avatar)}" alt="${esc(active.name)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`
+    : `<span class="material-icons-round" style="font-size:.9rem">person</span>`;
+  const btn = document.getElementById('profile-header-btn');
+  if (btn && active.color) btn.style.outline = `2px solid ${active.color}`;
+}
+
+function openProfilesOverlay() {
+  const ov = document.getElementById('profiles-overlay');
+  if (!ov) return;
+  ov.classList.add('open');
+  renderProfilesGrid();
+}
+
+function closeProfilesOverlay() {
+  document.getElementById('profiles-overlay')?.classList.remove('open');
+}
+
+function renderProfilesGrid() {
+  const grid = document.getElementById('profiles-grid');
+  if (!grid) return;
+  const profiles = getProfiles();
+  const activeId = getActiveProfileId();
+  grid.innerHTML = profiles.map(p => `
+    <div class="profile-card${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" tabindex="0" role="button">
+      <div class="profile-avatar-circle" style="background:${p.color || '#e50914'}">
+        ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : `<span class="material-icons-round">person</span>`}
+      </div>
+      <div class="profile-card-name">${esc(p.name)}</div>
+      ${p.id === activeId ? `<div class="profile-card-active-badge">Active</div>` : ''}
+      <button class="profile-card-edit-btn" data-pid="${p.id}" title="Edit">
+        <span class="material-icons-round">edit</span>
+      </button>
+    </div>`).join('');
+
+  grid.querySelectorAll('.profile-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.profile-card-edit-btn')) return;
+      const pid = card.dataset.pid;
+      if (pid === getActiveProfileId()) { closeProfilesOverlay(); return; }
+      switchProfile(pid);
+      updateProfileHeaderBtn();
+      closeProfilesOverlay();
+      _clearRowCache();
+      _homeLoading = false;
+      loadHero().catch(() => {});
+      loadHomeRows().catch(() => {});
+      renderLibrary();
+      toast('Switched profile!', 'person');
+    });
+    card.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        closeProfilesOverlay();
+        openProfileEditor(btn.dataset.pid);
+      });
+    });
+  });
+}
+
+function openProfileEditor(profileId) {
+  const ov = document.getElementById('profile-editor-overlay');
+  if (!ov) return;
+  _editingProfileId = profileId;
+  const profile = profileId ? getProfiles().find(p => p.id === profileId) : null;
+  const title = document.getElementById('profile-editor-title');
+  const nameInput = document.getElementById('profile-name-input');
+  const preview = document.getElementById('profile-avatar-preview');
+  const deleteBtn = document.getElementById('profile-delete-btn');
+  const colorRow = document.getElementById('profile-color-row');
+  if (title) title.textContent = profile ? 'Edit Profile' : 'New Profile';
+  if (nameInput) nameInput.value = profile?.name || '';
+  if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
+  const color = profile?.color || '#e50914';
+  if (preview) {
+    preview.style.background = color;
+    preview.innerHTML = profile?.avatar
+      ? `<img src="${esc(profile.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+      : `<span class="material-icons-round">person</span>`;
+  }
+  colorRow?.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s.dataset.color === color));
+  ov.classList.add('open');
+}
+
+function closeProfileEditor() {
+  document.getElementById('profile-editor-overlay')?.classList.remove('open');
+  _editingProfileId = null;
+}
+
+function saveProfileFromEditor() {
+  const name = (document.getElementById('profile-name-input')?.value || '').trim() || 'Profile';
+  const colorRow = document.getElementById('profile-color-row');
+  const color = colorRow?.querySelector('.profile-color-swatch.on')?.dataset.color || '#e50914';
+  const avatarImg = document.getElementById('profile-avatar-preview')?.querySelector('img');
+  const avatar = avatarImg?.src || null;
+  if (_editingProfileId) {
+    updateProfile(_editingProfileId, { name, color, avatar });
+    toast('Profile updated!', 'check_circle');
+  } else {
+    const p = createProfile(name, avatar, color);
+    if (!p) { toast('Maximum 10 profiles reached', 'warning'); return; }
+    toast('Profile created!', 'check_circle');
+  }
+  closeProfileEditor();
+  updateProfileHeaderBtn();
+}
+
+function deleteProfileFromEditor() {
+  if (!_editingProfileId) return;
+  if (getProfiles().length <= 1) { toast('Cannot delete last profile', 'warning'); return; }
+  const activeId = getActiveProfileId();
+  deleteProfile(_editingProfileId);
+  if (activeId === _editingProfileId) {
+    const rem = getProfiles();
+    if (rem.length) switchProfile(rem[0].id);
+  }
+  closeProfileEditor();
+  updateProfileHeaderBtn();
+  toast('Profile deleted', 'delete');
+}
+
+function openPersonSearchForAvatar() {
+  const q = prompt('Search for a person (actor/character) for avatar:');
+  if (!q?.trim()) return;
+  tmdb('/search/person', { query: q }).then(d => {
+    const people = (d.results || []).slice(0, 8).filter(p => p.profile_path);
+    if (!people.length) { toast('No photos found', 'search_off'); return; }
+    const picker = document.createElement('div');
+    picker.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.92);backdrop-filter:blur(8px);display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:center;padding:3rem;cursor:pointer;';
+    picker.innerHTML = `<div style="position:absolute;top:1rem;right:1rem;color:#fff;font-size:.85rem;font-weight:700;">Click a photo to use as avatar · Click outside to cancel</div>`
+      + people.map(p =>
+          `<div style="text-align:center;cursor:pointer">
+            <img src="https://image.tmdb.org/t/p/w185${p.profile_path}" alt="${p.name}"
+              style="width:96px;height:96px;object-fit:cover;border-radius:50%;border:3px solid rgba(255,255,255,.2);transition:border .18s;"
+              data-url="https://image.tmdb.org/t/p/w185${p.profile_path}">
+            <div style="color:#fff;font-size:.72rem;margin-top:.35rem;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+          </div>`).join('');
+    document.body.appendChild(picker);
+    picker.addEventListener('click', e => {
+      const img = e.target.closest('img');
+      if (img?.dataset.url) {
+        const prev = document.getElementById('profile-avatar-preview');
+        if (prev) prev.innerHTML = `<img src="${img.dataset.url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+      }
+      picker.remove();
+    });
+  }).catch(() => toast('Search failed', 'error'));
+}
+
+/* ── TESTING MODE ──────────────────────────────────────────────────── */
 // Step 2: Type "938938" at any time within 15s of step 1
 // Must be on Library or CYF page when entering code
 let _testFooterClicks = 0;
@@ -3562,7 +3943,11 @@ window._testProv = async function(id) {
   if (!prov) return;
 
   const iconEl = document.getElementById(`tpi-${id}`);
+  const ptestIconEl = document.getElementById(`ptest-icon-${id}`);
+  const ptestStatusEl = document.getElementById(`ptest-status-${id}`);
   if (iconEl) iconEl.innerHTML = _provStatusSVG('testing');
+  if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('testing');
+  if (ptestStatusEl) ptestStatusEl.textContent = 'Testing…';
 
   try {
     const testUrl = prov.url(550, 'movie', 1, 1);
@@ -3576,11 +3961,15 @@ window._testProv = async function(id) {
     working[id] = Date.now();
     localStorage.setItem('sv_provider_working', JSON.stringify(working));
     if (iconEl) iconEl.innerHTML = _provStatusSVG('ok');
+    if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('ok');
+    if (ptestStatusEl) ptestStatusEl.textContent = 'OK';
     const row = document.getElementById(`tp-row-${id}`);
     if (row) row.querySelector('.tp-btn')?.classList.add('tp-ok');
   } catch (e) {
     if (e.name === 'AbortError') {
       if (iconEl) iconEl.innerHTML = _provStatusSVG('fail');
+      if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('fail');
+      if (ptestStatusEl) ptestStatusEl.textContent = 'Timeout';
       toast(`${prov.label}: Timed out`, 'timer_off');
     } else {
       // Other errors treated as reachable (network/CORS masking)
@@ -3588,6 +3977,8 @@ window._testProv = async function(id) {
       working[id] = Date.now();
       localStorage.setItem('sv_provider_working', JSON.stringify(working));
       if (iconEl) iconEl.innerHTML = _provStatusSVG('ok');
+      if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('ok');
+      if (ptestStatusEl) ptestStatusEl.textContent = 'OK';
     }
   }
 };
@@ -4174,6 +4565,12 @@ function initKeyboard() {
       cycleTheme();
     } else if (e.key === 'h' || e.key === 'H') {
       goPage('home');
+    } else if (e.key === 'm' || e.key === 'M') {
+      goPage('movies');
+    } else if (e.key === 'v' || e.key === 'V') {
+      goPage('tv');
+    } else if (e.key === 'c' || e.key === 'C') {
+      goPage('prefs');
     } else if (e.key === 'l' || e.key === 'L') {
       goPage('library');
     } else if (e.key === 's' || e.key === 'S') {
@@ -4184,7 +4581,18 @@ function initKeyboard() {
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 100);
     } else if (e.key === 'r' || e.key === 'R') {
-      if (state.currentPage === 'home') animatedRefreshFeed();
+      const page = state.currentPage;
+      if (page === 'home') {
+        animatedRefreshFeed();
+      } else if (['movies', 'tv', 'anime'].includes(page)) {
+        state._randomPage = Math.floor(Math.random() * 6) + 2;
+        const loaderFn = PAGE_LOADERS[page];
+        if (loaderFn) {
+          document.querySelectorAll(`#page-${page} .card-row`).forEach(r => { r.innerHTML = skelCards(6); });
+          setTimeout(() => loaderFn(), 50);
+        }
+        toast('Refreshing…', 'refresh');
+      }
     }
   });
 

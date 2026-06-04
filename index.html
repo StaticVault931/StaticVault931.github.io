@@ -129,6 +129,11 @@
     <button class="hbtn" id="theme-toggle" aria-label="Change theme" title="Change theme">
       <span class="material-icons-round">palette</span>
     </button>
+    <button class="hbtn profile-btn" id="profile-header-btn" aria-label="Switch profile" title="Profiles">
+      <span class="profile-avatar-mini" id="profile-avatar-mini">
+        <span class="material-icons-round">person</span>
+      </span>
+    </button>
   </div>
 </header>
 
@@ -555,6 +560,7 @@
   <div class="section" id="sec-teen-drama" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">school</span>Teen Drama</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-teen-drama" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-teen-drama"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-teen-drama" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <div class="section" id="sec-sci-fi-tv" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">rocket_launch</span>Sci-Fi TV</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-sci-fi-tv" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-sci-fi-tv"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-sci-fi-tv" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <div class="section" id="sec-comfort" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">local_cafe</span>Comfort TV</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-comfort" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-comfort"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-comfort" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-discover-new" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#06b6d4">explore</span>Discover Something New</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-discover-new" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-discover-new"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-discover-new" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
 
   <!-- Recently Viewed -->
   <div class="section" id="sec-recent" style="display:none">
@@ -824,6 +830,20 @@
       </div>
     </div>
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
+  </div>
+
+  <!-- Provider & API Testing Section -->
+  <div class="pref-section pref-section-full" id="provider-test-section" style="margin-top:2rem">
+    <h3><span class="material-icons-round">dns</span>Provider &amp; API Testing</h3>
+    <p class="pref-hint">Test which video sources and APIs are working for you. Results are specific to your browser and network.</p>
+    <div id="provider-test-grid" class="provider-test-grid"></div>
+    <div class="pref-actions-row" style="margin-top:.75rem">
+      <button class="data-btn data-btn-primary" id="test-all-providers-cyf-btn">
+        <span class="material-icons-round">play_arrow</span>Test All Sources
+      </button>
+      <button class="data-btn" id="test-tmdb-btn">Test TMDB API</button>
+      <button class="data-btn" id="test-anilist-btn">Test AniList API</button>
+    </div>
   </div>
 
   <div style="height:3rem"></div>

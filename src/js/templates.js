@@ -300,5 +300,82 @@ export function injectOverlays() {
   </div>`;
   frag.appendChild(info);
 
+  // ── PERSON OVERLAY ─────────────────────────────────────────────────
+  const person = document.createElement('div');
+  person.id = 'person-overlay';
+  person.setAttribute('role', 'dialog');
+  person.innerHTML = `
+<div id="person-panel">
+  <div class="person-header">
+    <button id="person-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    <img class="person-photo" id="person-photo" alt="">
+    <div class="person-info">
+      <h2 class="person-name" id="person-name"></h2>
+      <div class="person-meta" id="person-meta"></div>
+    </div>
+  </div>
+  <div class="person-bio" id="person-bio"></div>
+  <div class="person-credits">
+    <div class="person-credits-header">
+      <div class="person-tab on" data-tab="movie">Movies</div>
+      <div class="person-tab" data-tab="tv">TV Shows</div>
+    </div>
+    <div class="search-grid person-grid" id="person-grid"></div>
+  </div>
+</div>`;
+  frag.appendChild(person);
+
+  // ── PROFILES OVERLAY ──────────────────────────────────────────────
+  const profiles = document.createElement('div');
+  profiles.id = 'profiles-overlay';
+  profiles.setAttribute('role', 'dialog');
+  profiles.setAttribute('aria-label', 'Switch profile');
+  profiles.innerHTML = `
+  <div id="profiles-panel">
+    <div class="profiles-header">
+      <h2>Who's watching?</h2>
+      <button id="profiles-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    </div>
+    <div class="profiles-grid" id="profiles-grid"></div>
+    <div class="profiles-actions">
+      <button class="profiles-add-btn" id="profiles-add-btn">
+        <span class="material-icons-round">add_circle</span> Add Profile
+      </button>
+    </div>
+  </div>`;
+  frag.appendChild(profiles);
+
+  // ── PROFILE EDITOR ────────────────────────────────────────────────
+  const profileEditor = document.createElement('div');
+  profileEditor.id = 'profile-editor-overlay';
+  profileEditor.innerHTML = `
+  <div class="profile-editor-panel">
+    <div class="profile-editor-header">
+      <h2 id="profile-editor-title">New Profile</h2>
+      <button id="profile-editor-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+    </div>
+    <div class="profile-editor-body">
+      <div class="profile-avatar-picker" id="profile-avatar-area">
+        <div class="profile-avatar-preview" id="profile-avatar-preview">
+          <span class="material-icons-round">person</span>
+        </div>
+        <button class="profile-change-avatar-btn" id="profile-change-avatar-btn">
+          <span class="material-icons-round">photo_camera</span> Choose Avatar
+        </button>
+      </div>
+      <label class="profile-field-label">Profile Name
+        <input class="pref-input" id="profile-name-input" placeholder="Enter a name…" maxlength="20">
+      </label>
+      <label class="profile-field-label">Accent Color
+        <div class="profile-color-row" id="profile-color-row"></div>
+      </label>
+    </div>
+    <div class="profile-editor-actions">
+      <button class="ma primary" id="profile-save-btn">Save Profile</button>
+      <button class="ma" id="profile-delete-btn" style="display:none">Delete Profile</button>
+    </div>
+  </div>`;
+  frag.appendChild(profileEditor);
+
   document.body.appendChild(frag);
 }

@@ -370,7 +370,7 @@ export function renderCast(credits) {
 
   el.innerHTML = cast.map(p => {
     const ph = imgUrl(p.profile_path, 'w185');
-    return `<div class="cast-card">
+    return `<div class="cast-card" data-person-id="${p.id || ''}" style="cursor:pointer" title="See filmography">
       ${ph
         ? `<img class="cast-img" src="${ph}" alt="${esc(p.name || '')}" loading="lazy">`
         : `<div class="cast-ph"><span class="material-icons-round">person</span></div>`}
