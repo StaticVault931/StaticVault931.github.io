@@ -22,13 +22,12 @@
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
 
-/* LIGHT — softer grey tones, still readable, not blinding white */
+/* LIGHT — medium grey tones, not blinding, easy on eyes */
 [data-theme="light"] {
-  --bg: #e8eaed; --s1: #f4f6f8; --s2: #eceef1; --s3: #e0e3e8; --s4: #d0d5dd;
-  --border: rgba(0,0,0,.10); --border2: rgba(0,0,0,.18); --border3: rgba(0,0,0,.32);
-  --text: #141920; --muted: #52617a; --dim: #8b96aa;
-  --card-bg: #f4f6f8;
-  --gold: #b56e00; --red: #c8000a; --red-glow: rgba(200,0,10,.12);
+  --bg: #d4d8de; --s1: #dde1e7; --s2: #d8dce3; --s3: #cdd2da; --s4: #bfc6d0;
+  --border: rgba(0,0,0,.12); --border2: rgba(0,0,0,.20); --border3: rgba(0,0,0,.34);
+  --text: #141920; --muted: #48596e; --dim: #7a8898;
+  --gold: #a86000; --red: #c0000a; --red-glow: rgba(192,0,10,.14);
 }
 /* Override hero text to stay white on image backgrounds */
 [data-theme="light"] #hero-title,

@@ -153,6 +153,7 @@ const SV_SETTINGS = [
   { id: 'hdFirst',             label: 'Prefer HD Sources',    desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)', default: true, icon: 'hd' },
   { id: 'darkPlayer',          label: 'Dark Player BG',       desc: 'Show dark background behind the player iframe',         default: true,  icon: 'dark_mode' },
   { id: 'wideInfo',            label: 'Wide Info Page',       desc: 'Use full screen width for info page',                   default: true,  icon: 'open_in_full' },
+  { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
 ];
 
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
@@ -322,6 +323,28 @@ function registerAllLoaders() {
     this.classList.toggle('on', !open);
     if (!open) buildSearchFilters(wrap);
   });
+
+  // Search shuffle/mix button — show random popular content
+  document.getElementById('sf-shuffle-btn')?.addEventListener('click', async () => {
+    const area = document.getElementById('search-results-area');
+    if (!area) return;
+    area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
+    try {
+      const page = Math.floor(Math.random() * 8) + 1;
+      const [movies, shows] = await Promise.allSettled([
+        tmdb('/discover/movie', { sort_by: 'popularity.desc', page }),
+        tmdb('/discover/tv', { sort_by: 'popularity.desc', page }),
+      ]);
+      const m = movies.status === 'fulfilled' ? (movies.value.results || []).map(x => ({ ...x, _type: 'movie' })) : [];
+      const s = shows.status === 'fulfilled' ? (shows.value.results || []).map(x => ({ ...x, _type: 'tv' })) : [];
+      const all = [...m, ...s].sort(() => Math.random() - 0.5).slice(0, 24);
+      area.innerHTML = `
+        <div class="search-section-title"><span class="material-icons-round">shuffle</span>Random Mix</div>
+        <div class="search-grid">${all.map(m => makeCard(m, m._type)).join('')}</div>`;
+    } catch {
+      area.innerHTML = '<div class="search-empty"><p>Could not load.</p></div>';
+    }
+  });
   registerLoader('library', renderLibrary);
   registerLoader('prefs', loadPrefsPage);
   registerLoader('seeall', renderSeeAll);
@@ -375,11 +398,13 @@ function _loadRow(rowId, secId, fetchFn, type) {
         if (sec) sec.style.display = 'none';
         return;
       }
-      // Dedup: skip items already shown in rows above, fallback to all if fully duped
+      // Dedup: skip items already shown in rows above, fallback to originals if over-deduped
       const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
-      const toRender = deduped.length >= 4 ? deduped : items;
+      const toRender = deduped.length >= 4 ? deduped : items.filter(m => m.id);
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
-      renderRow(rowId, toRender.slice(0, 14), type);
+      const final = toRender.slice(0, 14);
+      renderRow(rowId, final, type);
+      _saveRowCache(rowId, final); // cache for instant replay
     })
     .catch(err => {
       console.warn(`[SV] Row ${rowId}:`, err?.message || err);
@@ -387,8 +412,32 @@ function _loadRow(rowId, secId, fetchFn, type) {
     });
 }
 
+/* ── HOME ROW CACHE (stale-while-revalidate) ─────────────────────── */
+const _ROW_CACHE_KEY = 'sv_home_v2';
+const _ROW_CACHE_TTL = 8 * 60 * 1000; // 8 minutes
+
+function _saveRowCache(rowId, items) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
+    cache[rowId] = { items, ts: Date.now() };
+    localStorage.setItem(_ROW_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
+function _getRowCache(rowId) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
+    const entry = cache[rowId];
+    if (!entry || Date.now() - entry.ts > _ROW_CACHE_TTL) return null;
+    return entry.items;
+  } catch { return null; }
+}
+
+function _clearRowCache() {
+  try { localStorage.removeItem(_ROW_CACHE_KEY); } catch {}
+}
+
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
-// No mutex — loadHomeRows is idempotent; concurrent calls both write to the same rows (last one wins, which is fine)
 let _homeLoading = false; // kept for refreshFeed compat only
 
 async function loadHomeRows() {
@@ -396,70 +445,97 @@ async function loadHomeRows() {
   _lazyObs.forEach(o => o.disconnect());
   _lazyObs.clear();
 
+  const allRowIds = [
+    'row-trending', 'row-foryou', 'row-continue', 'row-recent',
+    'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
+    'row-action', 'row-comedy', 'row-horror', 'row-drama',
+    'row-scifi', 'row-animated', 'row-home-anime',
+  ];
+
+  // ── INSTANT RENDER FROM CACHE ──────────────────────────────────────
+  let hadCache = false;
+  allRowIds.forEach(id => {
+    const cached = _getRowCache(id);
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (cached && cached.length) {
+      const sec = el.closest('.section');
+      if (sec) sec.style.display = '';
+      const type = id.includes('anime') ? 'anime' : id.includes('tv') ? 'tv' : null;
+      renderRow(id, cached, type, id === 'row-trending');
+      cached.forEach(m => _homeSeenIds.add(m.id));
+      hadCache = true;
+    } else {
+      el.innerHTML = skelCards(6);
+      const sec = el.closest('.section');
+      if (sec) sec.style.display = '';
+    }
+  });
+
+  // Local data is always instant
+  renderContinueRow();
+  renderRecentRow();
+
+  // If we had cached data, refresh in background (stale-while-revalidate)
+  // If not, fetch immediately (blocking on Batch 1)
+  if (hadCache) {
+    // Soft background refresh — don't show skeletons again
+    _loadHomeRowsFresh(false);
+    return;
+  }
+
   try {
-    // Show skeletons for all rows immediately
-    const allRowIds = [
-      'row-trending', 'row-foryou', 'row-continue', 'row-recent',
-      'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
-      'row-action', 'row-comedy', 'row-horror', 'row-drama',
-      'row-scifi', 'row-animated', 'row-home-anime',
-    ];
-    allRowIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.innerHTML = skelCards(6);
-        const sec = el.closest('.section');
-        if (sec) sec.style.display = '';
-      }
-    });
 
     // Local data — instant
     renderContinueRow();
     renderRecentRow();
 
-    // Genre preferences for personalized rows
-    const prefG = state.prefGenres;
-    const gOpts = (genreId, extra = {}) => ({
-      with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
-      sort_by: 'popularity.desc',
-      ...extra,
-    });
-    const rng = state._randomPage || 1;
-    const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
-
-    // Load ALL rows in parallel — no lazy loading, no generation checks
-    // Trending & For You load first (await), everything else fires immediately
-    const [trendResult] = await Promise.allSettled([
-      tmdb('/trending/all/week').then(d => {
-        const items = (d.results || []).slice(0, 14);
-        items.forEach(m => _homeSeenIds.add(m.id));
-        renderRow('row-trending', items, null, true);
-        return items;
-      }),
-      loadForYou(),
-    ]);
-
-    // Fire all remaining rows in parallel — NO await, NO setTimeout
-    Promise.allSettled([
-      _loadRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), 'movie'),
-      _loadRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), 'movie'),
-      _loadRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), 'tv'),
-      _loadRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []),                   'tv'),
-      _loadRow('row-action',    'sec-action',    () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          'movie'),
-      _loadRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          'movie'),
-      _loadRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          'movie'),
-      _loadRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), 'movie'),
-      _loadRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         'movie'),
-      _loadRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          'movie'),
-      _loadRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime'),
-    ]);
-
-    // Because You Liked — load after trending is done
-    loadBecauseYouLiked().catch(() => {});
+    await _loadHomeRowsFresh(true); // blocking first load
 
   } catch (err) {
     console.warn('[SV] loadHomeRows error:', err?.message);
   }
+}
+
+async function _loadHomeRowsFresh(showSkeletons = false) {
+  const prefG = state.prefGenres;
+  const gOpts = (genreId, extra = {}) => ({
+    with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
+    sort_by: 'popularity.desc',
+    ...extra,
+  });
+  const rng = state._randomPage || 1;
+  const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
+
+  if (showSkeletons) _homeSeenIds.clear();
+
+  // Trending + For You first
+  await Promise.allSettled([
+    tmdb('/trending/all/week').then(d => {
+      const items = (d.results || []).slice(0, 14);
+      items.forEach(m => _homeSeenIds.add(m.id));
+      renderRow('row-trending', items, null, true);
+      _saveRowCache('row-trending', items);
+    }),
+    loadForYou(),
+  ]);
+
+  // All remaining rows in parallel
+  Promise.allSettled([
+    _loadRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), 'movie'),
+    _loadRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), 'movie'),
+    _loadRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), 'tv'),
+    _loadRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []),                   'tv'),
+    _loadRow('row-action',    'sec-action',    () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          'movie'),
+    _loadRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          'movie'),
+    _loadRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          'movie'),
+    _loadRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), 'movie'),
+    _loadRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         'movie'),
+    _loadRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          'movie'),
+    _loadRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime'),
+  ]);
+
+  loadBecauseYouLiked().catch(() => {});
 }
 
 function renderContinueRow() {
@@ -494,7 +570,21 @@ function renderContinueRow() {
     return;
   }
   if (sec) sec.style.display = '';
-  row.innerHTML = items.map(item => makeCard(item, item.type || 'movie', { showProgress: false })).join('');
+  row.innerHTML = items.map(item => {
+    // Ensure item has all necessary fields for card click to work
+    const safeItem = {
+      ...item,
+      id: +item.id,
+      title: item.title || item.name || 'Unknown',
+      type: item.type || 'movie',
+    };
+    return makeCard(safeItem, safeItem.type, { showProgress: false });
+  }).join('');
+  // Direct click handler on continue watching row as backup
+  row.querySelectorAll('.card').forEach(card => {
+    if (!card.dataset.id || isNaN(+card.dataset.id)) return;
+    card.style.cursor = 'pointer';
+  });
 }
 
 function renderRecentRow() {
@@ -679,8 +769,58 @@ function setSetting(id, val) {
 function applySetting(id, val) {
   if (id === 'reducedMotion') document.body.classList.toggle('sv-reduced-motion', val);
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
+  if (id === 'streamMode') {
+    document.body.classList.toggle('sv-stream-mode', val);
+    if (val && state.currentPage === 'home') renderStreamMode();
+    else if (!val) document.getElementById('sec-stream-mode')?.remove();
+  }
   if (id === 'showRatings') document.body.classList.toggle('sv-hide-ratings', !val);
   if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
+}
+
+async function renderStreamMode() {
+  // Show all content from cached rows as one big mixed grid without section headers
+  let sec = document.getElementById('sec-stream-mode');
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.id = 'sec-stream-mode';
+    sec.className = 'section sv-stream-section';
+    sec.innerHTML = `<div class="stream-grid" id="stream-grid"></div>`;
+    const home = document.getElementById('page-home');
+    if (home) home.insertBefore(sec, home.firstChild);
+  }
+  const grid = document.getElementById('stream-grid');
+  if (!grid) return;
+  grid.innerHTML = skelCards(18);
+
+  try {
+    // Collect all cached row items and merge them
+    const rowIds = ['row-trending','row-new','row-toprated','row-tv-pop','row-foryou','row-action','row-comedy','row-horror','row-scifi'];
+    const allItems = [];
+    const seenIds = new Set();
+    for (const rowId of rowIds) {
+      const el = document.getElementById(rowId);
+      if (!el) continue;
+      const cards = Array.from(el.querySelectorAll('.card[data-id]'));
+      for (const card of cards) {
+        const id = +card.dataset.id;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+        // Build minimal item from card data attrs
+        allItems.push({ id, title: card.dataset.title, media_type: card.dataset.type, backdrop_path: card.dataset.backdrop, poster_path: card.dataset.poster });
+      }
+    }
+    // Shuffle for variety
+    for (let i = allItems.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allItems[i], allItems[j]] = [allItems[j], allItems[i]];
+    }
+    grid.innerHTML = allItems.slice(0, 36).map(m =>
+      makeCard(m, m.media_type === 'tv' ? 'tv' : 'movie')
+    ).join('');
+  } catch {
+    grid.innerHTML = '';
+  }
 }
 
 function applyAllSettings() {
@@ -923,7 +1063,7 @@ async function buildTvEpisodes(tmdbId, useId, details) {
           ${Array.from({ length: total }, (_, i) => `<option value="${i + 1}">Season ${i + 1}</option>`).join('')}
         </select>
       </div>
-      <div class="ep-scroll-row" id="ep-grid">${skelCards(4)}</div>
+      <div class="ep-grid" id="ep-grid">${skelCards(4)}</div>
       <button class="ep-jump-related" id="ep-jump-related" style="display:none" title="Jump to similar titles">
         <span class="material-icons-round">arrow_downward</span> More Like This
       </button>
@@ -956,13 +1096,12 @@ async function fetchEpisodes(tmdbId, useId, season, highlightEp, autoLoad = true
           data-season="${season}"
           data-ep-tmdb="${tmdbId}"
           data-ep-use="${useId}"
-          role="button" tabindex="0"
-          title="Ep ${ep.episode_number}: ${esc(ep.name || '')}">
-          ${th ? `<img class="ep-thumb" src="${th}" loading="lazy" alt="Ep ${ep.episode_number}" style="width:100%;height:78px;object-fit:cover;display:block;border-radius:var(--r) var(--r) 0 0">` : `<div class="ep-th-ph" style="width:100%;height:78px;display:flex;align-items:center;justify-content:center;background:var(--s4);border-radius:var(--r) var(--r) 0 0"><span class="material-icons-round">play_circle</span></div>`}
-          <div class="ep-info" style="padding:.3rem .4rem .4rem">
+          role="button" tabindex="0">
+          ${th ? `<img class="ep-thumb" src="${th}" loading="lazy" alt="Episode ${ep.episode_number}">` : `<div class="ep-th-ph"><span class="material-icons-round">play_circle</span></div>`}
+          <div class="ep-info">
             <div class="ep-n">Ep ${ep.episode_number}${ep.vote_average ? ` · ★${ep.vote_average.toFixed(1)}` : ''}</div>
-            <div class="ep-name" title="${esc(ep.name)}" style="font-size:.7rem;white-space:normal;-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden">${esc(ep.name || 'Episode ' + ep.episode_number)}</div>
-            ${ep.runtime ? `<div class="ep-rt" style="font-size:.62rem;margin-top:2px"><span class="material-icons-round" style="font-size:.58rem">schedule</span>${ep.runtime}m</div>` : ''}
+            <div class="ep-name" title="${esc(ep.name)}">${esc(ep.name || 'Episode ' + ep.episode_number)}</div>
+            ${ep.runtime ? `<div class="ep-rt"><span class="material-icons-round">schedule</span>${ep.runtime}m</div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -1895,7 +2034,8 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   _lazyObs.forEach(obs => obs.disconnect());
   _lazyObs.clear();
   _homeSeenIds.clear();
-  _homeLoading = false; // release lock so loadHomeRows can run
+  _homeLoading = false;
+  _clearRowCache(); // force fresh fetch on next load
 
   if (randomize) {
     // Add random page offset to API calls via a temp state var

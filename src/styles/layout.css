@@ -575,6 +575,25 @@
 .sf-chip.on { background: var(--red); border-color: var(--red); color: #fff; }
 .sf-adv-toggle { display: flex; align-items: center; gap: .3rem; }
 .sf-adv-toggle .material-icons-round { font-size: .85rem; }
+.sf-adv-main {
+  background: var(--red) !important;
+  border-color: var(--red) !important;
+  color: #fff !important;
+  font-weight: 900;
+}
+.sf-adv-main.on { box-shadow: 0 0 0 3px var(--red-glow); }
+.sf-chip-sep {
+  width: 1px; height: 20px;
+  background: var(--border2);
+  flex-shrink: 0;
+  margin: 0 .2rem;
+}
+.sf-shuffle {
+  margin-left: auto;
+  background: var(--s3);
+  display: flex; align-items: center; gap: .3rem;
+}
+.sf-shuffle .material-icons-round { font-size: .85rem; }
 
 /* Advanced filter panel */
 .sf-advanced { padding: .65rem 0 .3rem; }
@@ -1155,6 +1174,17 @@ body.sv-reduced-motion *, body.sv-reduced-motion *::before, body.sv-reduced-moti
   animation-duration: .01ms !important;
   transition-duration: .01ms !important;
 }
+/* Stream Mode — all content in one grid */
+.sv-stream-section { padding: 0 3.5rem 1rem; }
+.stream-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
+  gap: .65rem;
+}
+.stream-grid .card { width: 100%; }
+/* Hide regular sections in stream mode */
+body.sv-stream-mode #page-home .section:not(#sec-stream-mode):not(#sec-continue):not(#sec-recent) { display: none !important; }
+
 body.sv-compact-mode .card-row {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)) !important;
@@ -1168,6 +1198,21 @@ body.sv-hide-ratings .card-rating { display: none !important; }
 
 /* ── FOR YOU EXPAND ────────────────────────────────────────────── */
 .foryou-expand-btn { margin-left: auto; }
+.foryou-expand-btn-big {
+  display: flex; align-items: center; gap: .35rem;
+  padding: .4rem 1rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--red);
+  background: rgba(229,9,20,.1);
+  color: var(--red);
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all .18s;
+  margin-left: auto;
+}
+.foryou-expand-btn-big:hover { background: var(--red); color: #fff; }
+.foryou-expand-btn-big .material-icons-round { font-size: .95rem; }
 #sec-foryou.expanded .card-row {
   flex-wrap: wrap !important;
   height: auto !important;

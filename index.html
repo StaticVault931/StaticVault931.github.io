@@ -215,8 +215,9 @@
       <div class="sec-title">
         <span class="material-icons-round sec-icon" style="color:var(--red)">auto_awesome</span>For You
       </div>
-      <button class="see-all-btn foryou-expand-btn" id="foryou-expand-btn" title="Expand For You section">
+      <button class="foryou-expand-btn-big" id="foryou-expand-btn" title="Expand For You section">
         <span class="material-icons-round">fullscreen</span>
+        <span>Expand</span>
       </button>
       <button class="see-all-btn" data-page="prefs" aria-label="Customize recommendations">
         Customize <span class="material-icons-round">tune</span>
@@ -582,14 +583,18 @@
       <div id="search-inline-drop" class="search-inline-drop" role="listbox" aria-label="Suggestions"></div>
     </div>
     <div class="search-filter-row" role="group" aria-label="Search filters">
+      <button class="sf-chip sf-adv-toggle sf-adv-main" id="sf-advanced-toggle" title="Advanced filters">
+        <span class="material-icons-round">tune</span>Filters
+      </button>
+      <span class="sf-chip-sep"></span>
       <button class="sf-chip on" data-f="all">All</button>
       <button class="sf-chip" data-f="movie">Movies</button>
       <button class="sf-chip" data-f="tv">TV Shows</button>
       <button class="sf-chip" data-f="anime">Anime</button>
-      <button class="sf-chip" data-f="top">Top Rated</button>
-      <button class="sf-chip" data-f="recent">Recent</button>
-      <button class="sf-chip sf-adv-toggle" id="sf-advanced-toggle" title="Advanced filters">
-        <span class="material-icons-round">tune</span>Filters
+      <button class="sf-chip" data-f="top">★ Top Rated</button>
+      <button class="sf-chip" data-f="recent">New Releases</button>
+      <button class="sf-chip sf-shuffle" id="sf-shuffle-btn" title="Shuffle/discover random">
+        <span class="material-icons-round">shuffle</span>Mix
       </button>
     </div>
     <!-- Advanced filters panel -->
