@@ -139,6 +139,18 @@ function closeLegal() {
   document.getElementById('legal-overlay')?.classList.remove('open');
 }
 
+/* ── SETTINGS (must be before init IIFE to avoid TDZ) ───────────── */
+const SV_SETTINGS = [
+  { id: 'disableHoverTrailer', label: 'Hover Trailers',       desc: 'Show trailer previews when hovering cards',              default: true,  icon: 'play_circle' },
+  { id: 'defaultInfoMode',     label: 'Default Info Page',    desc: 'Open full info instead of player by default',            default: false, icon: 'info' },
+  { id: 'compactMode',         label: 'Compact Grid Mode',    desc: 'Show content as a grid instead of scrolling rows',       default: false, icon: 'grid_view' },
+  { id: 'autoNextProvider',    label: 'Auto-Switch Source',   desc: 'Automatically try next source if current one fails',     default: true,  icon: 'swap_horiz' },
+  { id: 'showRatings',         label: 'Ratings on Cards',     desc: 'Display star ratings on content cards',                  default: true,  icon: 'star' },
+  { id: 'disableAgeFilter',    label: 'Disable Age Filter',   desc: 'Show all content regardless of age rating setting',      default: false, icon: 'no_adult_content' },
+  { id: 'showProgressBar',     label: 'Progress Bars',        desc: 'Show watch progress on Continue Watching cards',         default: true,  icon: 'linear_scale' },
+  { id: 'reducedMotion',       label: 'Reduce Animations',    desc: 'Minimize animations for better performance',             default: false, icon: 'motion_photos_off' },
+];
+
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
 const SHORTCUTS = [
   { key: '/', desc: 'Focus search bar', group: 'Navigation' },
@@ -606,17 +618,7 @@ function buildAgeRatingUI() {
   });
 }
 
-/* ── CYF SETTINGS ────────────────────────────────────────────────── */
-const SV_SETTINGS = [
-  { id: 'disableHoverTrailer', label: 'Hover Trailers', desc: 'Show trailer previews when hovering over cards', default: true, icon: 'play_circle' },
-  { id: 'defaultInfoMode', label: 'Open as Info Page', desc: 'Open full info screen instead of player by default', default: false, icon: 'info' },
-  { id: 'compactMode', label: 'Compact Grid Mode', desc: 'Show content in a grid instead of horizontal rows', default: false, icon: 'grid_view' },
-  { id: 'autoNextProvider', label: 'Auto-Switch Provider', desc: 'Automatically try next source if current one fails', default: true, icon: 'swap_horiz' },
-  { id: 'showRatings', label: 'Show Ratings on Cards', desc: 'Display star ratings on content cards', default: true, icon: 'star' },
-  { id: 'disableAgeFilter', label: 'Disable Age Filter', desc: 'Show all content regardless of your age rating setting', default: false, icon: 'no_adult_content' },
-  { id: 'showProgressBar', label: 'Progress Bars', desc: 'Show watch progress bars on Continue Watching cards', default: true, icon: 'linear_scale' },
-  { id: 'reducedMotion', label: 'Reduce Animations', desc: 'Minimize animations and transitions', default: false, icon: 'motion_photos_off' },
-];
+/* ── CYF SETTINGS (SV_SETTINGS defined above init IIFE to avoid TDZ) */
 
 function getSetting(id) {
   const defaults = Object.fromEntries(SV_SETTINGS.map(s => [s.id, s.default]));
@@ -1170,7 +1172,7 @@ function initEventDelegation() {
           iframe.onload = null;
           setTimeout(() => {
             // Use enablejsapi so we can detect actual playback vs Error 153
-            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&origin=${location.origin}`;
+            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&autohide=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
 
             // Listen for YouTube postMessage to confirm playback
             const yt = (e) => {
@@ -1629,11 +1631,11 @@ function buildMediaUrl(id, type, title, year) {
 function updatePageSEO(title, type, overview, poster) {
   const typeLabel = type === 'tv' ? 'TV Show' : type === 'anime' ? 'Anime' : 'Movie';
   const fullTitle = title
-    ? `${title} (${typeLabel}) — Watch Free on StaticVault931`
-    : 'StaticVault931 — Free Movies, TV Shows & Anime';
+    ? `Watch ${title} Free Unblocked — ${typeLabel} — StaticVault931`
+    : 'StaticVault931 — Free Unblocked Movies, TV Shows & Anime';
   const desc = overview
     ? overview.slice(0, 155) + (overview.length > 155 ? '…' : '')
-    : `Watch ${title || 'content'} free on StaticVault931. No account required.`;
+    : `Watch ${title || 'content'} free and unblocked on StaticVault931. No account required.`;
 
   document.title = fullTitle;
   document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
@@ -2069,11 +2071,13 @@ function populateTestPanel() {
       <div class="dev-section">
         <div class="dev-sec-title">Visual Layers</div>
         <div class="dev-btn-row">
-          <button class="dev-btn" id="dev-btn-skeleton">Show Skeletons</button>
+          <button class="dev-btn" id="dev-btn-skeleton">Force Skeletons</button>
           <button class="dev-btn" id="dev-btn-no-img">Break Images</button>
           <button class="dev-btn" id="dev-btn-slow">Slow Mode</button>
           <button class="dev-btn" id="dev-btn-adblock">AdBlock: ON</button>
           <button class="dev-btn" id="dev-btn-clear">Clear Cache</button>
+          <button class="dev-btn" id="dev-btn-sandbox">Sandbox: ON</button>
+          <button class="dev-btn" id="dev-btn-no-hover">Hover Trailer: ON</button>
         </div>
         <div class="dev-btn-row" style="margin-top:.4rem">
           <span class="card-rating rating-great"><span class="material-icons-round">star</span>9.5</span>
@@ -2145,6 +2149,34 @@ function populateTestPanel() {
       window._svAdBlockDisabled = document.body.classList.contains('_none_') ? false : !window._svAdBlockDisabled;
       this.textContent = window._svAdBlockDisabled ? 'AdBlock: OFF' : 'AdBlock: ON';
       this.classList.toggle('dev-btn-active', window._svAdBlockDisabled);
+    });
+
+    // Sandbox toggle — removes sandbox from player iframe (may allow more player features)
+    document.getElementById('dev-btn-sandbox')?.addEventListener('click', function() {
+      const sandboxOn = this.textContent.includes('ON');
+      const iframe = document.getElementById('player-frame');
+      const ncFrame = document.getElementById('nc-frame');
+      if (sandboxOn) {
+        iframe?.removeAttribute('sandbox');
+        ncFrame?.removeAttribute('sandbox');
+        this.textContent = 'Sandbox: OFF';
+        this.classList.add('dev-btn-active');
+        toast('Sandbox removed from player (reload to revert)', 'warning');
+      } else {
+        iframe?.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
+        ncFrame?.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-presentation allow-popups');
+        this.textContent = 'Sandbox: ON';
+        this.classList.remove('dev-btn-active');
+        toast('Sandbox restored', 'security');
+      }
+    });
+
+    // Hover trailer toggle
+    document.getElementById('dev-btn-no-hover')?.addEventListener('click', function() {
+      const setting = getSetting('disableHoverTrailer');
+      setSetting('disableHoverTrailer', !setting);
+      this.textContent = `Hover Trailer: ${!setting ? 'ON' : 'OFF'}`;
+      this.classList.toggle('dev-btn-active', !setting);
     });
 
     document.getElementById('dev-btn-clear')?.addEventListener('click', () => {
@@ -2550,7 +2582,7 @@ async function showNetflixCard(card) {
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
 
     // Use enablejsapi=1 so YouTube sends postMessage events
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`;
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
 
     // YouTube postMessage API: state 1 = playing, -1 = unstarted, 5 = cued
     const msgHandler = (e) => {
@@ -2592,26 +2624,38 @@ function positionNetflixCard(card, nc) {
   const rect = card.getBoundingClientRect();
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
-  const ncW = 420;
-  const ncH = 400; // approximate full card height
+  const ncW = 460; // bigger card
+  const ncH = 430;
 
-  // Center horizontally on card, expanding outward from card center
+  // Ideal: centered on the card
   let left = rect.left + (rect.width / 2) - (ncW / 2);
 
-  // If card is near left edge, push the card right instead of going off-screen
-  if (left < 8) left = 8;
-  // If card is near right edge, push left
-  if (left + ncW > vpW - 8) left = vpW - ncW - 8;
+  const marginH = 12;
+  const isNearLeft = left < marginH;
+  const isNearRight = left + ncW > vpW - marginH;
 
-  // Vertically: expand upward from near card top, covering the card
-  let top = rect.top - 20;
-  // Not enough room above? Show below the card
-  if (top < 70) top = rect.bottom + 8;
-  // Don't go off bottom
+  if (isNearLeft && isNearRight) {
+    // Very narrow viewport — just center on screen
+    left = (vpW - ncW) / 2;
+  } else if (isNearLeft) {
+    // Near left edge: align left edge to card's left edge (expands rightward)
+    left = Math.max(marginH, rect.left);
+  } else if (isNearRight) {
+    // Near right edge: align right edge to card's right edge (expands leftward)
+    left = Math.min(vpW - ncW - marginH, rect.right - ncW);
+  }
+
+  // Clamp within viewport
+  left = Math.max(marginH, Math.min(left, vpW - ncW - marginH));
+
+  // Vertical: expand upward from card top
+  let top = rect.top - 24;
+  if (top < 70) top = rect.bottom + 8; // not enough room above → show below
   if (top + ncH > vpH - 8) top = Math.max(70, vpH - ncH - 8);
 
   nc.style.left = `${left}px`;
   nc.style.top = `${top}px`;
+  nc.style.width = `${ncW}px`;
 }
 
 async function fetchTrailerKey(id, type) {

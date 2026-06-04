@@ -1389,14 +1389,14 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   z-index: 8900;
   pointer-events: none;
   opacity: 0;
-  transform: scale(.84) translateY(16px);
+  transform: scale(.82) translateY(18px);
   transition: opacity .3s var(--ease), transform .3s var(--ease);
-  width: 420px;         /* wider */
-  border-radius: 12px;
+  width: 460px;         /* bigger */
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 48px 120px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.1);
+  box-shadow: 0 56px 140px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.1);
   background: var(--s1);
-  cursor: pointer;      /* whole card is clickable */
+  cursor: pointer;
 }
 #netflix-card.visible {
   opacity: 1;

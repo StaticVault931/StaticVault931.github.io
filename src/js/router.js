@@ -2,14 +2,14 @@ import { state, persist } from './state.js';
 
 /* ── PAGE TITLES & DESCRIPTIONS ─────────────────────────────────── */
 const PAGE_META = {
-  home:    { title: 'StaticVault931 — Free Movies, TV Shows & Anime',          desc: 'Discover trending movies, TV shows, and anime. Personalized recommendations, no account needed.' },
-  movies:  { title: 'Movies — StaticVault931',                                  desc: 'Browse and watch popular, top-rated, and new release movies for free. No sign-up required.' },
-  tv:      { title: 'TV Shows — StaticVault931',                                desc: 'Stream popular and top-rated TV shows for free. New episodes, trending series, and more.' },
-  anime:   { title: 'Anime — StaticVault931',                                   desc: 'Watch trending and top-rated anime free online. Discover new series and classics.' },
-  search:  { title: 'Search — StaticVault931',                                  desc: 'Search movies, TV shows, and anime. Find anything in our catalog instantly.' },
-  library: { title: 'My Library — StaticVault931',                              desc: 'Your watchlist, liked titles, and viewing history all in one place.' },
-  prefs:   { title: 'Customize Feed — StaticVault931',                          desc: 'Personalize your recommendations by setting preferred genres, content ratings, and titles.' },
-  seeall:  { title: 'Browse — StaticVault931',                                  desc: 'Browse the full catalog of movies, TV shows, and anime.' },
+  home:    { title: 'StaticVault931 — Free Unblocked Movies, TV Shows & Anime',   desc: 'Watch movies, TV shows, and anime free and unblocked. Personalized picks, no account needed.' },
+  movies:  { title: 'Watch Movies Free Unblocked — StaticVault931',               desc: 'Browse popular, top-rated, and new movies free online. Unblocked. No sign-up required.' },
+  tv:      { title: 'Watch TV Shows Free Unblocked — StaticVault931',             desc: 'Stream top-rated TV shows unblocked. New episodes daily, no account needed.' },
+  anime:   { title: 'Watch Anime Free Unblocked — StaticVault931',                desc: 'Discover trending and top-rated anime free online, unblocked. New and classic series.' },
+  search:  { title: 'Search Movies & Shows — StaticVault931',                     desc: 'Search movies, TV shows, and anime. Find anything — all content free and unblocked.' },
+  library: { title: 'My Library — StaticVault931',                                desc: 'Your personal watchlist, liked titles, and viewing history.' },
+  prefs:   { title: 'Customize Your Feed — StaticVault931',                       desc: 'Set preferred genres, content ratings, and titles to personalize your recommendations.' },
+  seeall:  { title: 'Browse All Content — StaticVault931',                        desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
 };
 
 function updatePageMeta(p) {
