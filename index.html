@@ -38,18 +38,32 @@
 <meta name="twitter:description" content="Watch movies, TV shows, and anime free. No account needed. Personalized picks."/>
 <meta name="twitter:image" content="https://staticvault931.github.io/og-image.jpg"/>
 
-<!-- Structured Data -->
+<!-- Structured Data — WebSite with SearchAction -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": "StaticVault931",
+  "alternateName": "SV931",
   "url": "https://staticvault931.github.io/",
-  "description": "Discover and stream movies, TV shows, and anime.",
+  "description": "Watch movies, TV shows, and anime free online. Personalized recommendations, no account required.",
+  "inLanguage": "en",
   "potentialAction": {
     "@type": "SearchAction",
-    "target": "https://staticvault931.github.io/?search={search_term_string}",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://staticvault931.github.io/?search={search_term_string}"
+    },
     "query-input": "required name=search_term_string"
+  },
+  "breadcrumb": {
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://staticvault931.github.io/" },
+      { "@type": "ListItem", "position": 2, "name": "Movies", "item": "https://staticvault931.github.io/?page=movies" },
+      { "@type": "ListItem", "position": 3, "name": "TV Shows", "item": "https://staticvault931.github.io/?page=tv" },
+      { "@type": "ListItem", "position": 4, "name": "Anime", "item": "https://staticvault931.github.io/?page=anime" }
+    ]
   }
 }
 </script>

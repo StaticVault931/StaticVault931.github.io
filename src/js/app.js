@@ -1620,44 +1620,58 @@ function slugify(str) {
 }
 
 function buildMediaUrl(id, type, title, year) {
-  const slug = slugify(`${title || ''} ${year || ''}`);
+  // Descriptive URL: ?watch=movie&name=inception-2010&id=550
+  const titlePart = slugify(title || '');
+  const slug = year ? `${titlePart}-${year}` : titlePart;
   return `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}`;
 }
 
 function updatePageSEO(title, type, overview, poster) {
-  const fullTitle = title ? `${title} — StaticVault931` : 'StaticVault931 — Your Personal Cinema';
-  const desc = overview
-    ? overview.slice(0, 160)
-    : `Watch ${title || 'content'} on StaticVault931`;
   const typeLabel = type === 'tv' ? 'TV Show' : type === 'anime' ? 'Anime' : 'Movie';
+  const fullTitle = title
+    ? `${title} (${typeLabel}) — Watch Free on StaticVault931`
+    : 'StaticVault931 — Free Movies, TV Shows & Anime';
+  const desc = overview
+    ? overview.slice(0, 155) + (overview.length > 155 ? '…' : '')
+    : `Watch ${title || 'content'} free on StaticVault931. No account required.`;
 
   document.title = fullTitle;
   document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', fullTitle);
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
   document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', location.href);
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', location.href);
+  document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', fullTitle);
+  document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
   if (poster) {
     document.querySelector('meta[property="og:image"]')?.setAttribute('content', poster);
     document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', poster);
   }
 
-  // Update JSON-LD structured data dynamically
+  // Structured data (JSON-LD)
   const ldEl = document.getElementById('jsonld-media');
   if (ldEl && title) {
     ldEl.textContent = JSON.stringify({
       '@context': 'https://schema.org',
-      '@type': typeLabel === 'Movie' ? 'Movie' : 'TVSeries',
+      '@type': type === 'movie' ? 'Movie' : 'TVSeries',
       'name': title,
       'description': desc,
       'url': location.href,
+      ...(poster ? { 'image': poster } : {}),
     });
   }
 }
 
 function resetPageSEO() {
-  document.title = 'StaticVault931 — Your Personal Cinema';
-  document.querySelector('meta[name="description"]')?.setAttribute('content', 'StaticVault931 — Discover and stream movies, TV shows, and anime.');
+  document.title = 'StaticVault931 — Free Movies, TV Shows & Anime';
+  document.querySelector('meta[name="description"]')?.setAttribute('content', 'Watch movies, TV shows, and anime free online. Personalized recommendations, no account needed.');
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', 'StaticVault931 — Free Movies, TV Shows & Anime');
   document.querySelector('meta[property="og:type"]')?.setAttribute('content', 'website');
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', 'https://staticvault931.github.io/');
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', 'https://staticvault931.github.io/');
+  const ldEl = document.getElementById('jsonld-media');
+  if (ldEl) ldEl.textContent = '';
   history.replaceState(null, '', location.pathname);
 }
 
@@ -1903,12 +1917,13 @@ function refreshFeed(randomize = false, stayOnPage = false) {
     toast('Feed updated!', 'check');
   }
 
-  if (!stayOnPage) goPage('home');
-  // Reload all home rows (lock is released above)
+  if (!stayOnPage) {
+    goPage('home');
+  } else {
+    toast(randomize ? 'Feed randomized — scroll to see changes' : 'Feed updated!', randomize ? 'shuffle' : 'check');
+  }
+  // Reload all home rows
   loadHomeRows().catch(() => {});
-  else toast(randomize ? 'Feed randomized! Scroll to see changes.' : 'Feed updated!', randomize ? 'shuffle' : 'check');
-  // Reload lazy rows
-  setTimeout(() => loadHomeRows().catch(() => {}), 200);
 }
 
 /* ── TRAILER FALLBACK ────────────────────────────────────────────── */
