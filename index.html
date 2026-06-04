@@ -765,7 +765,12 @@
 
   <!-- Settings section -->
   <div class="pref-section" id="sv-settings-section" style="margin-top:2rem">
-    <h3><span class="material-icons-round">settings</span>Display &amp; Player Settings</h3>
+    <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem">
+      <h3 style="margin:0"><span class="material-icons-round">settings</span>Display &amp; Player Settings</h3>
+      <button class="sv-reset-settings-btn" id="sv-reset-settings-btn" style="margin-left:auto">
+        <span class="material-icons-round">restart_alt</span>Reset All Settings
+      </button>
+    </div>
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
   </div>
 

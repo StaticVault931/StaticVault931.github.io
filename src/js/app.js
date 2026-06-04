@@ -347,6 +347,15 @@ function registerAllLoaders() {
   });
   registerLoader('library', renderLibrary);
   registerLoader('prefs', loadPrefsPage);
+
+  document.getElementById('sv-reset-settings-btn')?.addEventListener('click', async () => {
+    if (await showConfirm('Reset Settings', 'Reset all Display & Player settings to defaults?')) {
+      localStorage.removeItem('sv_settings');
+      applyAllSettings();
+      buildSettingsUI();
+      toast('Settings reset to defaults', 'restart_alt');
+    }
+  });
   registerLoader('seeall', renderSeeAll);
 }
 
@@ -771,56 +780,108 @@ function applySetting(id, val) {
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
   if (id === 'streamMode') {
     document.body.classList.toggle('sv-stream-mode', val);
-    if (val && state.currentPage === 'home') renderStreamMode();
-    else if (!val) document.getElementById('sec-stream-mode')?.remove();
+    if (val) {
+      initStreamMode();
+    } else {
+      _streamObs?.disconnect();
+      _streamPage = 1;
+      _streamIds.clear();
+    }
   }
   if (id === 'showRatings') document.body.classList.toggle('sv-hide-ratings', !val);
   if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
 }
 
-async function renderStreamMode() {
-  // Show all content from cached rows as one big mixed grid without section headers
+/* ── STREAM MODE (infinite scroll feed) ──────────────────────────── */
+let _streamPage = 1;
+let _streamIds = new Set();
+let _streamLoading = false;
+let _streamObs = null;
+
+function initStreamMode() {
+  _streamPage = 1;
+  _streamIds.clear();
+  _streamLoading = false;
+
+  // Create or find the stream section
   let sec = document.getElementById('sec-stream-mode');
   if (!sec) {
     sec = document.createElement('div');
     sec.id = 'sec-stream-mode';
-    sec.className = 'section sv-stream-section';
-    sec.innerHTML = `<div class="stream-grid" id="stream-grid"></div>`;
-    const home = document.getElementById('page-home');
-    if (home) home.insertBefore(sec, home.firstChild);
+    sec.className = 'sv-stream-section';
+    // Insert at top of home page (after hero)
+    const hero = document.getElementById('hero');
+    if (hero?.parentNode) hero.parentNode.insertBefore(sec, hero.nextSibling);
+    else document.getElementById('page-home')?.prepend(sec);
   }
+  sec.innerHTML = `<div class="stream-grid" id="stream-grid"></div>
+    <div class="stream-sentinel" id="stream-sentinel" style="height:40px"></div>`;
+
+  // Initial load
+  loadStreamPage();
+
+  // Observe sentinel for infinite scroll
+  _streamObs?.disconnect();
+  _streamObs = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && !_streamLoading) loadStreamPage();
+  }, { rootMargin: '600px' });
+
+  const sentinel = document.getElementById('stream-sentinel');
+  if (sentinel) _streamObs.observe(sentinel);
+}
+
+async function loadStreamPage() {
+  if (_streamLoading) return;
+  _streamLoading = true;
+
   const grid = document.getElementById('stream-grid');
-  if (!grid) return;
-  grid.innerHTML = skelCards(18);
+  if (!grid) { _streamLoading = false; return; }
+
+  // Show loading indicator on first page
+  if (_streamPage === 1) grid.innerHTML = skelCards(12);
 
   try {
-    // Collect all cached row items and merge them
-    const rowIds = ['row-trending','row-new','row-toprated','row-tv-pop','row-foryou','row-action','row-comedy','row-horror','row-scifi'];
-    const allItems = [];
-    const seenIds = new Set();
-    for (const rowId of rowIds) {
-      const el = document.getElementById(rowId);
-      if (!el) continue;
-      const cards = Array.from(el.querySelectorAll('.card[data-id]'));
-      for (const card of cards) {
-        const id = +card.dataset.id;
-        if (!id || seenIds.has(id)) continue;
-        seenIds.add(id);
-        // Build minimal item from card data attrs
-        allItems.push({ id, title: card.dataset.title, media_type: card.dataset.type, backdrop_path: card.dataset.backdrop, poster_path: card.dataset.poster });
-      }
+    const prefG = state.prefGenres;
+    const pg = _streamPage;
+
+    // Fetch movies and TV in parallel, mix them
+    const [movies, shows, topMovies] = await Promise.allSettled([
+      tmdb('/discover/movie', {
+        sort_by: 'popularity.desc',
+        page: pg,
+        ...(prefG.length ? { with_genres: prefG.slice(0, 2).join('|') } : {}),
+      }),
+      tmdb('/discover/tv', {
+        sort_by: 'popularity.desc',
+        page: pg,
+        ...(prefG.length ? { with_genres: prefG.slice(0, 2).join('|') } : {}),
+      }),
+      pg <= 3 ? tmdb('/movie/top_rated', { page: pg }) : Promise.resolve({ results: [] }),
+    ]);
+
+    const m = movies.status === 'fulfilled' ? (movies.value.results || []) : [];
+    const s = shows.status === 'fulfilled' ? (shows.value.results || []) : [];
+    const t = topMovies.status === 'fulfilled' ? (topMovies.value.results || []) : [];
+
+    // Interleave: movie, show, movie, show, top-rated
+    const items = [];
+    const maxLen = Math.max(m.length, s.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (m[i] && !_streamIds.has(m[i].id)) { items.push({ ...m[i], media_type: 'movie' }); _streamIds.add(m[i].id); }
+      if (s[i] && !_streamIds.has(s[i].id)) { items.push({ ...s[i], media_type: 'tv' }); _streamIds.add(s[i].id); }
+      if (t[i] && !_streamIds.has(t[i].id)) { items.push({ ...t[i], media_type: 'movie' }); _streamIds.add(t[i].id); }
     }
-    // Shuffle for variety
-    for (let i = allItems.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allItems[i], allItems[j]] = [allItems[j], allItems[i]];
-    }
-    grid.innerHTML = allItems.slice(0, 36).map(m =>
-      makeCard(m, m.media_type === 'tv' ? 'tv' : 'movie')
-    ).join('');
-  } catch {
-    grid.innerHTML = '';
+
+    if (_streamPage === 1) grid.innerHTML = '';
+    const html = items.map(m => makeCard(m, m.media_type === 'tv' ? 'tv' : 'movie')).join('');
+    grid.insertAdjacentHTML('beforeend', html);
+    _streamPage++;
+
+  } catch (err) {
+    console.warn('[SV] Stream load error:', err?.message);
+    if (_streamPage === 1) grid.innerHTML = '<p class="muted-note" style="padding:1rem">Could not load stream.</p>';
   }
+  _streamLoading = false;
 }
 
 function applyAllSettings() {
@@ -1286,6 +1347,11 @@ function initEventDelegation() {
     if (e.detail?.id && e.detail?.type) openMedia(e.detail.id, e.detail.type);
   });
 
+  // Re-trigger search with updated filters
+  document.addEventListener('sv:do-search', e => {
+    if (e.detail) doSearch(e.detail);
+  });
+
   // Play Now triggered from trailer fallback overlay
   document.addEventListener('sv:play-now', () => {
     if (state.currentMedia) {
@@ -1736,6 +1802,57 @@ function refreshCardBadges(id) {
   });
 }
 
+/* ── INFO PAGE SEO ───────────────────────────────────────────────── */
+function updateInfoPageSEO(title, type, details, infoUrl, bgImg) {
+  const typeLabel = type === 'movie' ? 'Movie' : type === 'anime' ? 'Anime' : 'TV Show';
+  const year = String(details.release_date || details.first_air_date || '').slice(0, 4);
+  const rating = details.vote_average?.toFixed(1);
+  const genres = (details.genres || []).map(g => g.name).join(', ');
+  const cast = (details.credits?.cast || []).slice(0, 5).map(p => p.name).join(', ');
+
+  const fullTitle = `${title} (${year}) — ${typeLabel} — Watch Free on StaticVault931`;
+  const desc = [
+    details.overview?.slice(0, 120),
+    rating ? `Rated ${rating}/10` : '',
+    genres,
+    cast ? `Starring ${cast}` : '',
+  ].filter(Boolean).join('. ').slice(0, 230);
+
+  document.title = fullTitle;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', fullTitle);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', location.origin + infoUrl);
+  // Canonical always points to info page (most content)
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', location.origin + infoUrl);
+  if (bgImg) {
+    document.querySelector('meta[property="og:image"]')?.setAttribute('content', bgImg);
+    document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', bgImg);
+  }
+
+  // Rich JSON-LD for Google indexing
+  const ldEl = document.getElementById('jsonld-media');
+  if (ldEl) {
+    ldEl.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': type === 'movie' ? 'Movie' : 'TVSeries',
+      'name': title,
+      'description': details.overview || '',
+      'url': location.origin + infoUrl,
+      'image': bgImg || '',
+      ...(rating ? { 'aggregateRating': { '@type': 'AggregateRating', 'ratingValue': rating, 'ratingCount': details.vote_count || 1, 'bestRating': '10', 'worstRating': '1' } } : {}),
+      ...(year ? { 'datePublished': `${year}-01-01` } : {}),
+      ...(genres ? { 'genre': genres.split(', ') } : {}),
+      ...(cast ? { 'actor': cast.split(', ').map(n => ({ '@type': 'Person', 'name': n })) } : {}),
+      'potentialAction': {
+        '@type': 'WatchAction',
+        'target': location.origin + infoUrl.replace('&mode=info', '')
+      },
+    });
+  }
+}
+
 /* ── SEO: URL ROUTING + META ─────────────────────────────────────── */
 function slugify(str) {
   return String(str || '')
@@ -1769,7 +1886,11 @@ function updatePageSEO(title, type, overview, poster) {
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
   document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
   document.querySelector('meta[property="og:url"]')?.setAttribute('content', location.href);
-  document.querySelector('link[rel="canonical"]')?.setAttribute('href', location.href);
+  // Watch pages canonical → info page (more content, better for SEO)
+  const infoCanonical = location.href.includes('mode=info')
+    ? location.href
+    : location.href + (location.href.includes('?') ? '&mode=info' : '?mode=info');
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', infoCanonical);
   document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', fullTitle);
   document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
   if (poster) {
@@ -2287,11 +2408,38 @@ export async function openInfoPage(id, type, hint = {}) {
       } catch { relGrid.innerHTML = ''; }
     }
 
-    // Update URL
+    // Reviews
+    try {
+      const reviewData = await tmdb(`/${type === 'anime' ? 'tv' : type}/${id}/reviews`);
+      const reviews = (reviewData.results || []).slice(0, 3);
+      const reviewSection = document.getElementById('info-related-section');
+      if (reviews.length && reviewSection) {
+        const reviewDiv = document.createElement('div');
+        reviewDiv.className = 'info-section';
+        reviewDiv.id = 'info-reviews-section';
+        reviewDiv.innerHTML = `
+          <div class="info-section-label">Reviews</div>
+          <div class="info-reviews">${reviews.map(r => `
+            <div class="info-review-card">
+              <div class="info-review-author">${esc(r.author || 'Anonymous')}
+                ${r.author_details?.rating ? `<span class="info-review-rating">★ ${r.author_details.rating}/10</span>` : ''}
+              </div>
+              <div class="info-review-body">${esc((r.content || '').slice(0, 280))}${r.content?.length > 280 ? '…' : ''}</div>
+            </div>`).join('')}
+          </div>`;
+        reviewSection.before(reviewDiv);
+      }
+    } catch {}
+
+    // Update URL — info page IS the canonical; watch pages point here
     const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
     const slug = slugify(`${title} ${yr}`);
-    history.pushState({ id, type, mode: 'info' }, title, `${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&mode=info`);
-    updatePageSEO(title, type, details.overview, details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null);
+    const infoUrl = `${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&mode=info`;
+    history.pushState({ id, type, mode: 'info' }, title, infoUrl);
+
+    // Info page IS the canonical — full content, unique per item
+    const ogImg = details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null;
+    updateInfoPageSEO(title, type, details, infoUrl, ogImg);
 
   } catch (e) {
     console.error('[SV] Info page error:', e);
@@ -2331,62 +2479,94 @@ export function closeInfoPage() {
   resetPageSEO();
 }
 
-/* ── TRAILER OVERLAY ────────────────────────────────────────────── */
+/* ── TRAILER OVERLAY (multi-key fallback) ───────────────────────── */
 function openTrailerOverlay(key, title, details) {
   const ov = document.getElementById('trailer-overlay');
   if (!ov) return;
 
-  // Wire close on first use
   if (!ov._wired) {
     ov._wired = true;
     document.getElementById('trailer-ov-close')?.addEventListener('click', closeTrailerOverlay);
     ov.addEventListener('click', e => { if (e.target === ov) closeTrailerOverlay(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTrailerOverlay(); }, { passive: true });
   }
 
-  const titleEl = document.getElementById('trailer-ov-title');
-  const frame = document.getElementById('trailer-ov-frame');
-  const fallback = document.getElementById('trailer-ov-fallback');
-  const bgImg = document.getElementById('trailer-ov-bg');
-  const ytLink = document.getElementById('trailer-ov-yt-link');
+  // Build list of ALL available keys, in priority order
+  const videos = details?.videos?.results || [];
+  const allKeys = [
+    ...videos.filter(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official).map(v => v.key),
+    ...videos.filter(v => v.site === 'YouTube' && v.type === 'Trailer' && !v.official).map(v => v.key),
+    ...videos.filter(v => v.site === 'YouTube' && v.type === 'Teaser').map(v => v.key),
+    ...videos.filter(v => v.site === 'YouTube').map(v => v.key),
+    key,
+  ].filter((k, i, a) => k && a.indexOf(k) === i); // unique, defined
 
-  if (titleEl) titleEl.textContent = `${title || 'Trailer'} — Trailer`;
-  if (frame) {
-    frame.style.display = '';
-    // No sandbox — dedicated trailer iframe, not a streaming source
-    frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&autohide=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
-  }
-  if (fallback) fallback.style.display = 'none';
-
-  // Set up fallback image + YouTube link
+  // Poster for fallback
   const posterImg = details?.backdrop_path
     ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
     : details?.poster_path ? `https://image.tmdb.org/t/p/w780${details.poster_path}` : null;
 
-  if (bgImg && posterImg) bgImg.src = posterImg;
-  if (ytLink) ytLink.href = `https://www.youtube.com/watch?v=${key}`;
+  const bgImg = document.getElementById('trailer-ov-bg');
+  const ytLink = document.getElementById('trailer-ov-yt-link');
+  const titleEl = document.getElementById('trailer-ov-title');
 
-  // Detect if YouTube blocked the embed (after 6s with no playback)
+  if (bgImg && posterImg) bgImg.src = posterImg;
+  if (titleEl) titleEl.textContent = `${title || 'Trailer'}`;
+  ov.classList.add('open');
+
+  // Try keys in sequence
+  _tryTrailerKey(allKeys, 0, ytLink, posterImg);
+}
+
+function _tryTrailerKey(keys, idx, ytLink, posterImg) {
+  const frame = document.getElementById('trailer-ov-frame');
+  const fallback = document.getElementById('trailer-ov-fallback');
+
+  if (idx >= keys.length || !frame) {
+    // All keys failed — show fallback
+    if (frame) frame.style.display = 'none';
+    if (fallback) fallback.style.display = '';
+    if (ytLink && keys[0]) ytLink.href = `https://www.youtube.com/watch?v=${keys[0]}`;
+    return;
+  }
+
+  const key = keys[idx];
+  if (ytLink) ytLink.href = `https://www.youtube.com/watch?v=${key}`;
+  if (fallback) fallback.style.display = 'none';
+  frame.style.display = '';
+
+  // Load this key
+  frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+
+  // Detect playback vs Error 153 via postMessage
+  let resolved = false;
   const msgHandler = (e) => {
     if (e.origin !== 'https://www.youtube.com') return;
     try {
       const d = JSON.parse(e.data);
-      if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+      if (!d.info) return;
+      const ps = d.info.playerState;
+      if (ps === 1 || ps === 3) {
+        // Playing or buffering — success!
+        resolved = true;
         window.removeEventListener('message', msgHandler);
-        clearTimeout(fallbackTimer);
+        clearTimeout(retryTimer);
+      } else if (ps === -1 && d.info.error) {
+        // Error state — try next key
+        resolved = true;
+        window.removeEventListener('message', msgHandler);
+        clearTimeout(retryTimer);
+        _tryTrailerKey(keys, idx + 1, ytLink, posterImg);
       }
     } catch {}
   };
   window.addEventListener('message', msgHandler);
-  const fallbackTimer = setTimeout(() => {
-    window.removeEventListener('message', msgHandler);
-    // No playback detected — show fallback with poster + YouTube link
-    if (frame) frame.style.display = 'none';
-    if (fallback) fallback.style.display = '';
-  }, 7000);
 
-  ov.dataset.fallbackTimer = fallbackTimer;
-  ov.classList.add('open');
+  // 5 second timeout — if no playback, try next key
+  const retryTimer = setTimeout(() => {
+    if (resolved) return;
+    window.removeEventListener('message', msgHandler);
+    _tryTrailerKey(keys, idx + 1, ytLink, posterImg);
+  }, 5000);
 }
 
 function closeTrailerOverlay() {

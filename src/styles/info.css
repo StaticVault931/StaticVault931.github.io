@@ -267,6 +267,32 @@
   display: flex; flex-direction: column; gap: .4rem;
 }
 
+/* ── REVIEWS ─────────────────────────────────────────────────────── */
+.info-reviews { display: flex; flex-direction: column; gap: .75rem; }
+.info-review-card {
+  padding: .85rem 1rem;
+  background: var(--s2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+}
+.info-review-author {
+  font-size: .8rem;
+  font-weight: 800;
+  margin-bottom: .4rem;
+  display: flex; align-items: center; gap: .5rem;
+}
+.info-review-rating {
+  font-size: .72rem;
+  color: var(--gold);
+  font-weight: 700;
+}
+.info-review-body {
+  font-size: .8rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 /* ── RESPONSIVE ──────────────────────────────────────────────────── */
 @media (max-width: 720px) {
   .info-content { grid-template-columns: 1fr; }

@@ -1130,8 +1130,23 @@
 .sv-settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: .45rem;
+  gap: .4rem;
 }
+.sv-reset-settings-btn {
+  display: flex; align-items: center; gap: .3rem;
+  padding: .32rem .8rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border2);
+  background: var(--s3);
+  color: var(--muted);
+  font-size: .72rem; font-weight: 800;
+  cursor: pointer;
+  transition: all .18s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sv-reset-settings-btn:hover { color: var(--red); border-color: rgba(229,9,20,.4); background: rgba(229,9,20,.06); }
+.sv-reset-settings-btn .material-icons-round { font-size: .85rem; }
 .sv-setting-row {
   display: flex;
   align-items: center;
@@ -1174,16 +1189,21 @@ body.sv-reduced-motion *, body.sv-reduced-motion *::before, body.sv-reduced-moti
   animation-duration: .01ms !important;
   transition-duration: .01ms !important;
 }
-/* Stream Mode — all content in one grid */
-.sv-stream-section { padding: 0 3.5rem 1rem; }
+/* ── STREAM MODE ─────────────────────────────────────────────────── */
+.sv-stream-section {
+  padding: 1rem 3.5rem 2rem;
+}
 .stream-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
   gap: .65rem;
 }
 .stream-grid .card { width: 100%; }
-/* Hide regular sections in stream mode */
-body.sv-stream-mode #page-home .section:not(#sec-stream-mode):not(#sec-continue):not(#sec-recent) { display: none !important; }
+/* In stream mode: hide section rows, keep continue/recent */
+body.sv-stream-mode #page-home .section { display: none !important; }
+body.sv-stream-mode #page-home #sec-continue,
+body.sv-stream-mode #page-home #sec-recent { display: block !important; }
+body.sv-stream-mode #page-home .genre-wrap { display: none !important; }
 
 body.sv-compact-mode .card-row {
   display: grid !important;

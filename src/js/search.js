@@ -25,38 +25,58 @@ export function buildSearchFilters(container) {
       <div class="sf-filter-row">
         <label class="sf-filter-label">Genre
           <select class="sf-filter-sel" id="sf-genre">
-            <option value="">Any</option>
+            <option value="">Any Genre</option>
             ${GENRES.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
           </select>
         </label>
-        <label class="sf-filter-label">Type
+        <label class="sf-filter-label">Content Type
           <select class="sf-filter-sel" id="sf-ctype">
             <option value="all">All</option>
-            <option value="movie">Movies</option>
-            <option value="tv">TV Shows</option>
-            <option value="anime">Anime</option>
+            <option value="movie">Movies Only</option>
+            <option value="tv">TV Shows Only</option>
+            <option value="anime">Anime Only</option>
           </select>
         </label>
         <label class="sf-filter-label">Min Rating
           <select class="sf-filter-sel" id="sf-rating">
-            <option value="">Any</option>
-            <option value="9">★ 9+</option>
-            <option value="8">★ 8+</option>
-            <option value="7">★ 7+</option>
-            <option value="6">★ 6+</option>
-            <option value="5">★ 5+</option>
+            <option value="">Any Rating</option>
+            <option value="9">★ 9+ Masterpiece</option>
+            <option value="8">★ 8+ Excellent</option>
+            <option value="7">★ 7+ Great</option>
+            <option value="6">★ 6+ Good</option>
+            <option value="5">★ 5+ Decent</option>
+          </select>
+        </label>
+        <label class="sf-filter-label">Sort By
+          <select class="sf-filter-sel" id="sf-sort">
+            <option value="popularity.desc">Most Popular</option>
+            <option value="vote_average.desc">Highest Rated</option>
+            <option value="release_date.desc">Newest First</option>
+            <option value="revenue.desc">Highest Grossing</option>
+            <option value="vote_count.desc">Most Votes</option>
           </select>
         </label>
         <label class="sf-filter-label">Year From
           <select class="sf-filter-sel" id="sf-year-from">
-            <option value="">Any</option>
-            ${Array.from({length: 40}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+            <option value="">Any Year</option>
+            ${Array.from({length: 50}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
           </select>
         </label>
         <label class="sf-filter-label">Year To
           <select class="sf-filter-sel" id="sf-year-to">
+            <option value="">Any Year</option>
+            ${Array.from({length: 50}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+          </select>
+        </label>
+        <label class="sf-filter-label">Language
+          <select class="sf-filter-sel" id="sf-lang">
             <option value="">Any</option>
-            ${Array.from({length: 40}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+            <option value="en">English</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
           </select>
         </label>
         <button class="sf-filter-clear" id="sf-filter-clear" title="Clear all filters">
@@ -65,20 +85,24 @@ export function buildSearchFilters(container) {
       </div>
     </div>`;
 
+  const readFilters = () => {
+    _filters.genre = document.getElementById('sf-genre')?.value || null;
+    _filters.contentType = document.getElementById('sf-ctype')?.value || 'all';
+    _filters.minRating = document.getElementById('sf-rating')?.value ? parseFloat(document.getElementById('sf-rating').value) : null;
+    _filters.sortBy = document.getElementById('sf-sort')?.value || 'popularity.desc';
+    _filters.yearFrom = document.getElementById('sf-year-from')?.value ? parseInt(document.getElementById('sf-year-from').value) : null;
+    _filters.yearTo = document.getElementById('sf-year-to')?.value ? parseInt(document.getElementById('sf-year-to').value) : null;
+    _filters.language = document.getElementById('sf-lang')?.value || null;
+  };
+
   container.querySelectorAll('.sf-filter-sel').forEach(sel => {
     sel.addEventListener('change', () => {
-      _filters.genre = document.getElementById('sf-genre')?.value || null;
-      _filters.contentType = document.getElementById('sf-ctype')?.value || 'all';
-      _filters.minRating = document.getElementById('sf-rating')?.value ? parseFloat(document.getElementById('sf-rating').value) : null;
-      _filters.yearFrom = document.getElementById('sf-year-from')?.value ? parseInt(document.getElementById('sf-year-from').value) : null;
-      _filters.yearTo = document.getElementById('sf-year-to')?.value ? parseInt(document.getElementById('sf-year-to').value) : null;
-      // Re-trigger search or browse
+      readFilters();
       const inp = document.getElementById('search-input');
       const q = inp?.value.trim();
       if (q) {
-        import('./search.js').then(m => m.doSearch?.(q)).catch(() => {
-          document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
-        });
+        // Re-trigger current search with new filters
+        document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
       } else {
         browseByFilters();
       }
@@ -100,9 +124,11 @@ async function browseByFilters() {
   area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
 
   try {
-    const params = { sort_by: 'popularity.desc' };
+    const sort = _filters.sortBy || 'popularity.desc';
+    const params = { sort_by: sort, 'vote_count.gte': 20 };
     if (_filters.genre) params.with_genres = _filters.genre;
     if (_filters.minRating) params['vote_average.gte'] = _filters.minRating;
+    if (_filters.language) params.with_original_language = _filters.language;
     if (_filters.yearFrom && _filters.contentType !== 'tv') params['primary_release_date.gte'] = `${_filters.yearFrom}-01-01`;
     if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
     if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
