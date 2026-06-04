@@ -599,6 +599,8 @@ async function loadHomeRows() {
     'row-new', 'row-toprated', 'row-tv-pop', 'row-airing',
     'row-action', 'row-comedy', 'row-horror', 'row-drama',
     'row-scifi', 'row-animated', 'row-home-anime',
+    'row-top10', 'row-boredom', 'row-new-streaming', 'row-love-these',
+    'row-awards', 'row-tv-faves', 'row-retro-tv', 'row-binge-drama', 'row-seasonal',
   ];
 
   // ── INSTANT RENDER FROM CACHE ──────────────────────────────────────
@@ -696,8 +698,143 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Load wave 2 with IntersectionObserver — only when scrolled near
   wave2.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
 
+  // ── WAVE 3: Curated rows — all deferred to scroll ─────────────────
+  // Use a random page offset per refresh so content is truly different each time
+  const pRng = state._randomPage || 1;
+  const prefG = state.prefGenres;
+  const prefGenreStr = prefG.length ? prefG.slice(0, 2).join('|') : '';
+
+  // Build personalized genre params (blends user prefs with specific genre)
+  const pOpts = (genre, extra = {}) => ({
+    sort_by: 'popularity.desc',
+    with_genres: prefGenreStr ? `${genre}|${prefGenreStr}` : String(genre),
+    page: pRng,
+    ...extra,
+  });
+
+  // Top 10 — daily trending (numbered)
+  _scheduleRowLoad('row-top10', 'sec-top10', () =>
+    tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10).map((m, i) => ({ ...m, _rank: i + 1 }))), null);
+
+  // Boredom Busters — fun mix of action/comedy/adventure, slightly newer, personalized
+  _scheduleRowLoad('row-boredom', 'sec-boredom', () =>
+    tmdb('/discover/movie', {
+      with_genres: prefGenreStr ? `28|35|${prefGenreStr}` : '28|35|12',
+      sort_by: 'popularity.desc',
+      'vote_count.gte': 200,
+      'primary_release_date.gte': '2015-01-01',
+      page: pRng,
+    }).then(d => d.results || []), 'movie');
+
+  // New on Streaming — blend now_playing + on_the_air
+  _scheduleRowLoad('row-new-streaming', 'sec-new-streaming', async () => {
+    const [mv, tv] = await Promise.allSettled([
+      tmdb('/movie/now_playing'),
+      tmdb('/tv/on_the_air'),
+    ]);
+    const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
+    const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+    // Interleave
+    const out = [];
+    const max = Math.max(m.length, t.length);
+    for (let i = 0; i < max; i++) {
+      if (m[i]) out.push(m[i]);
+      if (t[i]) out.push(t[i]);
+    }
+    return out;
+  }, null);
+
+  // We Think You'll Love — based on recommendations from liked content
+  _scheduleRowLoad('row-love-these', 'sec-love-these', async () => {
+    const picks = [...state.liked, ...state.prefLikes]
+      .filter(x => x.id && x.type !== 'anime').slice(0, 3);
+    if (!picks.length) {
+      // Fallback: high-rated personalized content
+      const d = await tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pRng, ...(prefGenreStr ? { with_genres: prefGenreStr } : {}) });
+      return d.results || [];
+    }
+    const recs = await Promise.allSettled(
+      picks.map(p => tmdb(`/${p.type || 'movie'}/${p.id}/recommendations`).then(d => d.results || []))
+    );
+    const all = recs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+    const seen = new Set();
+    return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 14);
+  }, null);
+
+  // Award-Winning — high score, lots of votes
+  _scheduleRowLoad('row-awards', 'sec-awards', () =>
+    tmdb('/discover/movie', {
+      sort_by: 'vote_average.desc',
+      'vote_count.gte': 1500,
+      'vote_average.gte': 7.8,
+      page: pRng,
+    }).then(d => d.results || []), 'movie');
+
+  // Familiar TV Favorites — top rated TV shows
+  _scheduleRowLoad('row-tv-faves', 'sec-tv-faves', () =>
+    tmdb('/tv/top_rated', { page: pRng }).then(d => d.results || []), 'tv');
+
+  // Retro TV — classics from 1970–2005
+  _scheduleRowLoad('row-retro-tv', 'sec-retro-tv', () =>
+    tmdb('/discover/tv', {
+      'first_air_date.gte': '1970-01-01',
+      'first_air_date.lte': '2005-12-31',
+      sort_by: 'vote_average.desc',
+      'vote_count.gte': 300,
+      page: pRng,
+    }).then(d => d.results || []), 'tv');
+
+  // Bingeworthy TV Dramas — drama TV, personalized
+  _scheduleRowLoad('row-binge-drama', 'sec-binge-drama', () =>
+    tmdb('/discover/tv', pOpts(18, { 'vote_count.gte': 100 })).then(d => d.results || []), 'tv');
+
+  // Seasonal row — changes based on current month
+  loadSeasonalRow();
+
   // Because You Liked — personalized, after main rows settle
   setTimeout(() => loadBecauseYouLiked().catch(() => {}), 800);
+}
+
+/* ── SEASONAL ROW ────────────────────────────────────────────────── */
+const SEASONAL_THEMES = {
+  1:  { label: 'New Year, New Shows', icon: 'celebration', genres: '18|35', type: 'tv' },
+  2:  { label: 'Valentine\'s Day Picks ❤️', icon: 'favorite', genres: '10749|35', type: 'movie' },
+  3:  { label: 'Spring Blockbusters', icon: 'local_florist', genres: '28|12', type: 'movie' },
+  4:  { label: 'Spring Picks', icon: 'sunny', genres: '35|12', type: 'movie' },
+  5:  { label: 'Mind-Bending Thrillers', icon: 'psychology', genres: '53|9648', type: 'movie' },
+  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', keywords: '158718', genres: '35|18' },
+  7:  { label: 'Summer Action', icon: 'beach_access', genres: '28|12|35', type: 'movie' },
+  8:  { label: 'Late Summer Thrillers', icon: 'thunderstorm', genres: '53|27', type: 'movie' },
+  9:  { label: 'Back to School Drama', icon: 'school', genres: '18|10762', type: 'tv' },
+  10: { label: 'Spooky Season 🎃', icon: 'dark_mode', genres: '27|9648|53', type: 'movie' },
+  11: { label: 'Cozy Comfort Picks', icon: 'local_cafe', genres: '35|10751|18', type: 'movie' },
+  12: { label: 'Holiday Classics 🎄', icon: 'celebration', genres: '35|10751', type: 'movie', keywords: '207317' },
+};
+
+async function loadSeasonalRow() {
+  const month = new Date().getMonth() + 1;
+  const theme = SEASONAL_THEMES[month];
+  if (!theme) return;
+
+  const secEl = document.getElementById('sec-seasonal');
+  const labelEl = document.getElementById('sec-seasonal-label');
+  const iconEl = document.getElementById('sec-seasonal-icon');
+
+  if (labelEl) labelEl.textContent = theme.label;
+  if (iconEl) iconEl.textContent = theme.icon;
+  if (secEl) secEl.style.display = '';
+
+  const params = {
+    sort_by: 'popularity.desc',
+    'vote_count.gte': 100,
+    page: state._randomPage || 1,
+  };
+  if (theme.genres) params.with_genres = theme.genres;
+  if (theme.keywords) params.with_keywords = theme.keywords;
+
+  const endpoint = theme.type === 'tv' ? '/discover/tv' : '/discover/movie';
+  _scheduleRowLoad('row-seasonal', null, () =>
+    tmdb(endpoint, params).then(d => d.results || []), theme.type || 'movie');
 }
 
 /* ── TITLE YEAR DISAMBIGUATION ───────────────────────────────────── */
@@ -1858,6 +1995,78 @@ function initEventDelegation() {
     if (await showConfirm('Reset All Data', 'This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) clearAllData();
   });
 
+  // Export data
+  document.getElementById('btn-export-data')?.addEventListener('click', () => {
+    const exportData = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      watchlist:        state.watchlist,
+      liked:            state.liked,
+      disliked:         state.disliked,
+      watched:          state.watched,
+      recentlyViewed:   state.recentlyViewed.slice(0, 100),
+      continueWatching: state.continueWatching,
+      prefLikes:        state.prefLikes,
+      prefDislikes:     state.prefDislikes,
+      prefGenres:       state.prefGenres,
+      ageRating:        state.ageRating,
+      recentSearches:   state.recentSearches,
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `staticvault-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Data exported!', 'download');
+  });
+
+  // Import data
+  document.getElementById('btn-import-data')?.addEventListener('change', async function() {
+    const file = this.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.version !== 2 && !data.watchlist) {
+          toast('Invalid backup file', 'error');
+          return;
+        }
+        if (!(await showConfirm('Import Data', 'This will merge imported data with your current data. Continue?'))) return;
+
+        // Merge arrays (avoid duplicates by id)
+        const merge = (existing, imported) => {
+          const ids = new Set(existing.map(x => x.id));
+          return [...existing, ...(imported || []).filter(x => !ids.has(x.id))];
+        };
+
+        if (data.watchlist)        { state.watchlist = merge(state.watchlist, data.watchlist); persist('watchlist'); }
+        if (data.liked)            { state.liked = merge(state.liked, data.liked); persist('liked'); }
+        if (data.disliked)         { state.disliked = merge(state.disliked, data.disliked); persist('disliked'); }
+        if (data.watched)          { state.watched = merge(state.watched, data.watched); persist('watched'); }
+        if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
+        if (data.prefDislikes)     { state.prefDislikes = merge(state.prefDislikes, data.prefDislikes); persist('prefDislikes'); }
+        if (data.prefGenres)       { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
+        if (data.continueWatching) {
+          Object.assign(state.continueWatching, data.continueWatching);
+          persist('continueWatching');
+        }
+        if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
+
+        renderLibrary();
+        toast('Data imported and merged successfully!', 'check_circle');
+      } catch (err) {
+        toast(`Import failed: ${err.message || 'Invalid file'}`, 'error');
+      }
+    };
+    reader.readAsText(file);
+    this.value = ''; // reset so same file can be re-selected
+  });
+
   // Provider auto-switch on timeout — try next provider after brief delay
   document.addEventListener('sv:provider-timeout', () => {
     if (!state.currentMedia) return;
@@ -2364,11 +2573,13 @@ function animatedRefreshFeed() {
     _clearRowCache();
     _homeLoading = false;
     _homeSeenIds.clear();
+    // Always use a different page so content is genuinely new
+    state._randomPage = Math.floor(Math.random() * 6) + 2;
     loadHero().catch(() => {});
     loadHomeRows().catch(() => {});
   }, totalDelay);
 
-  toast('Refreshing feed…', 'refresh');
+  toast('Refreshing with new content…', 'refresh');
 }
 
 /* ── FEED REFRESH ────────────────────────────────────────────────── */
@@ -2391,13 +2602,14 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   _homeLoading = false;
   _clearRowCache(); // force fresh fetch on next load
 
+  // ALWAYS use a random page so refresh shows genuinely different content
+  // Each refresh picks a new page (2-7) ensuring variety
+  state._randomPage = Math.floor(Math.random() * 6) + 2;
+
   if (randomize) {
-    // Add random page offset to API calls via a temp state var
-    state._randomPage = Math.floor(Math.random() * 5) + 2;
     toast('Feed randomized!', 'shuffle');
   } else {
-    state._randomPage = null;
-    toast('Feed updated!', 'check');
+    toast('Feed updated with fresh content!', 'check');
   }
 
   if (!stayOnPage) {

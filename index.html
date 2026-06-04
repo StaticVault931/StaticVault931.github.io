@@ -215,10 +215,6 @@
       <div class="sec-title">
         <span class="material-icons-round sec-icon" style="color:var(--red)">auto_awesome</span>For You
       </div>
-      <button class="foryou-expand-btn-big" id="foryou-expand-btn" title="Expand For You section">
-        <span class="material-icons-round">fullscreen</span>
-        <span>Expand</span>
-      </button>
       <button class="see-all-btn" data-page="prefs" aria-label="Customize recommendations">
         Customize <span class="material-icons-round">tune</span>
       </button>
@@ -538,6 +534,17 @@
     </div>
   </div>
 
+  <!-- ─ NEW CURATED ROWS ─ -->
+  <div class="section" id="sec-top10"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#f5c518">workspace_premium</span>Top 10 Today</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-top10" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-top10"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-top10" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-boredom"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#a78bfa">bolt</span>Boredom Busters</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-boredom" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-boredom"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-boredom" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-new-streaming"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#22c55e">fiber_new</span>New on Streaming</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-new-streaming" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-new-streaming"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-new-streaming" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-love-these"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#f87171">favorite</span>We Think You'll Love These</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-love-these" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-love-these"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-love-these" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-awards"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#f5c518">emoji_events</span>Award-Winning</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-awards" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-awards"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-awards" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-tv-faves"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">tv</span>Familiar TV Favorites</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-tv-faves" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-tv-faves"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-tv-faves" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-retro-tv"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">history</span>Retro TV</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-retro-tv" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-retro-tv"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-retro-tv" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-binge-drama"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">weekend</span>Bingeworthy TV</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-binge-drama" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-binge-drama"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-binge-drama" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-seasonal" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" id="sec-seasonal-icon">star</span><span id="sec-seasonal-label">Featured</span></div></div><div class="row-wrap"><div class="row-arrow row-arrow-l"><button data-scroll-row="row-seasonal" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-seasonal"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-seasonal" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+
   <!-- Recently Viewed -->
   <div class="section" id="sec-recent" style="display:none">
     <div class="sec-header">
@@ -675,6 +682,13 @@
   <div class="lib-data-section">
     <h3>Data &amp; Privacy</h3>
     <div class="data-btn-row">
+      <button class="data-btn" id="btn-export-data">
+        <span class="material-icons-round" style="font-size:.88rem">download</span> Export Data
+      </button>
+      <label class="data-btn" style="cursor:pointer" title="Import previously exported data">
+        <span class="material-icons-round" style="font-size:.88rem">upload</span> Import Data
+        <input type="file" id="btn-import-data" accept=".json" style="display:none">
+      </label>
       <button class="data-btn" id="btn-clear-disliked">Clear Disliked</button>
       <button class="data-btn danger" id="btn-reset-all">Reset All Data</button>
     </div>
