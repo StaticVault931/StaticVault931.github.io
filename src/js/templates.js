@@ -185,6 +185,38 @@ export function injectOverlays() {
   </div>`;
   frag.appendChild(share);
 
+  // ── TRAILER OVERLAY (separate iframe, no streaming sandbox) ──────
+  const trailer = document.createElement('div');
+  trailer.id = 'trailer-overlay';
+  trailer.innerHTML = `
+  <div class="trailer-overlay-card">
+    <div class="trailer-ov-header">
+      <span class="trailer-ov-title" id="trailer-ov-title"></span>
+      <button class="trailer-ov-close" id="trailer-ov-close" aria-label="Close trailer">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="trailer-ov-video">
+      <iframe id="trailer-ov-frame"
+        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+        allowfullscreen
+        referrerpolicy="no-referrer"
+        title="Trailer">
+      </iframe>
+      <div class="trailer-ov-fallback" id="trailer-ov-fallback" style="display:none">
+        <img class="trailer-ov-bg" id="trailer-ov-bg" alt="">
+        <div class="trailer-ov-fallback-msg">
+          <span class="material-icons-round">videocam_off</span>
+          <p>Trailer embedding disabled by video owner.</p>
+          <a id="trailer-ov-yt-link" target="_blank" rel="noopener" class="btn-next-source">
+            <span class="material-icons-round">open_in_new</span> Watch on YouTube
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  frag.appendChild(trailer);
+
   // ── INFO PAGE OVERLAY ─────────────────────────────────────────────
   const info = document.createElement('div');
   info.id = 'info-overlay';

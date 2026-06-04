@@ -1348,6 +1348,69 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   margin-left: .2rem;
 }
 
+/* ── TRAILER OVERLAY ─────────────────────────────────────────────── */
+#trailer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  background: rgba(0,0,0,.88);
+  backdrop-filter: blur(12px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+#trailer-overlay.open { display: flex; }
+.trailer-overlay-card {
+  width: 100%;
+  max-width: 900px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 40px 120px rgba(0,0,0,.95);
+  animation: modalIn .24s var(--ease);
+}
+.trailer-ov-header {
+  display: flex; align-items: center;
+  padding: .65rem .9rem;
+  background: rgba(10,10,10,.95);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.trailer-ov-title { flex: 1; font-size: .9rem; font-weight: 800; color: #fff; }
+.trailer-ov-close {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,.1); border: none;
+  color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .18s;
+}
+.trailer-ov-close:hover { background: var(--red); }
+.trailer-ov-close .material-icons-round { font-size: .9rem; }
+.trailer-ov-video {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+}
+#trailer-ov-frame { width: 100%; height: 100%; border: none; display: block; }
+.trailer-ov-fallback {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem;
+}
+.trailer-ov-bg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  filter: brightness(.35);
+}
+.trailer-ov-fallback-msg {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: .65rem;
+  text-align: center; color: #fff;
+}
+.trailer-ov-fallback-msg .material-icons-round { font-size: 2.5rem; color: rgba(255,255,255,.5); }
+.trailer-ov-fallback-msg p { font-size: .85rem; color: rgba(255,255,255,.7); }
+
 /* ── WATCH TOGETHER COUNTDOWN ────────────────────────────────────── */
 .watch-together-cd {
   display: flex;

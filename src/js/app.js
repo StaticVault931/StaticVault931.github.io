@@ -141,14 +141,18 @@ function closeLegal() {
 
 /* ── SETTINGS (must be before init IIFE to avoid TDZ) ───────────── */
 const SV_SETTINGS = [
-  { id: 'disableHoverTrailer', label: 'Hover Trailers',       desc: 'Show trailer previews when hovering cards',              default: true,  icon: 'play_circle' },
-  { id: 'defaultInfoMode',     label: 'Default Info Page',    desc: 'Open full info instead of player by default',            default: false, icon: 'info' },
-  { id: 'compactMode',         label: 'Compact Grid Mode',    desc: 'Show content as a grid instead of scrolling rows',       default: false, icon: 'grid_view' },
-  { id: 'autoNextProvider',    label: 'Auto-Switch Source',   desc: 'Automatically try next source if current one fails',     default: true,  icon: 'swap_horiz' },
-  { id: 'showRatings',         label: 'Ratings on Cards',     desc: 'Display star ratings on content cards',                  default: true,  icon: 'star' },
-  { id: 'disableAgeFilter',    label: 'Disable Age Filter',   desc: 'Show all content regardless of age rating setting',      default: false, icon: 'no_adult_content' },
-  { id: 'showProgressBar',     label: 'Progress Bars',        desc: 'Show watch progress on Continue Watching cards',         default: true,  icon: 'linear_scale' },
-  { id: 'reducedMotion',       label: 'Reduce Animations',    desc: 'Minimize animations for better performance',             default: false, icon: 'motion_photos_off' },
+  { id: 'disableHoverTrailer', label: 'Hover Trailers',       desc: 'Preview trailers when hovering cards for 1s',           default: true,  icon: 'play_circle' },
+  { id: 'defaultInfoMode',     label: 'Info Page by Default', desc: 'Open full info screen instead of player',               default: false, icon: 'info' },
+  { id: 'compactMode',         label: 'Compact Grid Mode',    desc: 'Show content as a grid (no horizontal scroll)',         default: false, icon: 'grid_view' },
+  { id: 'autoNextProvider',    label: 'Auto-Switch Source',   desc: 'Try next source automatically if current one fails',    default: true,  icon: 'swap_horiz' },
+  { id: 'showRatings',         label: 'Show Ratings',         desc: 'Display star ratings on content cards',                 default: true,  icon: 'star' },
+  { id: 'disableAgeFilter',    label: 'Unlock All Content',   desc: 'Show all ratings regardless of age filter',             default: false, icon: 'no_adult_content' },
+  { id: 'showProgressBar',     label: 'Progress Bars',        desc: 'Watch progress on Continue Watching cards',             default: false, icon: 'linear_scale' },
+  { id: 'reducedMotion',       label: 'Reduce Animations',    desc: 'Minimize transitions for performance',                  default: false, icon: 'motion_photos_off' },
+  { id: 'skipRecap',           label: 'Skip Intros',          desc: 'Remember to skip intro/recap (manual reminder)',        default: false, icon: 'skip_next' },
+  { id: 'hdFirst',             label: 'Prefer HD Sources',    desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)', default: true, icon: 'hd' },
+  { id: 'darkPlayer',          label: 'Dark Player BG',       desc: 'Show dark background behind the player iframe',         default: true,  icon: 'dark_mode' },
+  { id: 'wideInfo',            label: 'Wide Info Page',       desc: 'Use full screen width for info page',                   default: true,  icon: 'open_in_full' },
 ];
 
 /* ── SHORTCUTS LIST (must be before init IIFE to avoid TDZ) ─────── */
@@ -156,8 +160,9 @@ const SHORTCUTS = [
   // Navigation — left side
   { key: 'H',          desc: 'Go to Home',                   group: 'Navigation' },
   { key: 'L',          desc: 'Go to Library',                group: 'Navigation' },
-  { key: 'T',          desc: 'Cycle theme',                  group: 'Navigation' },
+  { key: 'T / 0',      desc: 'Cycle theme',                  group: 'Navigation' },
   { key: '1–6',        desc: 'Jump to page by number',       group: 'Navigation' },
+  { key: '7',          desc: 'Open search',                  group: 'Navigation' },
   { key: 'W / ↑',      desc: 'Scroll up',                    group: 'Navigation' },
   { key: 'S / ↓',      desc: 'Scroll down',                  group: 'Navigation' },
   { key: '/ or F',     desc: 'Open search',                  group: 'Navigation' },
@@ -197,14 +202,13 @@ const SHORTCUTS = [
   loadHero().catch(() => {});
   loadHomeRows().catch(() => {});
 
-  // Safety retry — if rows are still empty after 3s (initial load failed), try again
+  // Safety retry — if rows are still empty after 4s, try again
   setTimeout(() => {
     const trendRow = document.getElementById('row-trending');
     if (!trendRow?.querySelector('.card')) {
-      _homeLoading = false; // force reset lock
       loadHomeRows().catch(() => {});
     }
-  }, 3000);
+  }, 4000);
 
   // URL param deep-link — supports ?watch=type&name=slug&id=X, ?id=X&type=Y, ?page=X
   const sp = new URLSearchParams(location.search);
@@ -384,11 +388,10 @@ function _loadRow(rowId, secId, fetchFn, type) {
 }
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
-let _homeLoading = false;
+// No mutex — loadHomeRows is idempotent; concurrent calls both write to the same rows (last one wins, which is fine)
+let _homeLoading = false; // kept for refreshFeed compat only
 
 async function loadHomeRows() {
-  if (_homeLoading) return; // prevent concurrent calls
-  _homeLoading = true;
   _homeSeenIds.clear();
   _lazyObs.forEach(o => o.disconnect());
   _lazyObs.clear();
@@ -454,8 +457,8 @@ async function loadHomeRows() {
     // Because You Liked — load after trending is done
     loadBecauseYouLiked().catch(() => {});
 
-  } finally {
-    _homeLoading = false;
+  } catch (err) {
+    console.warn('[SV] loadHomeRows error:', err?.message);
   }
 }
 
@@ -1203,66 +1206,7 @@ function initEventDelegation() {
     if (action === 'modal-play') playNow();
     else if (action === 'modal-trailer') {
       const key = btn.dataset.key;
-      if (key) {
-        cancelProviderTimer();
-        const iframe = document.getElementById('player-frame');
-        const loading = document.getElementById('player-loading');
-        if (iframe) {
-          if (loading) {
-            loading.classList.remove('hidden');
-            loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`;
-          }
-          iframe.removeAttribute('src');
-          iframe.onload = null;
-          setTimeout(() => {
-            // Use enablejsapi so we can detect actual playback vs Error 153
-            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&autohide=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
-
-            // Listen for YouTube postMessage to confirm playback
-            const yt = (e) => {
-              if (e.origin !== 'https://www.youtube.com') return;
-              try {
-                const d = JSON.parse(e.data);
-                // Player state 1 = playing, -1 = error/unstarted
-                if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
-                  if (loading) loading.classList.add('hidden');
-                  window.removeEventListener('message', yt);
-                }
-              } catch {}
-            };
-            window.addEventListener('message', yt);
-
-            // 8s safety: if no play confirmed, show "Watch on YouTube"
-            setTimeout(() => {
-              window.removeEventListener('message', yt);
-              if (loading && !loading.classList.contains('hidden')) {
-                // Trailer didn't play — use poster image as fallback
-                const posterImg = state.currentMedia?.details?.backdrop_path
-                  ? `https://image.tmdb.org/t/p/w1280${state.currentMedia.details.backdrop_path}`
-                  : state.currentMedia?.details?.poster_path
-                  ? `https://image.tmdb.org/t/p/w780${state.currentMedia.details.poster_path}`
-                  : null;
-
-                if (posterImg) {
-                  loading.classList.remove('hidden');
-                  loading.innerHTML = `
-                    <img src="${posterImg}" alt="Content preview" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
-                    <div style="position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);display:flex;gap:.5rem;z-index:2">
-                      <a href="https://www.youtube.com/watch?v=${key}" target="_blank" rel="noopener" class="trailer-fallback-btn">
-                        <span class="material-icons-round">play_circle</span> Watch Trailer on YouTube
-                      </a>
-                      <button class="trailer-fallback-btn" onclick="this.closest('#player-loading').classList.add('hidden'); document.dispatchEvent(new CustomEvent('sv:play-now'))">
-                        <span class="material-icons-round">movie</span> Watch Now
-                      </button>
-                    </div>`;
-                } else {
-                  showTrailerFallback(key);
-                }
-              }
-            }, 8000);
-          }, 50);
-        }
-      }
+      if (key) openTrailerOverlay(key, title, state.currentMedia?.details);
     }
     else if (action === 'modal-watchlist') { handleWatchlist(id, type, null, meta); renderModalActions(state.currentMedia); }
     else if (action === 'modal-like') { handleLike(id, type, null, meta); renderModalActions(state.currentMedia); }
@@ -2113,7 +2057,7 @@ export async function openInfoPage(id, type, hint = {}) {
     if (actionsEl) {
       const likedNow = isLiked(id), wlNow = isInWatchlist(id);
       actionsEl.innerHTML = `
-        <button class="ma primary" onclick="document.getElementById('info-close').click();setTimeout(()=>window._openMediaFromInfo&&window._openMediaFromInfo(),100)">
+        <button class="ma primary" id="info-action-watch">
           <span class="material-icons-round">play_arrow</span>Watch Now
         </button>
         <button class="ma${wlNow ? ' saved' : ''}" id="info-wl-btn">
@@ -2122,6 +2066,12 @@ export async function openInfoPage(id, type, hint = {}) {
         <button class="ma${likedNow ? ' liked' : ''}" id="info-like-btn">
           <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
         </button>`;
+      // Watch Now: close info page, open player modal
+      document.getElementById('info-action-watch')?.addEventListener('click', () => {
+        const capturedId = id, capturedType = type, capturedHint = { title, poster_path: details.poster_path };
+        closeInfoPage();
+        setTimeout(() => openMedia(capturedId, capturedType, { ...capturedHint, _forcePlayer: true }), 80);
+      });
       document.getElementById('info-wl-btn')?.addEventListener('click', () => {
         handleWatchlist(id, type, null, { id, type, title, poster_path: details.poster_path });
         const btn = document.getElementById('info-wl-btn');
@@ -2145,8 +2095,14 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    if (trailerKey && trailerFrame) {
-      trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+    // Make info-page trailer section open the trailer overlay instead of embedding
+    const trailerWrap = document.getElementById('info-trailer-wrap');
+    if (trailerKey && trailerWrap) {
+      trailerWrap.style.cursor = 'pointer';
+      // Show poster as "click to play" teaser
+      if (trailerFrame) {
+        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+      }
       if (trailerFallback) trailerFallback.style.display = 'none';
     } else {
       if (trailerFrame) trailerFrame.removeAttribute('src');
@@ -2233,6 +2189,73 @@ export function closeInfoPage() {
   const frame = document.getElementById('info-trailer-frame');
   if (frame) frame.removeAttribute('src');
   resetPageSEO();
+}
+
+/* ── TRAILER OVERLAY ────────────────────────────────────────────── */
+function openTrailerOverlay(key, title, details) {
+  const ov = document.getElementById('trailer-overlay');
+  if (!ov) return;
+
+  // Wire close on first use
+  if (!ov._wired) {
+    ov._wired = true;
+    document.getElementById('trailer-ov-close')?.addEventListener('click', closeTrailerOverlay);
+    ov.addEventListener('click', e => { if (e.target === ov) closeTrailerOverlay(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTrailerOverlay(); }, { passive: true });
+  }
+
+  const titleEl = document.getElementById('trailer-ov-title');
+  const frame = document.getElementById('trailer-ov-frame');
+  const fallback = document.getElementById('trailer-ov-fallback');
+  const bgImg = document.getElementById('trailer-ov-bg');
+  const ytLink = document.getElementById('trailer-ov-yt-link');
+
+  if (titleEl) titleEl.textContent = `${title || 'Trailer'} — Trailer`;
+  if (frame) {
+    frame.style.display = '';
+    // No sandbox — dedicated trailer iframe, not a streaming source
+    frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&autohide=1&playsinline=1&origin=https%3A%2F%2Fwww.themoviedb.org`;
+  }
+  if (fallback) fallback.style.display = 'none';
+
+  // Set up fallback image + YouTube link
+  const posterImg = details?.backdrop_path
+    ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
+    : details?.poster_path ? `https://image.tmdb.org/t/p/w780${details.poster_path}` : null;
+
+  if (bgImg && posterImg) bgImg.src = posterImg;
+  if (ytLink) ytLink.href = `https://www.youtube.com/watch?v=${key}`;
+
+  // Detect if YouTube blocked the embed (after 6s with no playback)
+  const msgHandler = (e) => {
+    if (e.origin !== 'https://www.youtube.com') return;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+        window.removeEventListener('message', msgHandler);
+        clearTimeout(fallbackTimer);
+      }
+    } catch {}
+  };
+  window.addEventListener('message', msgHandler);
+  const fallbackTimer = setTimeout(() => {
+    window.removeEventListener('message', msgHandler);
+    // No playback detected — show fallback with poster + YouTube link
+    if (frame) frame.style.display = 'none';
+    if (fallback) fallback.style.display = '';
+  }, 7000);
+
+  ov.dataset.fallbackTimer = fallbackTimer;
+  ov.classList.add('open');
+}
+
+function closeTrailerOverlay() {
+  const ov = document.getElementById('trailer-overlay');
+  if (!ov) return;
+  ov.classList.remove('open');
+  const frame = document.getElementById('trailer-ov-frame');
+  if (frame) frame.removeAttribute('src');
+  clearTimeout(+ov.dataset.fallbackTimer);
 }
 
 /* ── TRAILER FALLBACK ────────────────────────────────────────────── */
@@ -3073,13 +3096,44 @@ function initKeyboard() {
     // ? opens shortcuts
     if (e.key === '?') { e.preventDefault(); showShortcuts(); return; }
 
-    // WASD / Arrow keys — hero navigation and row scrolling
-    const modalOpen = document.getElementById('modal-overlay')?.classList.contains('open');
-    if (modalOpen) return;
+    // I toggles info/player — works even when modal is open
+    if (e.key === 'i' || e.key === 'I') {
+      if (document.getElementById('info-overlay')?.classList.contains('open')) {
+        const media = state.currentInfoMedia;
+        closeInfoPage();
+        if (media) openMedia(media.id, media.type, { _forcePlayer: true });
+        return;
+      }
+      if (document.getElementById('modal-overlay')?.classList.contains('open') && state.currentMedia) {
+        const { id, type } = state.currentMedia;
+        closeModal();
+        setTimeout(() => openInfoPage(id, type), 50);
+        return;
+      }
+    }
 
-    // Number keys 1-6 navigate pages
+    // N works when modal is open
+    if ((e.key === 'n' || e.key === 'N') && state.currentMedia) {
+      const { useId, id, type } = state.currentMedia;
+      const sel = document.getElementById('season-sel');
+      const s = sel ? +sel.value : 1;
+      const ep = document.querySelector('.ep-card.on');
+      const next = nextProvider(useId || id, type, s, ep ? +ep.dataset.ep : 1);
+      toast(`Switched to ${next.label}`, 'swap_horiz');
+      return;
+    }
+
+    // Block non-modal shortcuts when modal/info overlay is open
+    const anyOverlayOpen =
+      document.getElementById('modal-overlay')?.classList.contains('open') ||
+      document.getElementById('info-overlay')?.classList.contains('open');
+    if (anyOverlayOpen) return;
+
+    // Number keys 1-7 navigate pages; 0 = cycle theme
     const pageKeys = { '1': 'home', '2': 'movies', '3': 'tv', '4': 'anime', '5': 'library', '6': 'prefs' };
     if (pageKeys[e.key]) { goPage(pageKeys[e.key]); return; }
+    if (e.key === '7') { goPage('search'); setTimeout(() => document.getElementById('search-input')?.focus(), 100); return; }
+    if (e.key === '0') { cycleTheme(); return; }
 
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       e.preventDefault();
@@ -3094,34 +3148,12 @@ function initKeyboard() {
     } else if (e.key === 'l' || e.key === 'L') {
       goPage('library');
     } else if (e.key === 's' || e.key === 'S') {
-      // S scrolls down
       window.scrollBy({ top: window.innerHeight * 0.6, behavior: 'smooth' });
     } else if (e.key === 'w' || e.key === 'W') {
-      // W scrolls up
       window.scrollBy({ top: -window.innerHeight * 0.6, behavior: 'smooth' });
     } else if (e.key === 'f' || e.key === 'F') {
-      // F opens search (Find)
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 100);
-    } else if (e.key === 'n' || e.key === 'N') {
-      if (state.currentMedia) {
-        const { useId, id, type } = state.currentMedia;
-        const sel = document.getElementById('season-sel');
-        const s = sel ? +sel.value : 1;
-        const ep = document.querySelector('.ep-card.on');
-        const next = nextProvider(useId || id, type, s, ep ? +ep.dataset.ep : 1);
-        toast(`Switched to ${next.label}`, 'swap_horiz');
-      }
-    } else if (e.key === 'i' || e.key === 'I') {
-      // Toggle between info page and player modal
-      if (document.getElementById('info-overlay')?.classList.contains('open')) {
-        closeInfoPage();
-        if (state.currentInfoMedia) openMedia(state.currentInfoMedia.id, state.currentInfoMedia.type, { _forcePlayer: true });
-      } else if (document.getElementById('modal-overlay')?.classList.contains('open') && state.currentMedia) {
-        const { id, type } = state.currentMedia;
-        closeModal();
-        openInfoPage(id, type);
-      }
     }
   });
 }

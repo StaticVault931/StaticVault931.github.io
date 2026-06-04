@@ -1108,7 +1108,11 @@
 .lib-tab.on { color: var(--text); border-bottom-color: var(--red); }
 
 /* ── CYF SETTINGS ──────────────────────────────────────────────── */
-.sv-settings-grid { display: flex; flex-direction: column; gap: .5rem; }
+.sv-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .45rem;
+}
 .sv-setting-row {
   display: flex;
   align-items: center;

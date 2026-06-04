@@ -95,8 +95,11 @@ export const PROVIDERS = [
   },
 ];
 
-export function providersFor(type) {
-  return PROVIDERS.filter(p => p.types.includes(type === 'anime' ? 'tv' : type));
+export function providersFor(type, opts = {}) {
+  const list = PROVIDERS.filter(p => p.types.includes(type === 'anime' ? 'tv' : type));
+  // Respect disabled providers
+  const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
+  return list.filter(p => !disabled.includes(p.id));
 }
 
 /* ── ACTIVE PROVIDER ─────────────────────────────────────────────── */
