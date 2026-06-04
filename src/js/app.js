@@ -176,6 +176,7 @@ const SHORTCUTS = [
   { key: '← / A',      desc: 'Previous hero slide',          group: 'Navigation' },
   { key: '→ / D',      desc: 'Next hero slide',              group: 'Navigation' },
   // Content
+  { key: 'R',          desc: 'Animated refresh home feed',   group: 'Content' },
   { key: 'Esc',        desc: 'Close any modal or overlay',   group: 'Content' },
   { key: 'I',          desc: 'Toggle Info / Player view',    group: 'Content' },
   { key: 'N',          desc: 'Try next video source',        group: 'Content' },
@@ -302,10 +303,15 @@ function initHeader() {
 /* ── PAGE LOADERS ────────────────────────────────────────────────── */
 function registerAllLoaders() {
   registerLoader('home', () => {
-    // Always refresh local rows (instant from localStorage)
     renderContinueRow();
     renderRecentRow();
-    // If main rows still show skeletons or are empty, reload them
+    // Advance hero image when navigating back to home
+    if (state.heroItems?.length) {
+      const next = (state.heroIdx + 1) % state.heroItems.length;
+      showHero(next);
+      clearInterval(state.heroTimer);
+      state.heroTimer = setInterval(() => showHero((state.heroIdx + 1) % state.heroItems.length), 8000);
+    }
     const trendRow = document.getElementById('row-trending');
     if (!trendRow || !trendRow.querySelector('.card')) {
       loadHomeRows().catch(() => {});
@@ -383,22 +389,62 @@ function registerAllSeeAll() {
 }
 
 /* ── HERO ────────────────────────────────────────────────────────── */
+function _getHeroStartIdx(total) {
+  // Rotate the start index on each page load/session
+  const key = 'sv_hero_v';
+  const cur = parseInt(sessionStorage.getItem(key) || '-1');
+  const next = (cur + 1) % Math.max(total, 1);
+  sessionStorage.setItem(key, String(next));
+  return next;
+}
+
 async function loadHero() {
   try {
     const d = await tmdb('/trending/movie/week');
-    state.heroItems = (d.results || []).filter(x => x.backdrop_path).slice(0, 7);
+    const all = (d.results || []).filter(x => x.backdrop_path);
+    // Mix in some TV for variety
+    const tv = await tmdb('/trending/tv/week').catch(() => ({ results: [] }));
+    const tvItems = (tv.results || []).filter(x => x.backdrop_path).slice(0, 3);
+    state.heroItems = [...all.slice(0, 5), ...tvItems].slice(0, 8);
     buildHeroDots();
-    showHero(0);
+    const startIdx = _getHeroStartIdx(state.heroItems.length);
+    showHero(startIdx);
     clearInterval(state.heroTimer);
     state.heroTimer = setInterval(() => {
       showHero((state.heroIdx + 1) % state.heroItems.length);
-    }, 10000);
+    }, 8000); // slightly faster rotation
   } catch {}
 }
 
 /* ── ROW DEDUP (tracks IDs rendered per home-page load) ─────────── */
 const _homeSeenIds = new Set();
 const _lazyObs = new Map(); // kept for compatibility
+
+/* ── SCHEDULE ROW LOAD (defer off-screen rows to scroll trigger) ─── */
+function _scheduleRowLoad(rowId, secId, fetchFn, type) {
+  const sec = secId ? document.getElementById(secId) : null;
+  const row = document.getElementById(rowId);
+  if (!row) return;
+
+  // Check if already visible (within 600px of viewport bottom)
+  const target = sec || row;
+  const rect = target.getBoundingClientRect();
+  if (rect.top < window.innerHeight + 600) {
+    // Visible or nearly visible — load now
+    _loadRow(rowId, secId, fetchFn, type);
+    return;
+  }
+
+  // Off-screen — observe and load when scrolled near
+  const obs = new IntersectionObserver(([entry], observer) => {
+    if (!entry.isIntersecting) return;
+    observer.disconnect();
+    _loadRow(rowId, secId, fetchFn, type);
+  }, { rootMargin: '500px 0px' });
+
+  obs.observe(target);
+  _lazyObs.set(rowId, obs);
+}
 
 /* ── ROW FETCH HELPER ────────────────────────────────────────────── */
 function _loadRow(rowId, secId, fetchFn, type) {
@@ -419,7 +465,9 @@ function _loadRow(rowId, secId, fetchFn, type) {
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
       renderRow(rowId, final, type);
-      _saveRowCache(rowId, final); // cache for instant replay
+      _saveRowCache(rowId, final);
+      // Disambiguate duplicate titles by adding year
+      requestAnimationFrame(disambiguateTitles);
     })
     .catch(err => {
       console.warn(`[SV] Row ${rowId}:`, err?.message || err);
@@ -513,6 +561,7 @@ async function loadHomeRows() {
 }
 
 async function _loadHomeRowsFresh(showSkeletons = false) {
+  if (showSkeletons) _homeSeenIds.clear();
   const prefG = state.prefGenres;
   const gOpts = (genreId, extra = {}) => ({
     with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
@@ -535,22 +584,61 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     loadForYou(),
   ]);
 
-  // All remaining rows in parallel
-  Promise.allSettled([
-    _loadRow('row-new',       'sec-new',       () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), 'movie'),
-    _loadRow('row-toprated',  'sec-toprated',  () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), 'movie'),
-    _loadRow('row-tv-pop',    'sec-tv-pop',    () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), 'tv'),
-    _loadRow('row-airing',    'sec-airing',    () => tmdb('/tv/airing_today').then(d => d.results || []),                   'tv'),
-    _loadRow('row-action',    'sec-action',    () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          'movie'),
-    _loadRow('row-comedy',    'sec-comedy',    () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          'movie'),
-    _loadRow('row-horror',    'sec-horror',    () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          'movie'),
-    _loadRow('row-drama',     'sec-drama',     () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), 'movie'),
-    _loadRow('row-scifi',     'sec-scifi',     () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         'movie'),
-    _loadRow('row-animated',  'sec-animated',  () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          'movie'),
-    _loadRow('row-home-anime','sec-home-anime',() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), 'anime'),
-  ]);
+  // ── PROGRESSIVE loading: visible rows first, off-screen rows on scroll ──
+  // Wave 1: just below the fold (load immediately after trending/foryou)
+  const wave1 = [
+    { id: 'row-new',      sec: 'sec-new',      fn: () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-toprated', sec: 'sec-toprated', fn: () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-tv-pop',   sec: 'sec-tv-pop',   fn: () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-airing',   sec: 'sec-airing',   fn: () => tmdb('/tv/airing_today').then(d => d.results || []),                   type: 'tv' },
+  ];
 
-  loadBecauseYouLiked().catch(() => {});
+  // Wave 2: genre rows — further down the page
+  const wave2 = [
+    { id: 'row-action',   sec: 'sec-action',   fn: () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),                                                   type: 'movie' },
+    { id: 'row-comedy',   sec: 'sec-comedy',   fn: () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),                                                   type: 'movie' },
+    { id: 'row-horror',   sec: 'sec-horror',   fn: () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),                                                   type: 'movie' },
+    { id: 'row-drama',    sec: 'sec-drama',    fn: () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), type: 'movie' },
+    { id: 'row-scifi',    sec: 'sec-scifi',    fn: () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),                                                  type: 'movie' },
+    { id: 'row-animated', sec: 'sec-animated', fn: () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),                                                   type: 'movie' },
+    { id: 'row-home-anime','sec': 'sec-home-anime', fn: () => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)),                               type: 'anime' },
+  ];
+
+  // Load wave 1 in parallel (just below the fold — prioritise)
+  Promise.allSettled(wave1.map(r => _loadRow(r.id, r.sec, r.fn, r.type)));
+
+  // Load wave 2 with IntersectionObserver — only when scrolled near
+  wave2.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
+
+  // Because You Liked — personalized, after main rows settle
+  setTimeout(() => loadBecauseYouLiked().catch(() => {}), 800);
+}
+
+/* ── TITLE YEAR DISAMBIGUATION ───────────────────────────────────── */
+function disambiguateTitles() {
+  const cards = document.querySelectorAll('#page-home .card[data-title][data-year]');
+  const titleMap = new Map(); // lowercase title → array of { card, year }
+
+  cards.forEach(card => {
+    const raw = card.dataset.title?.trim();
+    if (!raw) return;
+    const key = raw.toLowerCase();
+    if (!titleMap.has(key)) titleMap.set(key, []);
+    titleMap.get(key).push({ card, year: card.dataset.year });
+  });
+
+  for (const [, items] of titleMap) {
+    if (items.length < 2) continue; // no conflict
+    items.forEach(({ card, year }) => {
+      if (!year) return;
+      const titleEl = card.querySelector('.card-title');
+      if (!titleEl) return;
+      const current = titleEl.textContent;
+      if (!current.endsWith(')')) { // not already disambiguated
+        titleEl.textContent = `${current} (${year})`;
+      }
+    });
+  }
 }
 
 function renderContinueRow() {
@@ -2141,6 +2229,37 @@ function _wtPlayFromStart(mediaId, mediaType) {
   loadPlayer(uid, type || mediaType, 1, 1);
 }
 
+/* ── ANIMATED FEED REFRESH ───────────────────────────────────────── */
+function animatedRefreshFeed() {
+  const rows = Array.from(document.querySelectorAll('#page-home .card-row'));
+  let delay = 0;
+
+  // Stagger-out existing cards row by row
+  rows.forEach(row => {
+    const cards = Array.from(row.querySelectorAll('.card'));
+    cards.forEach((card, j) => {
+      setTimeout(() => {
+        card.style.transition = 'opacity .25s, transform .25s';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(.92) translateY(8px)';
+      }, delay + j * 20);
+    });
+    delay += cards.length * 20 + 80;
+  });
+
+  // After cards fade out, clear cache and refresh (showing skeletons)
+  const totalDelay = Math.min(delay, 800);
+  setTimeout(() => {
+    _clearRowCache();
+    _homeLoading = false;
+    _homeSeenIds.clear();
+    loadHero().catch(() => {});
+    loadHomeRows().catch(() => {});
+  }, totalDelay);
+
+  toast('Refreshing feed…', 'refresh');
+}
+
 /* ── FEED REFRESH ────────────────────────────────────────────────── */
 function refreshFeed(randomize = false, stayOnPage = false) {
   // Clear ALL content caches from sessionStorage
@@ -3477,6 +3596,8 @@ function initKeyboard() {
     } else if (e.key === 'f' || e.key === 'F') {
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 100);
+    } else if (e.key === 'r' || e.key === 'R') {
+      if (state.currentPage === 'home') animatedRefreshFeed();
     }
   });
 }
