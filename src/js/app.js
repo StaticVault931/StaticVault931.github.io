@@ -675,31 +675,25 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     loadForYou(),
   ]);
 
-  // ── PROGRESSIVE loading: visible rows first, off-screen rows on scroll ──
-  // Wave 1: just below the fold (load immediately after trending/foryou)
-  const wave1 = [
-    { id: 'row-new',      sec: 'sec-new',      fn: () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-toprated', sec: 'sec-toprated', fn: () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-tv-pop',   sec: 'sec-tv-pop',   fn: () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-airing',   sec: 'sec-airing',   fn: () => tmdb('/tv/airing_today').then(d => d.results || []),                   type: 'tv' },
+  // ── ALL remaining rows: each loads independently via IntersectionObserver ──
+  // Rows near the viewport fire immediately; others wait for scroll.
+  // This way each row appears at its own natural time, not all at once.
+  const rowDefs = [
+    { id: 'row-new',       sec: 'sec-new',       fn: () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-toprated',  sec: 'sec-toprated',  fn: () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-tv-pop',    sec: 'sec-tv-pop',    fn: () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-airing',    sec: 'sec-airing',    fn: () => tmdb('/tv/airing_today').then(d => d.results || []),                   type: 'tv' },
+    { id: 'row-action',    sec: 'sec-action',    fn: () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          type: 'movie' },
+    { id: 'row-comedy',    sec: 'sec-comedy',    fn: () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          type: 'movie' },
+    { id: 'row-horror',    sec: 'sec-horror',    fn: () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          type: 'movie' },
+    { id: 'row-drama',     sec: 'sec-drama',     fn: () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), type: 'movie' },
+    { id: 'row-scifi',     sec: 'sec-scifi',     fn: () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         type: 'movie' },
+    { id: 'row-animated',  sec: 'sec-animated',  fn: () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          type: 'movie' },
+    { id: 'row-home-anime','sec': 'sec-home-anime', fn: () => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), type: 'anime' },
   ];
 
-  // Wave 2: genre rows — further down the page
-  const wave2 = [
-    { id: 'row-action',   sec: 'sec-action',   fn: () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),                                                   type: 'movie' },
-    { id: 'row-comedy',   sec: 'sec-comedy',   fn: () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),                                                   type: 'movie' },
-    { id: 'row-horror',   sec: 'sec-horror',   fn: () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),                                                   type: 'movie' },
-    { id: 'row-drama',    sec: 'sec-drama',    fn: () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), type: 'movie' },
-    { id: 'row-scifi',    sec: 'sec-scifi',    fn: () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),                                                  type: 'movie' },
-    { id: 'row-animated', sec: 'sec-animated', fn: () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),                                                   type: 'movie' },
-    { id: 'row-home-anime','sec': 'sec-home-anime', fn: () => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)),                               type: 'anime' },
-  ];
-
-  // Load wave 1 in parallel (just below the fold — prioritise)
-  Promise.allSettled(wave1.map(r => _loadRow(r.id, r.sec, r.fn, r.type)));
-
-  // Load wave 2 with IntersectionObserver — only when scrolled near
-  wave2.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
+  // Each row observes itself — visible ones load first, others load as you scroll
+  rowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
 
   // ── WAVE 3: Curated rows — randomly selected, deferred to scroll ───
   const pRng = state._randomPage || 1;
@@ -2052,24 +2046,78 @@ function initEventDelegation() {
   // VidSrc test all
   document.getElementById('vidsrc-test-all-btn')?.addEventListener('click', testAllVidsrcDomains);
 
-  // Data management — use in-app confirm dialog
-  document.getElementById('btn-clear-watchlist')?.addEventListener('click', async () => {
-    if (await showConfirm('Clear Watchlist', 'Remove all saved titles? This cannot be undone.')) clearSection('watchlist', 'Watchlist');
+  // ── DATA MANAGEMENT ────────────────────────────────────────────────
+  const confirmClear = async (label, key, display) => {
+    if (await showConfirm(`Clear ${display}`, `Remove all ${display.toLowerCase()}? This cannot be undone.`)) {
+      clearSection(key, display);
+    }
+  };
+
+  document.getElementById('btn-clear-watchlist')?.addEventListener('click', () => confirmClear('watchlist', 'watchlist', 'Watchlist'));
+  document.getElementById('btn-clear-liked')?.addEventListener('click', () => confirmClear('liked', 'liked', 'Liked Titles'));
+  document.getElementById('btn-clear-disliked')?.addEventListener('click', () => confirmClear('disliked', 'disliked', 'Disliked Titles'));
+  document.getElementById('btn-clear-recent')?.addEventListener('click', () => confirmClear('recent', 'recentlyViewed', 'Recently Viewed'));
+  document.getElementById('btn-clear-continue')?.addEventListener('click', () => confirmClear('continue', 'continueWatching', 'Continue Watching'));
+
+  document.getElementById('btn-clear-watched')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Watched', 'Remove all watched marks? Content may reappear in recommendations.')) {
+      state.watched = []; persist('watched');
+      renderLibrary(); toast('Watched list cleared', 'visibility');
+    }
   });
-  document.getElementById('btn-clear-liked')?.addEventListener('click', async () => {
-    if (await showConfirm('Clear Liked', 'Remove all liked titles? This cannot be undone.')) clearSection('liked', 'Liked');
+  document.getElementById('btn-clear-impressions')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Content History', 'Clear impression data? You may see previously-hidden content again.')) {
+      state.impressions = {}; persist('impressions');
+      _clearRowCache(); toast('Content history cleared', 'refresh');
+    }
   });
-  document.getElementById('btn-clear-recent')?.addEventListener('click', async () => {
-    if (await showConfirm('Clear History', 'Remove all recently viewed titles? This cannot be undone.')) clearSection('recentlyViewed', 'Recently Viewed');
+  document.getElementById('btn-clear-prefLikes')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Titles I Love', 'Remove all manually added titles from your "Titles I Love" list in Customize Feed?')) {
+      state.prefLikes = []; persist('prefLikes');
+      renderPrefLists(); toast('Titles I Love cleared', 'favorite_border');
+    }
   });
-  document.getElementById('btn-clear-continue')?.addEventListener('click', async () => {
-    if (await showConfirm('Clear Continue Watching', 'Remove all progress? This cannot be undone.')) clearSection('continueWatching', 'Continue Watching');
-  });
-  document.getElementById('btn-clear-disliked')?.addEventListener('click', async () => {
-    if (await showConfirm('Clear Disliked', 'Clear your disliked list? This cannot be undone.')) clearSection('disliked', 'Disliked');
+  document.getElementById('btn-clear-prefDislikes')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Titles I Dislike', 'Remove all manually added titles from your "Titles I Dislike" list?')) {
+      state.prefDislikes = []; persist('prefDislikes');
+      renderPrefLists(); toast('Titles I Dislike cleared', 'thumb_down_off_alt');
+    }
   });
   document.getElementById('btn-reset-all')?.addEventListener('click', async () => {
-    if (await showConfirm('Reset All Data', 'This clears your watchlist, liked, history, preferences, and settings. This cannot be undone.')) clearAllData();
+    if (await showConfirm('Reset ALL Data', 'This permanently clears EVERYTHING: watchlist, liked, history, preferences, settings. Cannot be undone.')) clearAllData();
+  });
+
+  // ── REPAIR LIBRARY ─────────────────────────────────────────────────
+  document.getElementById('btn-repair-data')?.addEventListener('click', async () => {
+    if (!(await showConfirm('Repair Library', 'Re-fetch missing metadata for your saved titles? This may take a moment.'))) return;
+
+    toast('Repairing library…', 'build');
+    let fixed = 0;
+
+    const repairList = async (list, key) => {
+      for (const item of list) {
+        if (!item.id || !item.type || item.type === 'anime') continue;
+        const hasMeta = item.poster_path || item.backdrop_path || item.title || item.name;
+        if (hasMeta) continue; // already has data
+        try {
+          const d = await tmdb(`/${item.type}/${item.id}`);
+          item.title = d.title || d.name || item.title;
+          item.poster_path = d.poster_path || item.poster_path;
+          item.backdrop_path = d.backdrop_path || item.backdrop_path;
+          fixed++;
+        } catch {}
+      }
+      persist(key);
+    };
+
+    await repairList(state.prefLikes, 'prefLikes');
+    await repairList(state.prefDislikes, 'prefDislikes');
+    await repairList(state.watchlist, 'watchlist');
+    await repairList(state.liked, 'liked');
+
+    renderLibrary();
+    renderPrefLists();
+    toast(`Repair complete — fixed ${fixed} item${fixed !== 1 ? 's' : ''}`, 'check_circle');
   });
 
   // Export data

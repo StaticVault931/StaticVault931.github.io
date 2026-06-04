@@ -16,7 +16,19 @@ function renderContinueSection() {
   const grid = document.getElementById('lib-continue-grid');
   if (!grid) return;
 
-  const items = Object.values(state.continueWatching)
+  // Use Object.entries to backfill numeric id from key (same fix as renderContinueRow in app.js)
+  const items = Object.entries(state.continueWatching)
+    .map(([key, val]) => {
+      const numKey = +key;
+      return {
+        ...val,
+        id:         val.id ?? (isNaN(numKey) ? null : numKey),
+        type:       val.type || 'movie',
+        title:      val.title || val.name || 'Unknown',
+        media_type: val.type || 'movie',
+      };
+    })
+    .filter(item => item.id && !isNaN(+item.id))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .slice(0, 20);
 
@@ -26,8 +38,15 @@ function renderContinueSection() {
   }
   if (sec) sec.style.display = '';
 
-  grid.innerHTML = items.map(item => makeCard(item, item.type || 'movie')).join('');
-}
+  // Render continue watching with episode/season info overlaid
+  grid.innerHTML = items.map(item => {
+    const card = makeCard(item, item.type || 'movie', { showProgress: false });
+    // Inject episode/season info as a small badge
+    const epInfo = item.type === 'tv' || item.type === 'anime'
+      ? `<div class="cw-ep-badge">${item.season ? `S${item.season}` : ''}${item.episode ? ` E${item.episode}` : ''}</div>`
+      : '';
+    return card.replace('</div>', `${epInfo}</div>`);
+  }).join('');
 
 function renderWatchlistSection() {
   const grid = document.getElementById('lib-watchlist-grid');

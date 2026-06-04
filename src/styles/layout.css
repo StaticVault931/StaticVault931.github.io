@@ -746,10 +746,38 @@
   grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
   gap: .65rem;
 }
+/* Continue watching episode badge */
+.cw-ep-badge {
+  position: absolute;
+  top: 6px; left: 6px;
+  background: rgba(0,0,0,.82);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: .62rem;
+  font-weight: 900;
+  padding: .12rem .42rem;
+  border-radius: 3px;
+  letter-spacing: .04em;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .lib-data-section { margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--border); }
 .lib-data-section h3 { font-size: .88rem; font-weight: 800; margin-bottom: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; }
-.data-btn-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.data-group-label {
+  font-size: .68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--dim);
+  margin-bottom: .45rem;
+  margin-top: .25rem;
+}
+.data-btn-row { display: flex; flex-wrap: wrap; gap: .45rem; }
 .data-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
   padding: .48rem 1rem;
   border-radius: var(--r);
   border: 1px solid var(--border2);
@@ -762,6 +790,14 @@
 }
 .data-btn:hover { background: var(--s3); color: var(--text); border-color: var(--border3); }
 .data-btn.danger:hover { background: rgba(229,9,20,.15); color: var(--red); border-color: rgba(229,9,20,.35); }
+.data-btn .material-icons-round { font-size: .85rem; }
+.data-btn-primary {
+  background: var(--s3) !important;
+  border-color: var(--border3) !important;
+  color: var(--text) !important;
+  font-weight: 800;
+}
+.data-btn-primary:hover { background: var(--red) !important; border-color: var(--red) !important; color: #fff !important; }
 
 /* ── PAGE: PREFS ─────────────────────────────────────────────────── */
 /* ── CYF NEW LAYOUT ──────────────────────────────────────────────── */
