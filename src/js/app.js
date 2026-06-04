@@ -496,10 +496,42 @@ function renderRecentRow() {
   row.innerHTML = items.map(m => makeCard(m, m.type || 'movie')).join('');
 }
 
+/* ── PERSONALIZED "FOR YOU" ROW for sub-pages ────────────────────── */
+async function loadPageForYou(rowId, contentType) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.innerHTML = skelCards(8);
+
+  try {
+    const prefG = state.prefGenres.length ? state.prefGenres.slice(0, 3).join('|') : null;
+    const dislikedIds = new Set(state.disliked.map(x => x.id));
+    const watchedIds = new Set(state.watched.map(x => x.id));
+    const likedIds = new Set([...state.liked, ...state.prefLikes].map(x => x.id));
+
+    const endpoint = contentType === 'tv'
+      ? tmdb('/discover/tv', { sort_by: 'popularity.desc', ...(prefG ? { with_genres: prefG } : {}) })
+      : tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 200, ...(prefG ? { with_genres: prefG } : {}) });
+
+    const d = await endpoint;
+    const items = (d.results || [])
+      .filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id))
+      .map(m => ({ ...m, media_type: contentType }))
+      .slice(0, 16);
+
+    if (!items.length) { row.innerHTML = ''; return; }
+    renderRow(rowId, items, contentType);
+  } catch {
+    row.innerHTML = '';
+  }
+}
+
 /* ── MOVIES PAGE ─────────────────────────────────────────────────── */
 async function loadMoviesPage() {
-  const rows = ['row-movies-pop', 'row-movies-top', 'row-movies-new', 'row-movies-up', 'row-movies-action', 'row-movies-thriller'];
+  const rows = ['row-movies-foryou', 'row-movies-pop', 'row-movies-top', 'row-movies-new', 'row-movies-up', 'row-movies-action', 'row-movies-thriller'];
   rows.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
+
+  // Personalized row first
+  loadPageForYou('row-movies-foryou', 'movie');
 
   await Promise.allSettled([
     tmdb('/movie/popular').then(d => renderRow('row-movies-pop', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-pop')),
@@ -513,8 +545,10 @@ async function loadMoviesPage() {
 
 /* ── TV PAGE ─────────────────────────────────────────────────────── */
 async function loadTvPage() {
-  const rows = ['row-tv-popular', 'row-tv-top', 'row-tv-air', 'row-tv-crime', 'row-tv-scifi'];
+  const rows = ['row-tv-foryou', 'row-tv-popular', 'row-tv-top', 'row-tv-air', 'row-tv-crime', 'row-tv-scifi'];
   rows.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
+
+  loadPageForYou('row-tv-foryou', 'tv');
 
   await Promise.allSettled([
     tmdb('/tv/popular').then(d => renderRow('row-tv-popular', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-popular')),
@@ -1039,6 +1073,14 @@ function initEventDelegation() {
     if (e.detail?.id && e.detail?.type) openMedia(e.detail.id, e.detail.type);
   });
 
+  // Play Now triggered from trailer fallback overlay
+  document.addEventListener('sv:play-now', () => {
+    if (state.currentMedia) {
+      const { useId, id, type } = state.currentMedia;
+      loadPlayer(useId || id, type, 1, 1);
+    }
+  });
+
   // Logo click → home
   const logo = document.querySelector('.logo');
   if (logo) {
@@ -1100,15 +1142,53 @@ function initEventDelegation() {
             loading.innerHTML = `<div class="spin"></div><p>Loading trailer…</p>`;
           }
           iframe.removeAttribute('src');
+          iframe.onload = null;
           setTimeout(() => {
-            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1`;
-            iframe.onload = () => { if (loading) loading.classList.add('hidden'); };
-            // Fallback for Error 153 / embedding disabled — show helpful message after 5s
+            // Use enablejsapi so we can detect actual playback vs Error 153
+            iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&origin=${location.origin}`;
+
+            // Listen for YouTube postMessage to confirm playback
+            const yt = (e) => {
+              if (e.origin !== 'https://www.youtube.com') return;
+              try {
+                const d = JSON.parse(e.data);
+                // Player state 1 = playing, -1 = error/unstarted
+                if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+                  if (loading) loading.classList.add('hidden');
+                  window.removeEventListener('message', yt);
+                }
+              } catch {}
+            };
+            window.addEventListener('message', yt);
+
+            // 8s safety: if no play confirmed, show "Watch on YouTube"
             setTimeout(() => {
-              if (loading && !loading.classList.contains('hidden')) return;
-              // Check if iframe shows YouTube error (can't detect directly, add "Watch on YouTube" overlay)
-              showTrailerFallback(key);
-            }, 6000);
+              window.removeEventListener('message', yt);
+              if (loading && !loading.classList.contains('hidden')) {
+                // Trailer didn't play — use poster image as fallback
+                const posterImg = state.currentMedia?.details?.backdrop_path
+                  ? `https://image.tmdb.org/t/p/w1280${state.currentMedia.details.backdrop_path}`
+                  : state.currentMedia?.details?.poster_path
+                  ? `https://image.tmdb.org/t/p/w780${state.currentMedia.details.poster_path}`
+                  : null;
+
+                if (posterImg) {
+                  loading.classList.remove('hidden');
+                  loading.innerHTML = `
+                    <img src="${posterImg}" alt="Content preview" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
+                    <div style="position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);display:flex;gap:.5rem;z-index:2">
+                      <a href="https://www.youtube.com/watch?v=${key}" target="_blank" rel="noopener" class="trailer-fallback-btn">
+                        <span class="material-icons-round">play_circle</span> Watch Trailer on YouTube
+                      </a>
+                      <button class="trailer-fallback-btn" onclick="this.closest('#player-loading').classList.add('hidden'); document.dispatchEvent(new CustomEvent('sv:play-now'))">
+                        <span class="material-icons-round">movie</span> Watch Now
+                      </button>
+                    </div>`;
+                } else {
+                  showTrailerFallback(key);
+                }
+              }
+            }, 8000);
           }, 50);
         }
       }
@@ -1117,9 +1197,16 @@ function initEventDelegation() {
     else if (action === 'modal-like') { handleLike(id, type, null, meta); renderModalActions(state.currentMedia); }
     else if (action === 'modal-dislike') {
       addDislike(meta);
-      toast("Got it — we'll show less like this", 'thumb_down');
-      // Don't close the modal — user can keep watching
-      renderModalActions(state.currentMedia); // refresh button states
+      // Auto-add to "Titles I Dislike" in CYF
+      if (!state.prefDislikes.some(x => x.id == id)) {
+        state.prefDislikes.push({
+          id: meta.id, type: meta.type || type, title: meta.title || '',
+          poster: meta.poster_path ? imgUrl(meta.poster_path, 'w92') : '',
+        });
+        persist('prefDislikes');
+      }
+      // Don't close the modal
+      renderModalActions(state.currentMedia);
     }
     else if (action === 'modal-share') shareMedia(e.shiftKey);
     else if (action === 'modal-watch-together') generateWatchTogetherLink();
@@ -1403,8 +1490,18 @@ function initEventDelegation() {
 function handleLike(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
   const added = toggleLike(item);
-  if (added) toast('Liked!', 'favorite');
-  else toast('Removed from liked', 'heart_broken');
+  if (added) {
+    // Auto-add to "Titles I Love" in CYF (if not already there)
+    if (!state.prefLikes.some(x => x.id == id)) {
+      state.prefLikes.push({
+        id: item.id, type: item.type || type, title: item.title || '',
+        poster: item.poster_path ? imgUrl(item.poster_path, 'w92') : '',
+        score: 4,
+      });
+      persist('prefLikes');
+    }
+  }
+  // Note: removing a like does NOT auto-remove from prefLikes — must be done manually
   refreshCardBadges(id);
   if (btn) {
     btn.classList.toggle('liked', isLiked(id));
@@ -2234,12 +2331,13 @@ function initHoverTrailer() {
   const nc = document.getElementById('netflix-card');
   if (nc) {
     nc.addEventListener('click', e => {
-      if (e.target.closest('#nc-wl') || e.target.closest('#nc-like')) return; // those handle themselves
-      if (!_hoverCurrentCard) return;
+      if (e.target.closest('#nc-wl') || e.target.closest('#nc-like')) return;
+      const card = _hoverCurrentCard; // ← SAVE before clearHoverTrailer() nulls it
+      if (!card) return;
       clearHoverTrailer();
-      openMedia(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type, {
-        title: _hoverCurrentCard.dataset.title,
-        poster_path: _hoverCurrentCard.dataset.poster,
+      openMedia(+card.dataset.id, card.dataset.type, {
+        title: card.dataset.title,
+        poster_path: card.dataset.poster,
       });
     });
   }
@@ -2393,18 +2491,48 @@ async function showNetflixCard(card) {
     genresEl.innerHTML = '';
   }
 
-  // Load trailer — backdrop stays as fallback if trailer fails (Error 153 etc)
+  // Load trailer — use YouTube iframe API (enablejsapi=1) to detect actual playback
+  // Backdrop stays visible until YouTube confirms the video is actually playing
   if (frame && trailerKey && trailerKey !== '__none__') {
-    // Try standard youtube.com embed (nocookie can trigger more 153 errors for some videos)
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1`;
-    // Fade out backdrop when trailer loads
-    frame.onload = () => { if (backdrop) backdrop.style.opacity = '0'; };
-    // If trailer fails (Error 153 etc), keep backdrop visible
-    frame.onerror = () => { if (backdrop) backdrop.style.opacity = '1'; };
-    // Timeout fallback: if iframe didn't load after 4s, keep backdrop
+    // Keep backdrop visible until we confirm playback
+    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
+
+    // Use enablejsapi=1 so YouTube sends postMessage events
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`;
+
+    // YouTube postMessage API: state 1 = playing, -1 = unstarted, 5 = cued
+    const msgHandler = (e) => {
+      if (e.origin !== 'https://www.youtube.com') return;
+      try {
+        const d = JSON.parse(e.data);
+        if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+          // Actually playing — hide backdrop
+          if (backdrop) backdrop.style.opacity = '0';
+          window.removeEventListener('message', msgHandler);
+        }
+        if (d.event === 'infoDelivery' && d.info?.playerState === -1) {
+          // Error or unstarted — keep backdrop, clean up
+          if (backdrop) backdrop.style.opacity = '1';
+        }
+      } catch {}
+    };
+    window.addEventListener('message', msgHandler);
+
+    // 5s timeout: if YouTube didn't play, keep backdrop as the "trailer"
     setTimeout(() => {
-      if (backdrop && backdrop.style.opacity !== '0') backdrop.style.opacity = '1';
-    }, 4000);
+      window.removeEventListener('message', msgHandler);
+      if (backdrop && backdrop.style.opacity === '1') {
+        // No trailer loaded — show backdrop larger (it IS the preview)
+        backdrop.style.opacity = '1';
+        // Clear the frame src so no error screen shows
+        if (frame) frame.removeAttribute('src');
+      }
+    }, 5000);
+  } else if (backdrop) {
+    // No trailer key — just show backdrop as full preview (bigger, no iframe)
+    backdrop.style.opacity = '1';
+    backdrop.style.objectFit = 'cover';
+    if (frame) frame.removeAttribute('src');
   }
 }
 
