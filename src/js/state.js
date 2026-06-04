@@ -56,7 +56,7 @@ export const state = {
   liked:            load('sv_liked', []),
   disliked:         load('sv_disliked', []),
   watched:          load('sv_watched', []),        // [{id,type,title,poster_path}]
-  impressions:      load('sv_impressions', {}),    // {id: count}
+  impressions:      load('sv_impressions', {}),    // {id: {count, lastSeen}}
   recentlyViewed:   load('sv_recent', []),
   continueWatching: load('sv_continue', {}),
   recentSearches:   load('sv_recent_searches', []),

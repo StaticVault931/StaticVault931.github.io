@@ -1132,6 +1132,21 @@
   grid-template-columns: 1fr 1fr;
   gap: .4rem;
 }
+.sv-setting-select { align-items: flex-start; padding: .55rem .8rem; }
+.sv-setting-sel {
+  background: var(--s3);
+  border: 1.5px solid var(--border2);
+  color: var(--text);
+  padding: .28rem .6rem;
+  border-radius: var(--r);
+  font-size: .76rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 130px;
+  align-self: center;
+}
+.sv-setting-sel:focus { border-color: var(--red); outline: none; }
 .sv-reset-settings-btn {
   display: flex; align-items: center; gap: .3rem;
   padding: .32rem .8rem;
@@ -1186,8 +1201,8 @@
 .sv-toggle.on .sv-toggle-knob { transform: translateX(20px); }
 /* Apply settings effects */
 body.sv-reduced-motion *, body.sv-reduced-motion *::before, body.sv-reduced-motion *::after {
-  animation-duration: .01ms !important;
-  transition-duration: .01ms !important;
+  animation: none !important;           /* .01ms still runs and flickers — use none */
+  transition: none !important;
 }
 /* ── STREAM MODE ─────────────────────────────────────────────────── */
 .sv-stream-section {

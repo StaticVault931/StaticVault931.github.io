@@ -65,11 +65,20 @@ export async function loadForYou() {
 
     const watchedIds = new Set(state.watched.map(x => x.id));
     const seen = new Set();
+    const tolerance = state._repeatTolerance || 'medium';
     const pool = [...recItems, ...discover, ...discoverTv].filter(m => {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
       if (!passesAgeFilter(m)) return false;
-      return !dislikedIds.has(m.id) && !likedIds.has(m.id) && !trendingRowIds.has(m.id) && !recentIds.has(m.id) && !watchedIds.has(m.id);
+      if (dislikedIds.has(m.id) || likedIds.has(m.id) || trendingRowIds.has(m.id) || recentIds.has(m.id) || watchedIds.has(m.id)) return false;
+      // Apply impression filter to For You row too
+      const imp = state.impressions?.[m.id];
+      if (imp?.count) {
+        const hoursSince = (Date.now() - imp.lastSeen) / 3600000;
+        if (tolerance === 'maximum' && imp.count >= 2 && hoursSince < 96) return false;
+        if (tolerance === 'medium' && imp.count >= 4 && hoursSince < 24) return false;
+      }
+      return true;
     });
 
     pool.sort((a, b) => {

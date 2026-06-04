@@ -154,6 +154,7 @@ const SV_SETTINGS = [
   { id: 'darkPlayer',          label: 'Dark Player BG',       desc: 'Show dark background behind the player iframe',         default: true,  icon: 'dark_mode' },
   { id: 'wideInfo',            label: 'Wide Info Page',       desc: 'Use full screen width for info page',                   default: true,  icon: 'open_in_full' },
   { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
+  { id: 'repeatContent',       label: 'Repeat Tolerance',     desc: 'How often to re-show content you\'ve already seen',       default: 'medium', icon: 'repeat', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
 ];
 
 /* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
@@ -217,6 +218,21 @@ const SHORTCUTS = [
       loadHomeRows().catch(() => {});
     }
   }, 4000);
+
+  // Idle cache warming — refresh cache silently when browser is idle
+  // so next visit is always instant
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => {
+      const cache = JSON.parse(localStorage.getItem(_ROW_CACHE_KEY) || '{}');
+      const entries = Object.values(cache);
+      if (!entries.length) return; // No cache to warm
+      const oldest = Math.min(...entries.map(e => e.ts || 0));
+      // If cache is > 12 min old, silently refresh it
+      if (Date.now() - oldest > 12 * 60 * 1000) {
+        _loadHomeRowsFresh(false).catch(() => {});
+      }
+    }, { timeout: 8000 });
+  }
 
   // URL param deep-link — supports ?watch=type&name=slug&id=X, ?id=X&type=Y, ?page=X
   const sp = new URLSearchParams(location.search);
@@ -368,6 +384,16 @@ function registerAllLoaders() {
       toast('Settings reset to defaults', 'restart_alt');
     }
   });
+
+  document.getElementById('sv-reset-impressions-btn')?.addEventListener('click', async () => {
+    if (await showConfirm('Reset Content History', 'Clear all impression data? You may start seeing previously-hidden content again.')) {
+      state.impressions = {};
+      persist('impressions');
+      _clearRowCache();
+      toast('Content history cleared — feed refreshing…', 'refresh');
+      setTimeout(() => loadHomeRows().catch(() => {}), 300);
+    }
+  });
   registerLoader('seeall', renderSeeAll);
 }
 
@@ -420,6 +446,62 @@ async function loadHero() {
 const _homeSeenIds = new Set();
 const _lazyObs = new Map(); // kept for compatibility
 
+/* ── IMPRESSION TRACKING ─────────────────────────────────────────── */
+// Tracks how many times each piece of content has been shown.
+// Higher impressions = lower chance of being shown again.
+
+function recordImpressions(items) {
+  if (!items?.length) return;
+  const now = Date.now();
+  let changed = false;
+  items.forEach(m => {
+    if (!m?.id) return;
+    const prev = state.impressions[m.id] || { count: 0, lastSeen: 0 };
+    // Reset if unseen for 7+ days
+    if (now - prev.lastSeen > 7 * 24 * 3600000) {
+      state.impressions[m.id] = { count: 1, lastSeen: now };
+    } else {
+      state.impressions[m.id] = { count: prev.count + 1, lastSeen: now };
+    }
+    changed = true;
+  });
+  if (changed) persist('impressions');
+}
+
+function shouldShow(id) {
+  const tolerance = getSetting('repeatContent') || 'medium';
+  const imp = state.impressions[id];
+  if (!imp?.count) return true; // never shown
+
+  const hoursSince = (Date.now() - imp.lastSeen) / 3600000;
+
+  // Reset rule: unseen for 7 days → always show again
+  if (hoursSince > 168) {
+    delete state.impressions[id];
+    return true;
+  }
+
+  switch (tolerance) {
+    case 'maximum':
+      // After 2 impressions, hide for 4 days
+      return imp.count < 2 || hoursSince > 96;
+    case 'medium':
+      // After 6 impressions, hide for 24 hours
+      return imp.count < 6 || hoursSince > 24;
+    case 'minimum':
+      // Only hide very heavy repeats (20+ times within 4 hours)
+      return imp.count < 20 || hoursSince > 4;
+    default:
+      return true;
+  }
+}
+
+function filterByImpressions(items) {
+  // Keep at least 6 items even if all are "seen" — prevents empty rows
+  const filtered = items.filter(m => m?.id && shouldShow(m.id));
+  return filtered.length >= 4 ? filtered : items.slice(0, Math.max(filtered.length + 4, 8));
+}
+
 /* ── SCHEDULE ROW LOAD (defer off-screen rows to scroll trigger) ─── */
 function _scheduleRowLoad(rowId, secId, fetchFn, type) {
   const sec = secId ? document.getElementById(secId) : null;
@@ -459,14 +541,18 @@ function _loadRow(rowId, secId, fetchFn, type) {
         if (sec) sec.style.display = 'none';
         return;
       }
-      // Dedup: skip items already shown in rows above, fallback to originals if over-deduped
-      const deduped = items.filter(m => m.id && !_homeSeenIds.has(m.id));
-      const toRender = deduped.length >= 4 ? deduped : items.filter(m => m.id);
+      // Apply impression filter (hide over-shown content based on setting)
+      const impressionFiltered = filterByImpressions(items);
+
+      // Dedup: skip items already shown in rows above
+      const deduped = impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id));
+      const toRender = deduped.length >= 4 ? deduped : impressionFiltered.filter(m => m.id);
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
       renderRow(rowId, final, type);
       _saveRowCache(rowId, final);
-      // Disambiguate duplicate titles by adding year
+      // Record impressions for shown content (not searches, only passive browsing)
+      recordImpressions(final);
       requestAnimationFrame(disambiguateTitles);
     })
     .catch(err => {
@@ -476,8 +562,8 @@ function _loadRow(rowId, secId, fetchFn, type) {
 }
 
 /* ── HOME ROW CACHE (stale-while-revalidate) ─────────────────────── */
-const _ROW_CACHE_KEY = 'sv_home_v2';
-const _ROW_CACHE_TTL = 8 * 60 * 1000; // 8 minutes
+const _ROW_CACHE_KEY = 'sv_home_v3';
+const _ROW_CACHE_TTL = 25 * 60 * 1000; // 25 minutes — long enough to feel instant on return
 
 function _saveRowCache(rowId, items) {
   try {
@@ -870,6 +956,7 @@ function setSetting(id, val) {
 }
 
 function applySetting(id, val) {
+  if (id === 'repeatContent') state._repeatTolerance = val;
   if (id === 'reducedMotion') document.body.classList.toggle('sv-reduced-motion', val);
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
   if (id === 'streamMode') {
@@ -983,7 +1070,25 @@ function buildSettingsUI() {
   const grid = document.getElementById('sv-settings-grid');
   if (!grid) return;
   grid.innerHTML = SV_SETTINGS.map(s => {
-    const on = getSetting(s.id);
+    const val = getSetting(s.id);
+
+    // Select-type setting
+    if (s.type === 'select' && s.options) {
+      const opts = s.options.map((o, i) =>
+        `<option value="${esc(o)}"${val === o ? ' selected' : ''}>${esc(s.optLabels?.[i] || o)}</option>`
+      ).join('');
+      return `<label class="sv-setting-row sv-setting-select" title="${esc(s.desc)}">
+        <span class="material-icons-round sv-setting-icon">${s.icon}</span>
+        <div class="sv-setting-info">
+          <span class="sv-setting-label">${esc(s.label)}</span>
+          <span class="sv-setting-desc">${esc(s.desc)}</span>
+        </div>
+        <select class="sv-setting-sel" data-setting="${esc(s.id)}">${opts}</select>
+      </label>`;
+    }
+
+    // Boolean toggle
+    const on = !!val;
     return `<label class="sv-setting-row" title="${esc(s.desc)}">
       <span class="material-icons-round sv-setting-icon">${s.icon}</span>
       <div class="sv-setting-info">
@@ -1003,6 +1108,12 @@ function buildSettingsUI() {
       setSetting(id, newVal);
       btn.classList.toggle('on', newVal);
       btn.setAttribute('aria-checked', String(newVal));
+    });
+  });
+
+  grid.querySelectorAll('.sv-setting-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      setSetting(sel.dataset.setting, sel.value);
     });
   });
 }

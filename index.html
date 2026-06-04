@@ -765,11 +765,16 @@
 
   <!-- Settings section -->
   <div class="pref-section" id="sv-settings-section" style="margin-top:2rem">
-    <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem">
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.9rem">
       <h3 style="margin:0"><span class="material-icons-round">settings</span>Display &amp; Player Settings</h3>
-      <button class="sv-reset-settings-btn" id="sv-reset-settings-btn" style="margin-left:auto">
-        <span class="material-icons-round">restart_alt</span>Reset All Settings
-      </button>
+      <div style="margin-left:auto;display:flex;gap:.4rem">
+        <button class="sv-reset-settings-btn" id="sv-reset-impressions-btn" title="Clear what you've seen so fresh content appears">
+          <span class="material-icons-round">history</span>Clear History
+        </button>
+        <button class="sv-reset-settings-btn" id="sv-reset-settings-btn">
+          <span class="material-icons-round">restart_alt</span>Reset Settings
+        </button>
+      </div>
     </div>
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
   </div>
