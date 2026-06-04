@@ -242,16 +242,47 @@ const SHORTCUTS = [
   const watchStart = sp.get('start') ? parseInt(sp.get('start')) : null;
   const pageParam = sp.get('page');
   const searchParam = sp.get('search');
-
   const modeParam = sp.get('mode');
+
+  // Validate URL params — only redirect to 404 if CLEARLY broken, not just missing optional parts
+  const _is404 = () => {
+    // Has ?watch= but it's not a valid content type
+    const rawWatch = sp.get('watch');
+    if (rawWatch && !['movie','tv','anime'].includes(rawWatch)) return true;
+    // Has ?id= but it's not a valid number (NaN, empty, text)
+    if (watchId && (isNaN(+watchId) || +watchId <= 0)) return true;
+    // Has ?page= but it's not a known page
+    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall'].includes(pageParam)) return true;
+    // Has no useful params but also has garbage (avoid 404ing clean URLs)
+    return false;
+  };
+
+  if (_is404()) {
+    location.replace('/404.html');
+    return; // stop init
+  }
+
   if (watchId && watchType) {
     document.getElementById('loading-screen')?.classList.add('out');
     setTimeout(async () => {
-      if (modeParam === 'info') {
-        await openInfoPage(+watchId, watchType);
-      } else {
-        await openMedia(+watchId, watchType);
-        if (watchStart) handleWatchTogetherLink(watchStart);
+      // Attempt to load — if it fails (content not found), navigate to 404
+      const numId = +watchId;
+      if (isNaN(numId) || numId <= 0) { location.replace('/404.html'); return; }
+      try {
+        if (modeParam === 'info') {
+          await openInfoPage(numId, watchType);
+        } else {
+          await openMedia(numId, watchType);
+          if (watchStart) handleWatchTogetherLink(watchStart);
+        }
+      } catch (err) {
+        // Content failed to load (invalid ID, network error, etc.)
+        console.warn('[SV] Content not found:', err?.message);
+        // Don't 404 on network errors — only 404 on "not found" responses
+        if (err?.message?.includes('404')) {
+          location.replace('/404.html');
+        }
+        // Otherwise just stay on home page
       }
     }, 400);
   } else if (pageParam) {

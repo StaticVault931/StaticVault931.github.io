@@ -47,6 +47,7 @@ function renderContinueSection() {
       : '';
     return card.replace('</div>', `${epInfo}</div>`);
   }).join('');
+}
 
 function renderWatchlistSection() {
   const grid = document.getElementById('lib-watchlist-grid');

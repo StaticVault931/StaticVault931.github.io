@@ -120,13 +120,30 @@
 <div class="num">404</div>
 <div class="emoji">🍿</div>
 <h1>Scene Not Found</h1>
-<p>Looks like this page went on an unscheduled intermission.<br>
+<p id="err-msg">Looks like this page went on an unscheduled intermission.<br>
 Don't worry — the show goes on back home.</p>
 
 <div class="btns">
   <a href="/" class="btn btn-primary">🎬 Back to StaticVault</a>
   <a href="/?page=search" class="btn btn-secondary">🔍 Search Content</a>
 </div>
+
+<script>
+  // Show contextual message based on the referring URL params
+  const sp = new URLSearchParams(location.search || window.location.search);
+  const ref = document.referrer;
+  const msg = document.getElementById('err-msg');
+  if (!msg) return;
+
+  const watchParam = sp.get('watch') || sp.get('type');
+  const nameParam = sp.get('name');
+  if (watchParam && !['movie','tv','anime'].includes(watchParam)) {
+    msg.innerHTML = `Hmm, "<strong>${watchParam}</strong>" isn't a valid content type.<br>Try searching for what you're looking for instead.`;
+  } else if (nameParam) {
+    const title = decodeURIComponent(nameParam).replace(/-/g, ' ');
+    msg.innerHTML = `We couldn't find <strong>"${title}"</strong> — it may have been removed or the link is outdated.`;
+  }
+</script>
 
 <div class="credit">
   <a href="https://staticvault931.github.io/">StaticVault931</a> ·
