@@ -167,7 +167,7 @@ export async function loadBecauseYouLiked() {
           </div>
         </div>
         <div class="row-wrap">
-          <div class="row-arrow row-arrow-l" data-row="${rowId}">
+          <div class="row-arrow row-arrow-l hidden" data-row="${rowId}">
             <button data-scroll-row="${rowId}" data-scroll-dir="-1" aria-label="Scroll left">
               <span class="material-icons-round">chevron_left</span>
             </button>

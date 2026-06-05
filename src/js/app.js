@@ -162,6 +162,8 @@ const SV_SETTINGS = [
   { id: 'reducedMotion',     label: 'Reduce Animations',      desc: 'Minimize transitions for performance',                        default: false, icon: 'motion_photos_off', group: 'Performance' },
   { id: 'hdFirst',           label: 'Prefer HD Sources',      desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)',     default: true,  icon: 'hd',               group: 'Performance' },
   { id: 'skipRecap',         label: 'Skip Intros',            desc: 'Remember to skip intro/recap (manual reminder)',               default: false, icon: 'skip_next',        group: 'Performance' },
+  // Account
+  { id: 'showAccountsOnStart', label: 'Show Profiles on Start', desc: 'Show profile selector every time you open the app',            default: false, icon: 'manage_accounts',  group: 'Account' },
 ];
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
@@ -218,6 +220,11 @@ const SHORTCUTS = [
   initShortcutsModal();
   initTestMode();
   initProfilesUI();
+  // Show profile selector on start if setting is enabled
+  if (getSetting('showAccountsOnStart')) {
+    setTimeout(() => openProfilesOverlay(), 700);
+  }
+
   buildRatingDescriptions();
   registerAllLoaders();
   registerAllSeeAll();
@@ -236,12 +243,12 @@ const SHORTCUTS = [
     }
   }, 4000);
 
-  // Force reload if NOTHING loads after 12 seconds (network failure, stale state)
+  // Force refresh feed if NOTHING loads after 12 seconds (network failure, stale state)
   setTimeout(() => {
     const hasAnyCard = document.querySelector('#page-home .card');
     if (!hasAnyCard && state.currentPage === 'home') {
-      console.warn('[SV] No content loaded after 12s — force reloading page');
-      location.reload();
+      console.warn('[SV] No content loaded after 12s — forcing feed refresh');
+      loadHomeRows().catch(() => {});
     }
   }, 12000);
 
@@ -808,7 +815,20 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Rows near the viewport fire immediately; others wait for scroll.
   // This way each row appears at its own natural time, not all at once.
   const rowDefs = [
-    { id: 'row-new',       sec: 'sec-new',       fn: () => tmdb('/movie/now_playing',  { page: rng }).then(d => d.results || []), type: 'movie' },
+    // Alternate now_playing vs upcoming each session — never show both at once
+    ...((() => {
+      const showUpcoming = rng % 2 !== 0;
+      const label = showUpcoming ? 'Coming Soon' : 'Now Playing';
+      const icon  = showUpcoming ? 'upcoming' : 'fiber_new';
+      // Update the DOM label so the header matches
+      requestAnimationFrame(() => {
+        const titleEl = document.querySelector('#sec-new .sec-title');
+        if (titleEl) titleEl.innerHTML = `<span class="material-icons-round sec-icon">${icon}</span>${label}`;
+        const seeAllBtn = document.querySelector('#sec-new .see-all-btn');
+        if (seeAllBtn) seeAllBtn.dataset.seeAllTitle = label;
+      });
+      return [{ id: 'row-new', sec: 'sec-new', fn: () => tmdb(showUpcoming ? '/movie/upcoming' : '/movie/now_playing', { page: showUpcoming ? 1 : rng }).then(d => d.results || []), type: 'movie' }];
+    })()),
     { id: 'row-toprated',  sec: 'sec-toprated',  fn: () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), type: 'movie' },
     { id: 'row-tv-pop',    sec: 'sec-tv-pop',    fn: () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), type: 'tv' },
     { id: 'row-airing',    sec: 'sec-airing',    fn: () => tmdb('/tv/airing_today').then(d => d.results || []),                   type: 'tv' },
@@ -819,6 +839,16 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     { id: 'row-scifi',     sec: 'sec-scifi',     fn: () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         type: 'movie' },
     { id: 'row-animated',  sec: 'sec-animated',  fn: () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          type: 'movie' },
     { id: 'row-home-anime','sec': 'sec-home-anime', fn: () => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), type: 'anime' },
+    // Extra variety rows — add fresh content types
+    { id: 'row-romance',     sec: 'sec-romance',     fn: () => tmdb('/discover/movie', { with_genres: '10749', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-kdrama',      sec: 'sec-kdrama',      fn: () => tmdb('/discover/tv',    { with_original_language: 'ko', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-thriller-tv', sec: 'sec-thriller-tv', fn: () => tmdb('/discover/tv',    { with_genres: '9648', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-2020s',       sec: 'sec-2020s',       fn: () => tmdb('/discover/movie', { primary_release_date_gte: '2020-01-01', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-classics',    sec: 'sec-classics',    fn: () => tmdb('/discover/movie', { primary_release_date_lte: '1995-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-family',      sec: 'sec-family',      fn: () => tmdb('/discover/movie', { with_genres: '10751', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'movie' },
+    { id: 'row-crime-tv',    sec: 'sec-crime-tv',    fn: () => tmdb('/discover/tv',    { with_genres: '80', sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-comedy-tv',   sec: 'sec-comedy-tv',   fn: () => tmdb('/discover/tv',    { with_genres: '35', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
+    { id: 'row-anime-home2', sec: 'sec-anime-home2', fn: () => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), type: 'anime' },
   ];
 
   // Each row observes itself — visible ones load first, others load as you scroll
@@ -1027,19 +1057,56 @@ async function loadSeasonalRow() {
   if (secEl) secEl.style.display = '';
 
   if (theme.special === 'lgbtq') {
-    // Fetch known LGBTQ+ titles directly by TMDB ID — guaranteed to return content
-    const lgbtqMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 158852, 38787, 424694];
-    const lgbtqTvIds   = [125988, 80028, 81356, 68004, 62852, 1485, 13227, 84773];
     const lgbtqFetch = async () => {
-      // Fetch details for hardcoded IDs in parallel (fast, guaranteed)
-      const movieFetches = lgbtqMovieIds.slice(0, 7).map(id => tmdb(`/movie/${id}`).then(r => ({...r, media_type: 'movie'})).catch(() => null));
-      const tvFetches    = lgbtqTvIds.slice(0, 6).map(id => tmdb(`/tv/${id}`).then(r => ({...r, media_type: 'tv'})).catch(() => null));
-      const results = await Promise.all([...movieFetches, ...tvFetches]);
-      const items = results.filter(Boolean);
-      if (items.length >= 8) return items;
-      // Fallback: discover with romance genre + LGBTQ keyword
-      const disc = await tmdb('/discover/movie', { with_genres: 10749, with_keywords: '158718,210024', sort_by: 'popularity.desc', 'vote_count.gte': 50 }).catch(() => ({ results: [] }));
-      return [...items, ...(disc.results || []).map(x => ({...x, media_type: 'movie'}))].slice(0, 16);
+      // Rotate pages each view so content is mostly different each time
+      const rPage = Math.floor(Math.random() * 5) + 1;
+
+      // Step 1: find keyword IDs dynamically from TMDB keyword search
+      let kwIds = '158718,3799,18242,193554'; // fallback: gay, homosexuality, same-sex, lgbtq
+      try {
+        const [kw1, kw2, kw3] = await Promise.all([
+          tmdb('/search/keyword', { query: 'lgbtq' }).catch(() => ({ results: [] })),
+          tmdb('/search/keyword', { query: 'gay'   }).catch(() => ({ results: [] })),
+          tmdb('/search/keyword', { query: 'lesbian' }).catch(() => ({ results: [] })),
+        ]);
+        const found = [...(kw1.results||[]), ...(kw2.results||[]), ...(kw3.results||[])]
+          .map(k => k.id).filter(Boolean);
+        if (found.length) kwIds = [...new Set([...found, 158718, 3799, 18242])].slice(0,8).join(',');
+      } catch {}
+
+      // Step 2: discover movies + TV, random page for variety each view
+      const [movies, tv, top] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_keywords: kwIds, sort_by: 'popularity.desc',   'vote_count.gte': 20, page: rPage }),
+        tmdb('/discover/tv',    { with_keywords: kwIds, sort_by: 'popularity.desc',   page: rPage }),
+        tmdb('/discover/movie', { with_keywords: kwIds, sort_by: 'vote_average.desc', 'vote_count.gte': 50, page: 1 }),
+      ]);
+      const m  = movies.status === 'fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+      const t  = tv.status    === 'fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
+      const m2 = top.status   === 'fulfilled' ? (top.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+
+      // Interleave movies + TV for mixed feed
+      const combined = [];
+      for (let i = 0; i < Math.max(m.length, t.length); i++) {
+        if (m[i]) combined.push(m[i]);
+        if (t[i]) combined.push(t[i]);
+      }
+      // Add top-rated not already present
+      const combinedIds = new Set(combined.map(x => x.id));
+      m2.forEach(x => { if (!combinedIds.has(x.id)) combined.push(x); });
+
+      if (combined.length >= 8) return combined.slice(0, 20);
+
+      // Step 3: hardcoded backup — verified LGBTQ films/shows
+      // Brokeback Mtn, Moonlight, Call Me By Your Name, Carol, Love Simon,
+      // Portrait of Lady on Fire, Danish Girl, Milk, Birdcage, Kids Are All Right
+      const backupMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 38787];
+      // Heartstopper, Pose, Sex Education, Schitt's Creek, OITNB
+      const backupTvIds    = [125988, 80028, 81356, 68004, 62852];
+      const backupResults  = await Promise.all([
+        ...backupMovieIds.map(id => tmdb(`/movie/${id}`).then(r=>({...r,media_type:'movie'})).catch(()=>null)),
+        ...backupTvIds.map(id    => tmdb(`/tv/${id}`).then(r=>({...r,media_type:'tv'})).catch(()=>null)),
+      ]);
+      return [...combined, ...backupResults.filter(Boolean)].slice(0, 20);
     };
     _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
     return;
@@ -1185,66 +1252,103 @@ async function loadPageForYou(rowId, contentType) {
 
 /* ── MOVIES PAGE ─────────────────────────────────────────────────── */
 async function loadMoviesPage() {
-  const rows = ['row-movies-foryou', 'row-movies-pop', 'row-movies-top', 'row-movies-new', 'row-movies-up', 'row-movies-action', 'row-movies-thriller'];
-  rows.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
-
-  // Personalized row first
+  const rp = state._randomPage || 1;
+  const allRowIds = [
+    'row-movies-foryou','row-movies-pop','row-movies-top','row-movies-new','row-movies-up',
+    'row-movies-action','row-movies-thriller','row-movies-romance','row-movies-comedy',
+    'row-movies-horror','row-movies-scifi','row-movies-animated','row-movies-crime',
+    'row-movies-docs','row-movies-2024','row-movies-2010s','row-movies-foreign',
+  ];
+  allRowIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
   loadPageForYou('row-movies-foryou', 'movie');
 
   await Promise.allSettled([
-    tmdb('/movie/popular').then(d => renderRow('row-movies-pop', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-pop')),
-    tmdb('/movie/top_rated').then(d => renderRow('row-movies-top', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-top')),
-    tmdb('/movie/now_playing').then(d => renderRow('row-movies-new', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-new')),
-    tmdb('/movie/upcoming').then(d => renderRow('row-movies-up', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-up')),
-    tmdb('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc' }).then(d => renderRow('row-movies-action', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-action')),
-    tmdb('/discover/movie', { with_genres: 53, sort_by: 'vote_average.desc', 'vote_count.gte': 200 }).then(d => renderRow('row-movies-thriller', (d.results || []).slice(0, 14), 'movie')).catch(() => hideSection('sec-movies-thriller')),
+    tmdb('/movie/popular',   { page: rp }).then(d => renderRow('row-movies-pop',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-pop')),
+    tmdb('/movie/top_rated', { page: rp }).then(d => renderRow('row-movies-top',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-top')),
+    tmdb('/movie/now_playing').then(d =>   renderRow('row-movies-new',     (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-new')),
+    tmdb('/movie/upcoming').then(d =>      renderRow('row-movies-up',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-up')),
+    tmdb('/discover/movie', { with_genres:'28',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-action',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-action')),
+    tmdb('/discover/movie', { with_genres:'53',    sort_by:'vote_average.desc', 'vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-thriller', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-thriller')),
+    tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc',   'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-romance',  (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-romance')),
+    tmdb('/discover/movie', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-comedy',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-comedy')),
+    tmdb('/discover/movie', { with_genres:'27',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-horror',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-horror')),
+    tmdb('/discover/movie', { with_genres:'878',   sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-scifi',    (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-scifi')),
+    tmdb('/discover/movie', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-animated', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-animated')),
+    tmdb('/discover/movie', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-crime',    (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-crime')),
+    tmdb('/discover/movie', { with_genres:'99',    sort_by:'vote_average.desc', 'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-docs',     (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-docs')),
+    tmdb('/discover/movie', { primary_release_year:2024, sort_by:'popularity.desc' }).then(d=>renderRow('row-movies-2024',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2024')),
+    tmdb('/discover/movie', { primary_release_date_gte:'2010-01-01', primary_release_date_lte:'2019-12-31', sort_by:'vote_average.desc','vote_count.gte':300 }).then(d=>renderRow('row-movies-2010s',(d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2010s')),
+    tmdb('/discover/movie', { without_original_language:'en', sort_by:'vote_average.desc','vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-foreign', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-foreign')),
   ]);
 }
 
 /* ── TV PAGE ─────────────────────────────────────────────────────── */
 async function loadTvPage() {
-  const rows = ['row-tv-foryou', 'row-tv-popular', 'row-tv-top', 'row-tv-air', 'row-tv-crime', 'row-tv-scifi'];
-  rows.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
-
+  const rp = state._randomPage || 1;
+  const allRowIds = [
+    'row-tv-foryou','row-tv-popular','row-tv-top','row-tv-air','row-tv-crime','row-tv-scifi',
+    'row-tv-kdrama','row-tv-reality','row-tv-animated','row-tv-limited','row-tv-comedy',
+    'row-tv-mystery','row-tv-family','row-tv-thriller',
+  ];
+  allRowIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
   loadPageForYou('row-tv-foryou', 'tv');
 
   await Promise.allSettled([
-    tmdb('/tv/popular').then(d => renderRow('row-tv-popular', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-popular')),
-    tmdb('/tv/top_rated').then(d => renderRow('row-tv-top', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-top')),
-    tmdb('/tv/airing_today').then(d => renderRow('row-tv-air', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-air')),
-    tmdb('/discover/tv', { with_genres: 80, sort_by: 'popularity.desc' }).then(d => renderRow('row-tv-crime', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-crime')),
-    tmdb('/discover/tv', { with_genres: 10765, sort_by: 'popularity.desc' }).then(d => renderRow('row-tv-scifi', (d.results || []).slice(0, 14), 'tv')).catch(() => hideSection('sec-tv-scifi')),
+    tmdb('/tv/popular',     { page: rp }).then(d=>renderRow('row-tv-popular',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-popular')),
+    tmdb('/tv/top_rated',   { page: rp }).then(d=>renderRow('row-tv-top',      (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-top')),
+    tmdb('/tv/airing_today').then(d=>           renderRow('row-tv-air',        (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-air')),
+    tmdb('/discover/tv', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-crime',    (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-crime')),
+    tmdb('/discover/tv', { with_genres:'10765', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-scifi',    (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-scifi')),
+    tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rp }).then(d=>renderRow('row-tv-kdrama',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-kdrama')),
+    tmdb('/discover/tv', { with_genres:'10764', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-reality',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-reality')),
+    tmdb('/discover/tv', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-animated', (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-animated')),
+    tmdb('/discover/tv', { with_type:'3',       sort_by:'vote_average.desc', 'vote_count.gte':50, page: rp }).then(d=>renderRow('row-tv-limited',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-limited')),
+    tmdb('/discover/tv', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-comedy',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-comedy')),
+    tmdb('/discover/tv', { with_genres:'9648',  sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-mystery',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-mystery')),
+    tmdb('/discover/tv', { with_genres:'10751', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-family',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-family')),
+    tmdb('/discover/tv', { with_genres:'53',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-thriller', (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-thriller')),
   ]);
 }
 
 /* ── ANIME PAGE ──────────────────────────────────────────────────── */
 async function loadAnimePage() {
-  const rows = ['row-anime-trend', 'row-anime-top', 'row-anime-airing', 'row-anime-action'];
-  rows.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
+  const allRowIds = [
+    'row-anime-trend','row-anime-top','row-anime-airing','row-anime-action',
+    'row-anime-romance','row-anime-isekai','row-anime-sports','row-anime-mecha',
+    'row-anime-horror','row-anime-comedy','row-anime-movie',
+  ];
+  allRowIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = skelCards(8); });
 
-  const Q = `query($sort:[MediaSort],$status:MediaStatus,$genre:String){Page(perPage:16){media(type:ANIME,sort:$sort,status:$status,isAdult:false,genre:$genre){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`;
+  const Q = `query($sort:[MediaSort],$status:MediaStatus,$genre:String,$format:MediaFormat){Page(perPage:16){media(type:ANIME,sort:$sort,status:$status,isAdult:false,genre:$genre,format:$format){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`;
 
-  const [trend, top, airing, action] = await Promise.allSettled([
+  const results = await Promise.allSettled([
     aniQuery(Q, { sort: ['TRENDING_DESC'] }),
     aniQuery(Q, { sort: ['SCORE_DESC'] }),
     aniQuery(Q, { sort: ['POPULARITY_DESC'], status: 'RELEASING' }),
     aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Action' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Romance' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Isekai' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Sports' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Mecha' }),
+    aniQuery(Q, { sort: ['SCORE_DESC'],      genre: 'Horror' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], genre: 'Comedy' }),
+    aniQuery(Q, { sort: ['POPULARITY_DESC'], format: 'MOVIE' }),
   ]);
 
-  const fix = r => {
-    if (r.status !== 'fulfilled') return [];
-    return (r.value?.data?.Page?.media || []).map(normalizeAnime);
-  };
-
-  renderRow('row-anime-trend', fix(trend), 'anime');
-  renderRow('row-anime-top', fix(top), 'anime');
-  renderRow('row-anime-airing', fix(airing), 'anime');
-  renderRow('row-anime-action', fix(action), 'anime');
-
-  if (!fix(trend).length) hideSection('sec-anime-trend');
-  if (!fix(top).length) hideSection('sec-anime-top');
-  if (!fix(airing).length) hideSection('sec-anime-airing');
-  if (!fix(action).length) hideSection('sec-anime-action');
+  const fix = r => r.status === 'fulfilled' ? (r.value?.data?.Page?.media || []).map(normalizeAnime) : [];
+  const pairs = [
+    ['row-anime-trend','sec-anime-trend'],['row-anime-top','sec-anime-top'],
+    ['row-anime-airing','sec-anime-airing'],['row-anime-action','sec-anime-action'],
+    ['row-anime-romance','sec-anime-romance'],['row-anime-isekai','sec-anime-isekai'],
+    ['row-anime-sports','sec-anime-sports'],['row-anime-mecha','sec-anime-mecha'],
+    ['row-anime-horror','sec-anime-horror'],['row-anime-comedy','sec-anime-comedy'],
+    ['row-anime-movie','sec-anime-movie'],
+  ];
+  results.forEach((r, i) => {
+    const items = fix(r);
+    if (items.length && pairs[i]) renderRow(pairs[i][0], items, 'anime');
+    else if (pairs[i]) hideSection(pairs[i][1]);
+  });
 }
 
 /* ── GENRES UI ───────────────────────────────────────────────────── */
@@ -3491,11 +3595,17 @@ function loadPersonCredits(personId, type) {
   const ov = document.getElementById('person-overlay');
   const grid = document.getElementById('person-grid');
   if (!grid || !ov._credits) return;
-  const items = (type === 'tv'
-    ? ov._credits.cast?.filter(m => m.media_type === 'tv')
-    : ov._credits.cast?.filter(m => m.media_type === 'movie')) || [];
+  let items;
+  if (type === 'all') {
+    items = [...(ov._credits.cast || []), ...(ov._credits.crew || [])];
+  } else {
+    items = (ov._credits.cast || []).filter(m => m.media_type === type);
+  }
   items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  grid.innerHTML = items.slice(0, 30).map(m => makeCard(m, type)).join('');
+  const seen = new Set();
+  items = items.filter(m => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; });
+  const html = items.slice(0, 40).map(m => makeCard(m, m.media_type || type)).join('');
+  grid.innerHTML = html || `<p style="color:var(--muted);padding:1rem;text-align:center;">No credits found.</p>`;
 }
 
 function closePersonPage() {
@@ -3875,20 +3985,23 @@ function openPersonSearchForAvatar() {
           const featuredAvatars = [
             { url: 'favicon.png', name: 'SV931', special: 'sv931' },
             { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
-            // Person IDs used: RDJ=3223, MBB=1373737, TC=2037, Leo=6193, Zendaya=1355642, RR=10859
-            { url: 'https://image.tmdb.org/t/p/w185/im9SAqJPZKEbVZGmjXuLI4O7RvM.jpg', name: 'Robert Downey Jr.', personId: 3223 },
-            { url: 'https://image.tmdb.org/t/p/w185/lRoaHIr0uEw4BFTZ8oS9TbMIMeJ.jpg', name: 'Millie Bobby Brown', personId: 1373737 },
-            { url: 'https://image.tmdb.org/t/p/w185/8qBylBsQf4llkGrWR3qAsOtOU8O.jpg', name: 'Tom Cruise', personId: 2037 },
-            { url: 'https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg', name: 'Leonardo DiCaprio', personId: 6193 },
-            { url: 'https://image.tmdb.org/t/p/w185/beKhJGQVMiWdYbVKX4cQQqF9MpX.jpg', name: 'Zendaya', personId: 1355642 },
-            { url: 'https://image.tmdb.org/t/p/w185/3lHMFgkNH9xEjkGzY3gBlDxJ4UA.jpg', name: 'Ryan Reynolds', personId: 10859 },
+            // Person avatars loaded dynamically from TMDB — never wrong faces
+            { name: 'Robert Downey Jr.',  personId: 3223    },
+            { name: 'Millie Bobby Brown', personId: 1373737 },
+            { name: 'Tom Cruise',         personId: 2037    },
+            { name: 'Leonardo DiCaprio',  personId: 6193    },
+            { name: 'Zendaya',            personId: 1355642 },
+            { name: 'Ryan Reynolds',      personId: 10859   },
+            { name: 'Scarlett Johansson', personId: 1245    },
+            { name: 'Dwayne Johnson',     personId: 18918   },
           ];
-          return featuredAvatars.map(a =>
-            `<div class="avatar-option" data-url="${a.url}"${a.special ? ` data-special="${a.special}"` : ''}${a.personId ? ` data-person-id="${a.personId}"` : ''} style="cursor:pointer;text-align:center;">
-              <img src="${a.url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="${a.name}">
+          return featuredAvatars.map(a => {
+            const imgSrc = a.url || 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A//www.w3.org/2000/svg%22 viewBox%3D%220 0 40 40%22%3E%3Crect width%3D%2240%22 height%3D%2240%22 rx%3D%2220%22 fill%3D%22%23333%22/%3E%3C/svg%3E';
+            return `<div class="avatar-option" data-url="${a.url || ''}"${a.special ? ` data-special="${a.special}"` : ''}${a.personId ? ` data-person-id="${a.personId}"` : ''} style="cursor:pointer;text-align:center;">
+              <img src="${imgSrc}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);background:var(--s2);" alt="${a.name}">
               <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${a.name}</div>
-            </div>`
-          ).join('');
+            </div>`;
+          }).join('');
         })()}</div>
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-top:.4rem">Search People</div>
         <div style="position:relative;">
@@ -3899,20 +4012,22 @@ function openPersonSearchForAvatar() {
     </div>`;
   document.body.appendChild(picker);
 
-  // Fix broken avatar images by fetching current profile_path from TMDB
-  picker.querySelectorAll('.avatar-option[data-person-id] img').forEach(img => {
-    img.addEventListener('error', function onBroken() {
-      img.removeEventListener('error', onBroken);
-      const pid = img.closest('.avatar-option')?.dataset?.personId;
-      if (!pid) return;
-      tmdb(`/person/${pid}`).then(d => {
-        if (d.profile_path) {
-          const u = `https://image.tmdb.org/t/p/w185${d.profile_path}`;
+  // Load all person avatars live from TMDB — always correct face, no hardcoded paths
+  picker.querySelectorAll('.avatar-option[data-person-id]').forEach(opt => {
+    const pid = opt.dataset.personId;
+    if (!pid) return;
+    const img = opt.querySelector('img');
+    tmdb(`/person/${pid}`).then(d => {
+      if (d.profile_path) {
+        const u = `https://image.tmdb.org/t/p/w185${d.profile_path}`;
+        if (img) {
+          img.style.opacity = '0';
           img.src = u;
-          img.closest('.avatar-option').dataset.url = u;
+          img.onload = () => { img.style.transition = 'opacity .2s'; img.style.opacity = '1'; };
         }
-      }).catch(() => {});
-    }, { once: true });
+        opt.dataset.url = u;
+      }
+    }).catch(() => {});
   });
 
   // Close
