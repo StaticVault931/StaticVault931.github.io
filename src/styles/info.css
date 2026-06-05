@@ -300,3 +300,32 @@
   .info-poster { width: 100px; }
   .info-toolbar-title { display: none; }
 }
+
+/* ── OVERVIEW AUTO-COLLAPSE ─────────────────────────────────────── */
+.info-overview-collapsible {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  transition: max-height .2s;
+}
+.info-overview-collapsible::after {
+  content: ' ▼';
+  font-size: .7em;
+  opacity: .5;
+  vertical-align: middle;
+}
+.info-overview-collapsible.expanded {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.info-overview-collapsible.expanded::after { content: ' ▲'; }
+
+/* ── PERSON PAGE RESPONSIVE ─────────────────────────────────────── */
+@media (max-width: 700px) {
+  .person-layout { grid-template-columns: 1fr; }
+  .person-sidebar { position: static; }
+  .person-photo { width: 120px; aspect-ratio: 2/3; }
+}

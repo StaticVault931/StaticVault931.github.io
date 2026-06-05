@@ -384,8 +384,9 @@
   display: flex;
   gap: .65rem;
   overflow-x: auto;
-  padding: .4rem .1rem 2rem;
-  scroll-snap-type: x mandatory;
+  padding: .4rem 0 2rem;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: 0;
   scrollbar-width: none;
   scroll-behavior: smooth;
 }

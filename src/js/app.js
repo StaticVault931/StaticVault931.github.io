@@ -3580,21 +3580,17 @@ export async function openInfoPage(id, type, hint = {}) {
       }).join('');
     }
 
-    // Collapse description when there are 6+ cast members (too much content)
-    if (cast.length >= 6) {
-      const ovEl = document.getElementById('info-overview');
-      if (ovEl && ovEl.textContent.length > 200) {
-        ovEl.style.webkitLineClamp = '3';
-        ovEl.style.display = '-webkit-box';
-        ovEl.style.webkitBoxOrient = 'vertical';
-        ovEl.style.overflow = 'hidden';
-        ovEl.title = 'Click to expand';
-        ovEl.style.cursor = 'pointer';
+    // Always collapse overview to 4 lines; click to expand
+    const ovEl = document.getElementById('info-overview');
+    if (ovEl) {
+      ovEl.classList.add('info-overview-collapsible');
+      ovEl.title = 'Click to expand';
+      if (!ovEl._clickWired) {
+        ovEl._clickWired = true;
         ovEl.addEventListener('click', function() {
-          const collapsed = this.style.webkitLineClamp === '3';
-          this.style.webkitLineClamp = collapsed ? 'unset' : '3';
-          this.style.overflow = collapsed ? 'visible' : 'hidden';
-        }, { once: false });
+          this.classList.toggle('expanded');
+          this.title = this.classList.contains('expanded') ? 'Click to collapse' : 'Click to expand';
+        });
       }
     }
 
@@ -3663,9 +3659,20 @@ export async function openInfoPage(id, type, hint = {}) {
       });
     });
     document.querySelectorAll('#info-overlay .info-person-link').forEach(link => {
-      link.addEventListener('click', () => {
+      link.addEventListener('click', async () => {
         const name = link.dataset.search;
         if (!name) return;
+        // Try to find person by name and open their page directly
+        try {
+          const d = await tmdb('/search/person', { query: name, language: 'en-US' });
+          const person = (d.results || []).find(p => p.known_for_department) || d.results?.[0];
+          if (person?.id) {
+            closeInfoPage();
+            setTimeout(() => openPersonPage(person.id), 80);
+            return;
+          }
+        } catch {}
+        // Fallback: search
         closeInfoPage();
         goPage('search');
         setTimeout(() => {
@@ -3724,60 +3731,89 @@ export async function openPersonPage(personId) {
     ov._wired = true;
     document.getElementById('person-close')?.addEventListener('click', closePersonPage);
     ov.addEventListener('click', e => { if (e.target === ov) closePersonPage(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) closePersonPage(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && ov.classList.contains('open')) closePersonPage();
+    });
+    // Tab switching
     ov.addEventListener('click', e => {
       const tab = e.target.closest('.person-tab');
       if (!tab) return;
       ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t === tab));
       loadPersonCredits(ov._personId, tab.dataset.tab);
     });
+    // Card clicks within person overlay — close person page first so modal opens on top
+    ov.addEventListener('click', e => {
+      const card = e.target.closest('.card[data-id][data-type]');
+      if (!card || e.target.closest('button')) return;
+      const itemId = +card.dataset.id;
+      const itemType = card.dataset.type;
+      if (!itemId || !itemType) return;
+      closePersonPage();
+      // Small delay so person overlay fully closes before modal opens
+      setTimeout(() => openMedia(itemId, itemType, {
+        title: card.dataset.title,
+        poster_path: card.dataset.poster,
+      }), 60);
+    });
+    // Bio expand on click
+    document.getElementById('person-bio')?.addEventListener('click', function() {
+      this.classList.toggle('expanded');
+    });
   }
 
   ov._personId = personId;
-  // Update URL for this person page
   history.pushState({ personId }, '', `${location.pathname}?person=${personId}`);
-  const nameEl = document.getElementById('person-name');
-  const metaEl = document.getElementById('person-meta');
-  const bioEl = document.getElementById('person-bio');
-  const photoEl = document.getElementById('person-photo');
-  if (nameEl) nameEl.textContent = 'Loading…';
-  if (bioEl) bioEl.textContent = '';
 
-  // Reset tab to Movies
-  ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'movie'));
+  const nameEl  = document.getElementById('person-name');
+  const metaEl  = document.getElementById('person-meta');
+  const bioEl   = document.getElementById('person-bio');
+  const photoEl = document.getElementById('person-photo');
+  const grid    = document.getElementById('person-grid');
+
+  if (nameEl)  nameEl.textContent = 'Loading…';
+  if (bioEl)   bioEl.textContent = '';
+  if (grid)    grid.innerHTML = '<div class="spin" style="margin:2rem auto;display:block"></div>';
+
+  // Default to "All" tab
+  ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'all'));
 
   try {
-    const [person] = await Promise.all([
-      tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' }),
-    ]);
-    if (nameEl) nameEl.textContent = person.name || '';
+    const person = await tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' });
+
+    if (nameEl)  nameEl.textContent = person.name || '';
     if (photoEl) {
-      photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w185') : '';
+      photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w342') : '';
       photoEl.style.display = person.profile_path ? '' : 'none';
     }
-    // SEO: update page title and meta for person pages
+    if (bioEl) {
+      bioEl.textContent = person.biography || 'No biography available.';
+      bioEl.classList.remove('expanded');
+    }
+    if (metaEl) {
+      const items = [
+        person.known_for_department,
+        person.birthday ? `Born ${person.birthday.slice(0,4)}` : null,
+        person.place_of_birth,
+      ].filter(Boolean);
+      metaEl.innerHTML = items.map(s => `<span class="person-meta-item">${esc(s)}</span>`).join('');
+    }
+
+    // SEO
     const personPhoto = person.profile_path
       ? `https://image.tmdb.org/t/p/w780${person.profile_path}`
-      : 'https://staticvault931.github.io/og-image.jpg';
+      : 'https://staticvault931.github.io/favicon.png';
     document.title = `${person.name} — Films & TV — StaticVault931`;
-    document.querySelector('meta[name="description"]')?.setAttribute('content',
-      `See all movies and TV shows featuring ${person.name}. ${person.biography?.slice(0,100) || ''}`);
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
     document.querySelector('meta[property="og:image"]')?.setAttribute('content', personPhoto);
     document.querySelector('meta[property="og:url"]')?.setAttribute('content', `${location.origin}/?person=${personId}`);
-    document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
-    document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', personPhoto);
     document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${location.origin}/?person=${personId}`);
-    if (metaEl) {
-      const dept = person.known_for_department || '';
-      const bday = person.birthday?.slice(0, 4) || '';
-      const place = person.place_of_birth || '';
-      metaEl.innerHTML = [dept, bday, place].filter(Boolean).map(s => `<span class="person-meta-item">${esc(s)}</span>`).join('');
-    }
-    if (bioEl) bioEl.textContent = person.biography || '';
+
     ov._credits = person.combined_credits || {};
-    loadPersonCredits(personId, 'movie');
-  } catch {}
+    loadPersonCredits(personId, 'all'); // default: show all credits
+  } catch (e) {
+    if (nameEl) nameEl.textContent = 'Could not load person';
+    console.warn('[SV] Person page error:', e?.message);
+  }
 }
 
 function loadPersonCredits(personId, type) {
@@ -4107,12 +4143,25 @@ function renderProfilesGrid() {
       switchProfile(pid);
       updateProfileHeaderBtn();
       applyAllSettings(); // re-apply the new profile's display/player settings
-      if (!e.shiftKey) closeProfilesOverlay(); // shift+click = switch without closing
+      if (!e.shiftKey) closeProfilesOverlay();
+      // Full refresh: clear caches, reload all content for new profile
       _clearRowCache();
       _homeLoading = false;
+      sessionStorage.removeItem('sv_trend_views'); // reset trending position
+      // Clear daily row selection so new profile gets its own selection
+      const daySeed = Math.floor(Date.now() / (24 * 3600000));
+      sessionStorage.removeItem(`sv_row_sel_${daySeed}`);
+      sessionStorage.removeItem(`sv_std_sel_${daySeed}`);
+      // Reload everything
       loadHero().catch(() => {});
       loadHomeRows().catch(() => {});
       renderLibrary();
+      buildAgeRatingUI();
+      buildSettingsUI();
+      // Rebuild prefs UI if on that page
+      if (state.currentPage === 'prefs') {
+        buildGenreChips('genre-scroll', GENRES, () => {}, state.prefGenres);
+      }
       toast(e.shiftKey ? 'Profile switched!' : 'Switched!', 'person');
     });
     card.querySelectorAll('.profile-card-edit-btn').forEach(btn => {

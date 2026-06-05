@@ -1749,36 +1749,81 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .vd-test-btn:hover { background: var(--red); border-color: var(--red); color: #fff; }
 
 /* ── PERSON OVERLAY ──────────────────────────────────────────────── */
+/* ── PERSON OVERLAY ─────────────────────────────────────────────── */
 #person-overlay {
-  position: fixed; inset: 0; z-index: 820;
-  background: rgba(0,0,0,.9); backdrop-filter: blur(12px);
+  position: fixed; inset: 0;
+  /* MUST be above modal(800) AND info(810) so clicking cards from here works */
+  z-index: 9100;
+  background: rgba(0,0,0,.92); backdrop-filter: blur(14px);
   display: none; overflow-y: auto;
 }
 #person-overlay.open { display: block; }
+
 #person-panel {
-  max-width: 960px; margin: 2rem auto; padding: 1.5rem;
-  background: var(--s1); border-radius: 12px;
-  box-shadow: 0 40px 120px rgba(0,0,0,.95);
+  max-width: 1200px; margin: 1.5rem auto; padding: 1.8rem;
+  background: var(--bg); border-radius: 16px;
+  box-shadow: 0 40px 120px rgba(0,0,0,.98);
+  position: relative;
+  animation: modalIn .24s var(--ease);
 }
-.person-header {
-  display: flex; gap: 1.2rem; align-items: flex-start;
-  position: relative; margin-bottom: 1rem;
-}
+
 #person-close {
-  position: absolute; top: 0; right: 0;
-  width: 34px; height: 34px; border-radius: 50%;
-  background: var(--s3); border: 1px solid var(--border2);
-  color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  position: absolute; top: 1rem; right: 1rem;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  color: var(--text); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .18s, transform .18s; z-index: 2;
 }
-#person-close:hover { background: var(--red); }
-.person-photo { width: 100px; border-radius: 8px; flex-shrink: 0; }
-.person-name { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 2rem; letter-spacing: .04em; text-transform: uppercase; margin-bottom: .4rem; }
-.person-meta { display: flex; gap: .4rem; flex-wrap: wrap; }
-.person-meta-item { font-size: .78rem; color: var(--muted); background: var(--s3); padding: .15rem .5rem; border-radius: 3px; }
-.person-bio { font-size: .84rem; color: var(--muted); line-height: 1.65; max-height: 120px; overflow: hidden; margin-bottom: 1.2rem; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
-.person-credits-header { display: flex; gap: .4rem; margin-bottom: .75rem; }
-.person-tab { padding: .38rem .9rem; border-radius: 20px; font-size: .8rem; font-weight: 800; cursor: pointer; background: var(--s3); border: 1.5px solid var(--border2); color: var(--muted); transition: all .18s; }
+#person-close:hover { background: var(--red); transform: rotate(90deg); }
+#person-close .material-icons-round { font-size: .95rem; }
+
+/* Two-column layout: sidebar (info) + main content (credits) */
+.person-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+/* LEFT SIDEBAR */
+.person-sidebar {
+  position: sticky; top: 0;
+  display: flex; flex-direction: column; gap: .75rem;
+}
+.person-photo {
+  width: 100%; aspect-ratio: 2/3; border-radius: 12px;
+  object-fit: cover; background: var(--s3);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.person-name {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 1.7rem; letter-spacing: .04em; text-transform: uppercase;
+  line-height: 1.1; margin: 0;
+}
+.person-meta { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .2rem; }
+.person-meta-item {
+  font-size: .72rem; color: var(--muted); background: var(--s3);
+  padding: .15rem .55rem; border-radius: 4px;
+}
+.person-bio {
+  font-size: .8rem; color: var(--muted); line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden;
+  cursor: pointer;
+}
+.person-bio.expanded { -webkit-line-clamp: unset; overflow: visible; }
+
+/* MIDDLE CONTENT */
+.person-content { min-width: 0; }
+.person-credits-header { display: flex; gap: .4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.person-tab {
+  padding: .4rem 1rem; border-radius: 20px; font-size: .8rem; font-weight: 800;
+  cursor: pointer; background: var(--s3); border: 1.5px solid var(--border2);
+  color: var(--muted); transition: all .18s; white-space: nowrap;
+}
+.person-tab:hover { border-color: var(--border3); color: var(--text); }
 .person-tab.on { background: var(--red); border-color: var(--red); color: #fff; }
+.person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .75rem; }
 .person-grid .card { width: 100%; }
 
 /* ── PROFILES / WHO'S WATCHING ───────────────────────────────────── */
@@ -2016,3 +2061,27 @@ img[alt]::after {
 /* ── AGE RATING BUTTONS — TVY/TVY7 ──────────────────────────────── */
 .age-btn { min-width: 56px; }
 .age-btn-code { font-size: .72rem; }
+
+/* ── AVATAR PICKER BIGGER ────────────────────────────────────────── */
+.avatar-picker-overlay {
+  max-width: 680px !important;
+  width: 95vw !important;
+}
+.avatar-picker-overlay .avatar-option img {
+  width: 64px !important;
+  height: 64px !important;
+}
+.avatar-picker-overlay .avatar-option div {
+  max-width: 72px !important;
+  font-size: .62rem !important;
+}
+
+/* Profiles panel: even bigger on large screens */
+@media (min-width: 900px) {
+  #profiles-panel { max-width: 900px !important; padding: 3rem !important; }
+  .profiles-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important; gap: 1.6rem !important; }
+  .profile-avatar-circle { width: 110px !important; height: 110px !important; }
+  .profile-card { padding: 1.8rem .9rem 1.4rem !important; }
+  .profile-card-name { font-size: 1rem !important; }
+  .profiles-add-btn { min-height: 175px !important; }
+}

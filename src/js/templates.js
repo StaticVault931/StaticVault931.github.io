@@ -55,7 +55,7 @@ export function injectOverlays() {
             </div>
             <iframe id="player-frame"
               sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
-              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              allow="autoplay *; fullscreen *"
               referrerpolicy="no-referrer"
               title="Content player">
             </iframe>
@@ -97,7 +97,7 @@ export function injectOverlays() {
   <div class="nc-video">
     <iframe id="nc-frame"
       sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-      allow="autoplay; encrypted-media; picture-in-picture"
+      allow="autoplay *; fullscreen *"
       referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>
@@ -198,7 +198,7 @@ export function injectOverlays() {
     </div>
     <div class="trailer-ov-video">
       <iframe id="trailer-ov-frame"
-        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+        allow="autoplay *; fullscreen *"
         allowfullscreen
         referrerpolicy="no-referrer"
         title="Trailer">
@@ -264,7 +264,7 @@ export function injectOverlays() {
             <div class="info-trailer-inner">
               <iframe id="info-trailer-frame"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-                allow="autoplay; encrypted-media; fullscreen"
+                allow="autoplay *; fullscreen *"
                 referrerpolicy="no-referrer"
                 title="Trailer">
               </iframe>
@@ -306,21 +306,22 @@ export function injectOverlays() {
   person.setAttribute('role', 'dialog');
   person.innerHTML = `
 <div id="person-panel">
-  <div class="person-header">
-    <button id="person-close" aria-label="Close"><span class="material-icons-round">close</span></button>
-    <img class="person-photo" id="person-photo" alt="">
-    <div class="person-info">
-      <h2 class="person-name" id="person-name"></h2>
+  <button id="person-close" aria-label="Close person page"><span class="material-icons-round">close</span></button>
+  <div class="person-layout">
+    <aside class="person-sidebar">
+      <img class="person-photo" id="person-photo" alt="" loading="lazy">
+      <h2 class="person-name" id="person-name">Loading…</h2>
       <div class="person-meta" id="person-meta"></div>
+      <div class="person-bio" id="person-bio"></div>
+    </aside>
+    <div class="person-content">
+      <div class="person-credits-header">
+        <button class="person-tab on" data-tab="all">All</button>
+        <button class="person-tab" data-tab="movie">Movies</button>
+        <button class="person-tab" data-tab="tv">TV Shows</button>
+      </div>
+      <div class="search-grid person-grid" id="person-grid"></div>
     </div>
-  </div>
-  <div class="person-bio" id="person-bio"></div>
-  <div class="person-credits">
-    <div class="person-credits-header">
-      <div class="person-tab on" data-tab="movie">Movies</div>
-      <div class="person-tab" data-tab="tv">TV Shows</div>
-    </div>
-    <div class="search-grid person-grid" id="person-grid"></div>
   </div>
 </div>`;
   frag.appendChild(person);
