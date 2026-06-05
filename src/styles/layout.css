@@ -1389,3 +1389,45 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   border-left: 1px solid var(--border2);
   padding-left: .75rem;
 }
+
+/* ── PROVIDER SWITCHER BAR ─────────────────────────────────────────── */
+.provider-switcher {
+  display: flex; gap: .35rem; align-items: center;
+  padding: .4rem 2rem; overflow-x: auto;
+  scrollbar-width: none; border-top: 1px solid var(--border);
+}
+.provider-switcher::-webkit-scrollbar { display: none; }
+.provider-switch-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .28rem .75rem; border-radius: 16px;
+  background: var(--s2); border: 1.5px solid var(--border2);
+  color: var(--muted); font-size: .74rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: all .18s;
+}
+.provider-switch-btn:hover { background: var(--s3); border-color: var(--border3); color: var(--text); }
+.provider-switch-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ── COLLECTION SCROLL (inside info page) ─────────────────────────── */
+.info-collection-scroll {
+  display: flex; gap: .45rem; overflow-x: auto;
+  padding-bottom: .4rem; scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.15) transparent;
+}
+.info-col-film {
+  flex-shrink: 0; width: 72px; text-align: center;
+  transition: transform .18s;
+}
+.info-col-film:hover { transform: scale(1.06); }
+.info-col-poster {
+  width: 72px; height: 108px; border-radius: 5px;
+  overflow: hidden; display: flex; align-items: center;
+  justify-content: center; background: var(--s3); margin-bottom: .3rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+}
+.info-col-film-title {
+  font-size: .62rem; font-weight: 800; line-height: 1.2;
+  overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  color: var(--text);
+}

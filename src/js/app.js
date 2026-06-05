@@ -3741,8 +3741,11 @@ export async function openInfoPage(id, type, hint = {}) {
             ${revenue ? `<div class="info-detail-row"><span class="info-detail-key">Revenue</span><span class="info-detail-val">${revenue}</span></div>` : ''}
             ${details.last_air_date ? `<div class="info-detail-row"><span class="info-detail-key">Last Air Date</span><span class="info-detail-val">${esc(details.last_air_date)}</span></div>` : ''}
             ${details.next_episode_to_air?.air_date ? `<div class="info-detail-row"><span class="info-detail-key">Next Episode</span><span class="info-detail-val" style="color:#22c55e">${esc(details.next_episode_to_air.air_date)}</span></div>` : ''}
-            ${details.in_production === true ? `<div class="info-detail-row"><span class="info-detail-key">Status</span><span class="info-detail-val" style="color:#22c55e">🟢 In Production</span></div>` : ''}
+            ${details.in_production === true ? `<div class="info-detail-row"><span class="info-detail-key">In Production</span><span class="info-detail-val" style="color:#22c55e">🟢 Yes</span></div>` : ''}
             ${details.type && type === 'tv' ? `<div class="info-detail-row"><span class="info-detail-key">Show Type</span><span class="info-detail-val">${esc(details.type)}</span></div>` : ''}
+            ${details.release_date && type === 'movie' ? `<div class="info-detail-row"><span class="info-detail-key">Release Date</span><span class="info-detail-val">${esc(details.release_date)}</span></div>` : ''}
+            ${details.original_title && details.original_title !== details.title ? `<div class="info-detail-row"><span class="info-detail-key">Original Title</span><span class="info-detail-val">${esc(details.original_title)}</span></div>` : ''}
+            ${details.tagline ? `<div class="info-detail-row" style="border-top:1px solid var(--border);padding-top:.35rem;margin-top:.2rem"><span class="info-detail-val" style="color:var(--muted);font-style:italic;font-size:.74rem;text-align:left">"${esc(details.tagline)}"</span></div>` : ''}
           </div>
         </div>`;
     }
@@ -4069,6 +4072,19 @@ export async function openProviderPage(providerId, providerName) {
   const base       = { with_watch_providers: providerId, watch_region: 'US' };
   const provPageId = 'page-provider';
 
+  // Known providers for the switcher bar
+  const KNOWN_PROVIDERS = [
+    { id:8,   name:'Netflix',       domain:'netflix.com' },
+    { id:337, name:'Disney+',       domain:'disneyplus.com' },
+    { id:15,  name:'Hulu',          domain:'hulu.com' },
+    { id:9,   name:'Prime Video',   domain:'primevideo.com' },
+    { id:384, name:'Max',           domain:'max.com' },
+    { id:350, name:'Apple TV+',     domain:'tv.apple.com' },
+    { id:531, name:'Paramount+',    domain:'paramountplus.com' },
+    { id:386, name:'Peacock',       domain:'peacocktv.com' },
+    { id:283, name:'Crunchyroll',   domain:'crunchyroll.com' },
+  ];
+
   // ── Create provider page if needed ──
   if (!document.getElementById(provPageId)) {
     const pg = document.createElement('main');
@@ -4083,16 +4099,34 @@ export async function openProviderPage(providerId, providerName) {
           <img id="provider-page-logo" class="provider-page-logo" src="" alt="" style="display:none">
           <span id="provider-page-title" class="provider-page-title"></span>
         </div>
+        <!-- Provider switcher: all known providers as small buttons -->
+        <div class="provider-switcher" id="provider-switcher">
+          ${KNOWN_PROVIDERS.map(p => {
+            const lurl = `https://img.logo.dev/${p.domain}?token=${LOGO_DEV_TOKEN}&size=24&format=png`;
+            return `<button class="provider-switch-btn" data-provider-id="${p.id}" data-provider-name="${p.name}" title="${p.name}">
+              <img src="${lurl}" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'" alt="${p.name}">
+              <span>${p.name}</span>
+            </button>`;
+          }).join('')}
+        </div>
       </div>
-      <div id="provider-page-body" style="padding-top:64px"></div>`;
+      <div id="provider-page-body" style="padding-top:110px"></div>`;
     document.getElementById('footer').before(pg);
 
-    // Back button → go back to previous page
     pg.querySelector('#provider-back-btn')?.addEventListener('click', () => {
       goPage(state._prevPage || 'home');
     });
 
-    registerLoader('provider', () => {}); // no-op loader (content loaded manually)
+    // Wire provider switcher buttons
+    pg.querySelector('#provider-switcher')?.addEventListener('click', e => {
+      const btn = e.target.closest('.provider-switch-btn');
+      if (!btn) return;
+      const pid = +btn.dataset.providerId;
+      const pname = btn.dataset.providerName;
+      openProviderPage(pid, pname);
+    });
+
+    registerLoader('provider', () => {});
   }
 
   // ── Wire dynamic nav tab ──
@@ -4118,8 +4152,19 @@ export async function openProviderPage(providerId, providerName) {
   if (hdrTitle) hdrTitle.textContent = providerName;
 
   // ── Navigate to provider page ──
+  // Close any open overlays before navigating
+  document.getElementById('info-overlay')?.classList.remove('open');
+  document.getElementById('person-overlay')?.classList.remove('open');
+  document.getElementById('company-overlay')?.classList.remove('open');
+  document.getElementById('modal-overlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+
   state._prevPage = state.currentPage;
   goPage('provider');
+
+  // Fix URL to include provider id and name
+  const provUrl = `${location.pathname}?page=provider&id=${providerId}&name=${encodeURIComponent(providerName)}`;
+  history.replaceState({ page:'provider', providerId, providerName }, providerName, provUrl);
 
   // ── Build rows ──
   const body = document.getElementById('provider-page-body');
@@ -4146,7 +4191,15 @@ export async function openProviderPage(providerId, providerName) {
     </div>`;
   };
 
-  // Fetch all provider content in parallel (8 queries)
+  // Highlight active provider in switcher
+  document.querySelectorAll('.provider-switch-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.providerId === providerId);
+  });
+
+  // Build "For You on Provider" using user's preferred genres
+  const prefGenresStr = state.prefGenres?.length ? state.prefGenres.slice(0,2).join('|') : null;
+
+  // Fetch all provider content in parallel (10 queries including personalized)
   Promise.allSettled([
     tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),
     tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),
@@ -4156,6 +4209,9 @@ export async function openProviderPage(providerId, providerName) {
     tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),
     networkId ? tmdb('/discover/movie', { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
     networkId ? tmdb('/discover/tv',    { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    // Personalized: user's pref genres on this provider
+    prefGenresStr ? tmdb('/discover/movie', { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    prefGenresStr ? tmdb('/discover/tv',    { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
   ]).then(results => {
     if (state.currentPage !== 'provider') return; // don't update if navigated away
 
@@ -4170,20 +4226,24 @@ export async function openProviderPage(providerId, providerName) {
     const moreTv     = get(5,'tv');
     const origMovies = get(6,'movie');
     const origTv     = get(7,'tv');
+    const prefMovies = get(8,'movie');
+    const prefTv     = get(9,'tv');
     const originals  = [...origMovies, ...origTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+    const forYou     = [...prefMovies,...prefTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
 
     // Interleave helpers
     const mix = (a, b) => { const out=[]; for(let i=0;i<Math.max(a.length,b.length);i++){if(a[i])out.push(a[i]);if(b[i])out.push(b[i]);} return out; };
 
     const rows = [
-      originals.length  ? makeHomeRow('star',                  '#f5c518', `Only on ${providerName}`,   'pv-originals',  originals,  null)    : '',
-      popMovies.length  ? makeHomeRow('local_fire_department', '#f97316', 'Popular Movies',             'pv-pop-movies', popMovies,  'movie') : '',
-      popTv.length      ? makeHomeRow('local_fire_department', '#f97316', 'Popular Shows',              'pv-pop-tv',     popTv,      'tv')    : '',
-      mix(popMovies,popTv).length ? makeHomeRow('whatshot','#ef4444','Trending on ' + providerName,'pv-trending',mix(popMovies,popTv),''):'',
-      topMovies.length  ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',           'pv-top-movies', topMovies,  'movie') : '',
-      topTv.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',            'pv-top-tv',     topTv,      'tv')    : '',
-      moreMovies.length ? makeHomeRow('movie',                 '',        'More Movies',                'pv-more-movies',moreMovies,'movie') : '',
-      moreTv.length     ? makeHomeRow('tv',                    '',        'More Shows',                 'pv-more-tv',    moreTv,     'tv')    : '',
+      forYou.length     ? makeHomeRow('auto_awesome',          '#a78bfa', `For You on ${providerName}`, 'pv-foryou',     forYou,     null)    : '',
+      originals.length  ? makeHomeRow('star',                  '#f5c518', `Only on ${providerName}`,    'pv-originals',  originals,  null)    : '',
+      mix(popMovies,popTv).length ? makeHomeRow('local_fire_department','#f97316',`Trending on ${providerName}`,'pv-trending',mix(popMovies,popTv),''):'',
+      popMovies.length  ? makeHomeRow('movie',                 '',        'Popular Movies',              'pv-pop-movies', popMovies,  'movie') : '',
+      popTv.length      ? makeHomeRow('tv',                    '',        'Popular Shows',               'pv-pop-tv',     popTv,      'tv')    : '',
+      topMovies.length  ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',            'pv-top-movies', topMovies,  'movie') : '',
+      topTv.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',             'pv-top-tv',     topTv,      'tv')    : '',
+      moreMovies.length ? makeHomeRow('explore',               '',        'More Movies',                 'pv-more-movies',moreMovies,'movie') : '',
+      moreTv.length     ? makeHomeRow('explore',               '',        'More Shows',                  'pv-more-tv',    moreTv,     'tv')    : '',
     ].filter(Boolean);
 
     if (body) {
@@ -4696,10 +4756,26 @@ async function _enrichInfoPage(id, type, details, credits) {
         if (!parts.length) return;
         const collGrid = collSec.querySelector('#info-collection-grid');
         if (collGrid) {
-          // Use compact card style — override width with inline style wrapper
-          collGrid.innerHTML = `<div class="row-wrap" style="margin:0"><div class="card-row" style="gap:.4rem">${
-            parts.map(m => `<div style="flex-shrink:0;width:120px">${makeCard({...m,media_type:'movie'},'movie')}</div>`).join('')
-          }</div></div>`;
+          collGrid.innerHTML = `<div class="info-collection-scroll">${
+            parts.map(m => {
+              const poster = m.poster_path ? `https://image.tmdb.org/t/p/w185${m.poster_path}` : '';
+              const yr = String(m.release_date||'').slice(0,4);
+              return `<div class="info-col-film" data-id="${m.id}" data-type="movie" style="cursor:pointer" title="${esc(m.title||'')}">
+                <div class="info-col-poster" style="background:var(--s3)">
+                  ${poster ? `<img src="${poster}" alt="${esc(m.title||'')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:5px">` : '<span class="material-icons-round" style="font-size:1.5rem;color:var(--dim)">movie</span>'}
+                </div>
+                <div class="info-col-film-title">${esc((m.title||'').slice(0,20))}</div>
+                <div class="info-col-film-year" style="font-size:.62rem;color:var(--dim)">${yr}</div>
+              </div>`;
+            }).join('')
+          }</div>`;
+          // Wire clicks
+          collGrid.querySelectorAll('.info-col-film[data-id]').forEach(el => {
+            el.addEventListener('click', () => {
+              closeInfoPage();
+              setTimeout(() => openInfoPage(+el.dataset.id, 'movie'), 80);
+            });
+          });
         }
       }).catch(() => {});
     }
@@ -6017,112 +6093,89 @@ async function showNetflixCard(card) {
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
 
-  // ── STEP 1: Start ALL fetches in parallel immediately ──
+  // ── STEP 1: Start ALL fetches in parallel — trailer independent of details ──
   const cleanTitle = title.replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
-  // Dailymotion is fetched FIRST — this runs in parallel with TMDB data fetch
-  const dmPromise = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
+  // DM + YouTube key fetch both start NOW, don't wait for rich details
+  const dmPromise     = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
+  const ytKeyPromise  = fetchTrailerKey(id, type);
+  const detailsPromise = _genreCache.has(id)
+    ? Promise.resolve(_genreCache.get(id))
+    : fetchRichDetails(id, type);
 
-  // ── STEP 2: Fetch TMDB trailer key + rich details in parallel ──
-  const [trailerKey, details] = await Promise.all([
-    fetchTrailerKey(id, type),
-    _genreCache.has(id) ? Promise.resolve(_genreCache.get(id)) : fetchRichDetails(id, type),
-  ]);
-
-  if (!_hoverActive || _hoverCurrentCard !== card) return;
-
-  // ── STEP 3: Update rich metadata (fixes "Loading..." stuck state) ──
-  if (details) {
-    const genres = details.genres || [];
-    const runtime = details.runtime || details.episode_run_time?.[0];
-    const seasons = details.number_of_seasons;
-    const certification = details._cert || '';
-
-    if (genresEl) {
-      genresEl.innerHTML = genres.length
-        ? genres.slice(0, 3).map(g => `<span class="nc-genre-chip">${esc(g)}</span>`).join('<span class="nc-dot">·</span>')
-        : '';
-    }
-
-    const extraMeta = [];
-    if (runtime) { const h = Math.floor(runtime/60), m = runtime%60; extraMeta.push(h>0?`${h}h ${m}m`:`${m}m`); }
-    if (seasons > 1) extraMeta.push(`${seasons} Seasons`);
-    else if (seasons === 1) extraMeta.push('1 Season');
-    if (certification) extraMeta.push(`<span class="nc-cert">${esc(certification)}</span>`);
-    if (metaEl && extraMeta.length) metaEl.innerHTML += extraMeta.map(m => `<span class="nc-extra">${m}</span>`).join('');
-  } else if (genresEl) {
-    genresEl.innerHTML = '';
-  }
-
-  if (!_hoverActive || _hoverCurrentCard !== card) return;
-
-  // ── STEP 4: Trailer — DM first, YouTube fallback ─────────────────
-  // Backdrop is ALWAYS visible at this point (set above).
-  // DM is already fetching (started in step 1).
-  // Strategy:
-  //   1. Wait up to 2.5s for DM to resolve
-  //   2. If DM matches → use DM, backdrop fades after 3s
-  //   3. If DM times out/fails → use YouTube, backdrop fades when YT confirms playing
-  //   4. If neither → backdrop stays visible as the "preview"
-
-  if (!frame) return; // no iframe → just show backdrop
-
-  // Ensure backdrop is visible while we wait
+  // ── STEP 2: Load trailer ASAP — race DM vs YouTube key ──────────
+  // Don't wait for rich details (that can take many seconds)
+  if (!frame) return;
   if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
 
-  // Wait for DM (max 2.5s from when we started)
-  // Wait up to 4s for DM — generous enough for slow connections
-  const dmResult = await Promise.race([
-    dmPromise,
-    new Promise(res => setTimeout(() => res(null), 4000)),
+  // Race: DM (3s timeout) vs YouTube key (fast TMDB call)
+  const [dmResult, trailerKey] = await Promise.all([
+    Promise.race([dmPromise, new Promise(res => setTimeout(() => res(null), 3000))]),
+    ytKeyPromise,
   ]);
 
-  // Check card is still active
-  if (!_hoverActive || _hoverCurrentCard !== card) {
-    frame.removeAttribute('src');
-    return;
-  }
+  if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
   if (dmResult?.embed_url) {
-    // ✅ Dailymotion found — use it, backdrop stays until video confirmed
+    // ✅ Dailymotion found
     frame.style.display = '';
     frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-    if (backdrop) { backdrop.style.opacity = '1'; }
-    // Fade backdrop after DM player has loaded (3s is generous)
+    if (backdrop) backdrop.style.opacity = '1';
     const dmFadeTimer = setTimeout(() => {
       if (_hoverCurrentCard === card && _hoverActive && backdrop) {
         backdrop.style.transition = 'opacity .8s';
         backdrop.style.opacity = '0';
       }
-    }, 3000);
-    // If card changes before fade, clear timer
-    const _dmCleanup = () => { clearTimeout(dmFadeTimer); };
-    nc._dmCleanup = _dmCleanup;
+    }, 2500);
+    nc._dmCleanup = () => clearTimeout(dmFadeTimer);
 
   } else if (trailerKey && trailerKey !== '__none__') {
-    // ⟳ DM timed out/no match — use YouTube
+    // ⟳ Use YouTube
     frame.style.display = '';
     frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
-
-    // YouTube postMessage: fade backdrop when video is actually playing
+    // Hide backdrop via timer (postMessage unreliable in Firefox)
+    const ytFadeTimer = setTimeout(() => {
+      if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
+    }, 2000);
     const ytHandler = (e) => {
       if (e.origin !== 'https://www.youtube.com') return;
       try {
         const d = JSON.parse(e.data);
         if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+          clearTimeout(ytFadeTimer);
           if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
           window.removeEventListener('message', ytHandler);
         }
       } catch {}
     };
     window.addEventListener('message', ytHandler);
-    setTimeout(() => window.removeEventListener('message', ytHandler), 10000);
+    setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
 
   } else {
-    // No trailer at all — backdrop is the preview, no iframe
     frame.removeAttribute('src');
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.objectFit = 'cover'; }
   }
+
+  // ── STEP 3: Rich metadata — loads independently, updates UI when ready ──
+  detailsPromise.then(details => {
+    if (!_hoverActive || _hoverCurrentCard !== card) return;
+    if (!details) { if (genresEl) genresEl.innerHTML = ''; return; }
+    const genres = details.genres || [];
+    const runtime = details.runtime || details.episode_run_time?.[0];
+    const seasons = details.number_of_seasons;
+    const certification = details._cert || '';
+    if (genresEl) {
+      genresEl.innerHTML = genres.length
+        ? genres.slice(0,3).map(g=>`<span class="nc-genre-chip">${esc(g)}</span>`).join('<span class="nc-dot">·</span>')
+        : '';
+    }
+    const extraMeta = [];
+    if (runtime) { const h=Math.floor(runtime/60),m=runtime%60; extraMeta.push(h>0?`${h}h ${m}m`:`${m}m`); }
+    if (seasons > 1) extraMeta.push(`${seasons} Seasons`);
+    else if (seasons === 1) extraMeta.push('1 Season');
+    if (certification) extraMeta.push(`<span class="nc-cert">${esc(certification)}</span>`);
+    if (metaEl && extraMeta.length) metaEl.innerHTML += extraMeta.map(m=>`<span class="nc-extra">${m}</span>`).join('');
+  }).catch(() => {});
 }
 
 function positionNetflixCard(card, nc) {
