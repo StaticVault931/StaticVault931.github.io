@@ -105,9 +105,29 @@ export async function loadForYou() {
     const items = mixed.slice(0, totalWanted);
 
     if (!items.length) {
-      rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Adjust your preferences for better recommendations.</p>';
+      // Hard fallback: if pool was empty, just show highly-rated popular content
+      // This ensures For You is never blank
+      const fallback = await tmdb('/movie/top_rated', { page: Math.floor(Math.random() * 3) + 1 });
+      const fallbackItems = (fallback.results || []).slice(0, 18);
+      if (fallbackItems.length) {
+        renderRow('row-foryou', fallbackItems, null);
+        return;
+      }
+      rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Check back soon — we\'re building your recommendations.</p>';
       return;
     }
+
+    // If pool is smaller than desired, pad with trending content
+    if (items.length < 8) {
+      try {
+        const extra = await tmdb('/trending/movie/week');
+        const extraItems = (extra.results || [])
+          .filter(m => !items.some(x => x.id === m.id))
+          .slice(0, 18 - items.length);
+        items.push(...extraItems);
+      } catch {}
+    }
+
     renderRow('row-foryou', items, null);
   } catch {
     rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Could not load recommendations.</p>';

@@ -494,6 +494,11 @@ export async function doSearch(q) {
 async function fetchSearchPage(q, page) {
   let movies = [], shows = [], anime = [];
 
+  // Also search for people (actors, directors) in parallel with content
+  const personSearch = (_sfActive === 'all' || _sfActive === 'movie' || _sfActive === 'tv')
+    ? tmdb('/search/person', { query: q, page }).catch(() => ({ results: [] }))
+    : Promise.resolve({ results: [] });
+
   if (_sfActive !== 'tv' && _sfActive !== 'anime') {
     const d = await tmdb('/search/movie', { query: q, page });
     movies = (d.results || []).map(x => ({ ...x, _type: 'movie' }));
@@ -506,6 +511,27 @@ async function fetchSearchPage(q, page) {
     const Q = `query($s:String,$p:Int){Page(page:$p,perPage:20){media(type:ANIME,search:$s,isAdult:false,sort:[POPULARITY_DESC]){id title{romaji english}coverImage{large}averageScore startDate{year}description(asHtml:false)popularity}}}`;
     const d = await aniQuery(Q, { s: q, p: page });
     anime = (d?.data?.Page?.media || []).map(m => ({ ...normalizeAnime(m), _type: 'anime' }));
+  }
+
+  // If person search found results, add their credits to the search
+  if (page === 1) {
+    const personData = await personSearch;
+    const people = (personData.results || []).slice(0, 3).filter(p => p.known_for_department);
+    for (const person of people) {
+      try {
+        const credits = await tmdb(`/person/${person.id}/combined_credits`);
+        const personMovies = (credits.cast || [])
+          .filter(m => m.media_type === 'movie' && m.poster_path)
+          .slice(0, 4)
+          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name }));
+        const personShows = (credits.cast || [])
+          .filter(m => m.media_type === 'tv' && m.poster_path)
+          .slice(0, 4)
+          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name }));
+        movies.push(...personMovies);
+        shows.push(...personShows);
+      } catch {}
+    }
   }
 
   let all = [...movies, ...shows, ...anime];
@@ -564,6 +590,25 @@ async function fetchSearchPage(q, page) {
       }
     }
 
+    // Company/network search (for "Marvel", "Disney", "HBO" etc)
+    if (all.length < 6) {
+      try {
+        const companyRes = await tmdb('/search/company', { query: q });
+        const companies = (companyRes.results || []).slice(0, 2);
+        const existIds2 = new Set(all.map(x => x.id));
+        for (const co of companies) {
+          const coMovies = await tmdb('/discover/movie', {
+            with_companies: co.id,
+            sort_by: 'popularity.desc',
+            'vote_count.gte': 50,
+          }).catch(() => ({ results: [] }));
+          (coMovies.results || []).slice(0, 8).forEach(x => {
+            if (!existIds2.has(x.id)) { all.push({ ...x, _type: 'movie', _fuzzy: true }); existIds2.add(x.id); }
+          });
+        }
+      } catch {}
+    }
+
     // Keyword search as last resort for TV episodes → shows
     if (all.length < 3) {
       try {
@@ -614,12 +659,13 @@ function renderSearchResults(items, q, replace) {
   if (!area) return;
 
   const qLower = q.toLowerCase();
-  const exact = items.filter(x => !x._fuzzy && !x._keyword && (x.title || x.name || '').toLowerCase().includes(qLower));
-  const similar = items.filter(x => exact.indexOf(x) === -1 && !x._keyword);
+  const exact = items.filter(x => !x._fuzzy && !x._keyword && !x._viaActor && (x.title || x.name || '').toLowerCase().includes(qLower));
+  const viaActor = items.filter(x => x._viaActor);
+  const similar = items.filter(x => exact.indexOf(x) === -1 && !x._keyword && !x._viaActor);
   const keyword = items.filter(x => x._keyword);
 
   let html = '';
-  const count = items.length;
+  const count = items.filter(x => !x._viaActor).length;
   html += `<div class="search-results-meta">${count} result${count !== 1 ? 's' : ''} for "<strong>${esc(q)}</strong>"</div>`;
 
   if (exact.length) {
@@ -633,6 +679,18 @@ function renderSearchResults(items, q, replace) {
   if (keyword.length) {
     html += `<div class="search-section-title" style="margin-top:1.5rem"><span class="material-icons-round">tag</span> Related by Tags</div>
       <div class="search-grid">${keyword.slice(0, 12).map(m => makeCard(m, m._type)).join('')}</div>`;
+  }
+  // Show actor/person results grouped
+  if (viaActor.length) {
+    // Group by actor
+    const byActor = {};
+    viaActor.forEach(m => { if (!byActor[m._viaActor]) byActor[m._viaActor] = []; byActor[m._viaActor].push(m); });
+    for (const [actor, actorItems] of Object.entries(byActor)) {
+      html += `<div class="search-section-title" style="margin-top:1.5rem">
+        <span class="material-icons-round">person</span> Known for ${esc(actor)}
+      </div>
+      <div class="search-grid">${actorItems.slice(0, 8).map(m => makeCard(m, m._type)).join('')}</div>`;
+    }
   }
 
   // Infinite scroll sentinel

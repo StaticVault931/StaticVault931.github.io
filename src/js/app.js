@@ -1191,7 +1191,25 @@ function loadGenresUI() {
 }
 
 /* ── PREFS PAGE ──────────────────────────────────────────────────── */
+function syncLikedToPrefLikes() {
+  // Keep liked and prefLikes in sync — liked items should appear in Titles I Love
+  let changed = false;
+  state.liked.filter(item => isValidItem(item) && (item.title || item.name)).forEach(item => {
+    if (!state.prefLikes.some(x => x.id == item.id)) {
+      state.prefLikes.push({
+        id: +item.id, type: item.type || 'movie',
+        title: (item.title || item.name || '').trim(),
+        poster: item.poster_path ? imgUrl(item.poster_path, 'w92') : '',
+        score: 4,
+      });
+      changed = true;
+    }
+  });
+  if (changed) persist('prefLikes');
+}
+
 function loadPrefsPage() {
+  syncLikedToPrefLikes();
   renderPrefLists();
   buildRatingDescriptions();
   buildGenreChips('pref-genres', GENRES, (id, _name, chipEl) => {
@@ -3706,48 +3724,23 @@ function openPersonSearchForAvatar() {
 }
 
 /* ── TESTING MODE ──────────────────────────────────────────────────── */
-// Step 2: Type "938938" at any time within 15s of step 1
-// Must be on Library or CYF page when entering code
-let _testFooterClicks = 0;
-let _testClickTimer = null;
-let _testCodeArmed = false;
-let _testCodeTyped = '';
-const TEST_CODE = '938938'; // changed from 931931
+// Activation: type "iopiop" anywhere on the page (no special page required)
+let _testCodeBuffer = '';
+let _testCodeTimer = null;
+const TEST_CODE = 'iopiop';
 
 function initTestMode() {
-  document.getElementById('footer')?.addEventListener('click', e => {
-    if (!e.target.closest('.footer-logo, .footer-bottom')) return;
-    _testFooterClicks++;
-    clearTimeout(_testClickTimer);
-    if (_testFooterClicks >= 5) {
-      _testFooterClicks = 0;
-      _testCodeArmed = true;
-      _testCodeTyped = '';
-      // Navigate to library as step 1.5
-      goPage('library');
-      _testClickTimer = setTimeout(() => { _testCodeArmed = false; _testCodeTyped = ''; }, 15000);
-    } else {
-      _testClickTimer = setTimeout(() => { _testFooterClicks = 0; }, 2500);
-    }
-  });
-
+  // Just type "iopiop" anywhere — no footer clicks needed
   document.addEventListener('keydown', e => {
-    if (!_testCodeArmed || e.target.matches('input,textarea,select')) return;
-    // Only accept digit keys to build the code
-    if (/^[0-9]$/.test(e.key)) {
-      _testCodeTyped += e.key;
-      if (_testCodeTyped.length > TEST_CODE.length * 2) {
-        _testCodeTyped = _testCodeTyped.slice(-TEST_CODE.length * 2);
+    if (e.target.matches('input,textarea,select')) return;
+    if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+      _testCodeBuffer += e.key.toLowerCase();
+      clearTimeout(_testCodeTimer);
+      if (_testCodeBuffer.length > TEST_CODE.length * 2) {
+        _testCodeBuffer = _testCodeBuffer.slice(-TEST_CODE.length * 2);
       }
-      if (_testCodeTyped.endsWith(TEST_CODE)) {
-        // Must be on library or prefs page
-        const page = state.currentPage;
-        if (page !== 'library' && page !== 'prefs') {
-          _testCodeArmed = false; _testCodeTyped = '';
-          return;
-        }
-        clearTimeout(_testClickTimer);
-        _testCodeArmed = false; _testCodeTyped = ''; _testFooterClicks = 0;
+      if (_testCodeBuffer.endsWith(TEST_CODE)) {
+        _testCodeBuffer = '';
         const on = document.body.classList.toggle('test-mode');
         if (on) { populateTestPanel(); goPage('prefs'); }
         else {
@@ -3755,8 +3748,7 @@ function initTestMode() {
           if (panel) panel.style.display = 'none';
         }
       }
-    } else if (e.key === 'Escape') {
-      _testCodeArmed = false; _testCodeTyped = '';
+      _testCodeTimer = setTimeout(() => { _testCodeBuffer = ''; }, 3000);
     }
   });
 }
