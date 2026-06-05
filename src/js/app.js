@@ -310,6 +310,12 @@ const SHORTCUTS = [
       const inp = document.getElementById('search-input');
       if (inp) { inp.value = searchParam; inp.dispatchEvent(new Event('input', { bubbles: true })); }
     }, 100);
+  } else if (sp.get('person')) {
+    const personId = +sp.get('person');
+    if (personId > 0) {
+      document.getElementById('loading-screen')?.classList.add('out');
+      setTimeout(() => openPersonPage(personId), 400);
+    }
   }
 
   // Handle browser back/forward
@@ -318,6 +324,8 @@ const SHORTCUTS = [
       openInfoPage(e.state.id, e.state.type);
     } else if (e.state?.id && e.state?.type) {
       openMedia(e.state.id, e.state.type);
+    } else if (e.state?.personId) {
+      openPersonPage(e.state.personId);
     } else if (e.state?.page) {
       goPage(e.state.page);
     } else {
@@ -747,10 +755,18 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Trending + For You first
   await Promise.allSettled([
     tmdb('/trending/all/week').then(d => {
-      const items = (d.results || []).slice(0, 14);
+      const allTrending = d.results || [];
+      const views = parseInt(sessionStorage.getItem('sv_trend_views') || '0');
+      // Rotate: every 2 views, shift by 2 positions
+      const offset = Math.min((views * 2) % Math.max(allTrending.length - 14, 1), allTrending.length - 14);
+      const items = allTrending.slice(offset, offset + 14);
       items.forEach(m => _homeSeenIds.add(m.id));
       renderRow('row-trending', items, null, true);
       _saveRowCache('row-trending', items);
+      // Track trending views to rotate content over time
+      const trendViewKey = 'sv_trend_views';
+      const trendViews = (parseInt(sessionStorage.getItem(trendViewKey) || '0') + 1);
+      sessionStorage.setItem(trendViewKey, String(trendViews));
     }),
     loadForYou(),
   ]);
@@ -952,8 +968,10 @@ const SEASONAL_THEMES = {
   3:  { label: 'Spring Blockbusters', icon: 'local_florist', genres: '28|12', type: 'movie' },
   4:  { label: 'Spring Picks', icon: 'sunny', genres: '35|12', type: 'movie' },
   5:  { label: 'Mind-Bending Thrillers', icon: 'psychology', genres: '53|9648', type: 'movie' },
-  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', genres: '35|18|10749', type: null,
-       keywords: '158718|210024', special: 'lgbtq' },
+  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', type: null,
+       keywords: '158718', // LGBTQ on TMDB
+       genres: '35|18|10749',
+       special: 'lgbtq' },
   7:  { label: 'Summer Action', icon: 'beach_access', genres: '28|12|35', type: 'movie' },
   8:  { label: 'Late Summer Thrillers', icon: 'thunderstorm', genres: '53|27', type: 'movie' },
   9:  { label: 'Back to School Drama', icon: 'school', genres: '18|10762', type: 'tv' },
@@ -975,6 +993,12 @@ async function loadSeasonalRow() {
   if (iconEl) iconEl.textContent = theme.icon;
   if (secEl) secEl.style.display = '';
 
+  if (theme.special === 'lgbtq') {
+    const params2 = { with_keywords: '158718', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: state._randomPage || 1 };
+    _scheduleRowLoad('row-seasonal', null, () => tmdb('/discover/movie', params2).then(d => d.results || []), 'movie');
+    return; // skip the normal path
+  }
+
   const params = {
     sort_by: 'popularity.desc',
     'vote_count.gte': 100,
@@ -982,10 +1006,6 @@ async function loadSeasonalRow() {
   };
   if (theme.genres) params.with_genres = theme.genres;
   if (theme.keywords) params.with_keywords = theme.keywords;
-  if (theme.special === 'lgbtq') {
-    params.with_keywords = '158718,210024,209726';
-    delete params.with_genres;
-  }
 
   const endpoint = theme.type === 'tv' ? '/discover/tv' : '/discover/movie';
   _scheduleRowLoad('row-seasonal', null, () =>
@@ -1959,6 +1979,14 @@ function initEventDelegation() {
   // Re-trigger search with updated filters
   document.addEventListener('sv:do-search', e => {
     if (e.detail) doSearch(e.detail);
+  });
+
+  // Click handler for actor name links in search results
+  document.getElementById('search-results-area')?.addEventListener('click', e => {
+    const link = e.target.closest('.search-actor-link');
+    if (link?.dataset.personId) {
+      openPersonPage(+link.dataset.personId);
+    }
   });
 
   // Play Now triggered from trailer fallback overlay
@@ -3318,6 +3346,8 @@ export async function openPersonPage(personId) {
   }
 
   ov._personId = personId;
+  // Update URL for this person page
+  history.pushState({ personId }, '', `${location.pathname}?person=${personId}`);
   const nameEl = document.getElementById('person-name');
   const metaEl = document.getElementById('person-meta');
   const bioEl = document.getElementById('person-bio');
@@ -3363,6 +3393,8 @@ function loadPersonCredits(personId, type) {
 function closePersonPage() {
   document.getElementById('person-overlay')?.classList.remove('open');
   document.body.style.overflow = '';
+  // Restore URL when closing person page
+  if (location.search.includes('person=')) history.back();
 }
 
 export function closeInfoPage() {
@@ -3638,13 +3670,14 @@ function renderProfilesGrid() {
       if (pid === getActiveProfileId()) { closeProfilesOverlay(); return; }
       switchProfile(pid);
       updateProfileHeaderBtn();
-      closeProfilesOverlay();
+      applyAllSettings(); // re-apply the new profile's display/player settings
+      if (!e.shiftKey) closeProfilesOverlay(); // shift+click = switch without closing
       _clearRowCache();
       _homeLoading = false;
       loadHero().catch(() => {});
       loadHomeRows().catch(() => {});
       renderLibrary();
-      toast('Switched profile!', 'person');
+      toast(e.shiftKey ? 'Profile switched!' : 'Switched!', 'person');
     });
     card.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -3730,16 +3763,24 @@ function openPersonSearchForAvatar() {
       </div>
       <div style="padding:1rem 1.3rem;display:flex;flex-direction:column;gap:.75rem;">
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.2rem">Featured</div>
-        <div style="display:flex;gap:.65rem;flex-wrap:wrap;">
-          <div class="avatar-option" data-url="favicon.png" data-special="sv931" style="cursor:pointer;text-align:center;">
-            <img src="favicon.png" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="SV931">
-            <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;">SV931</div>
-          </div>
-          <div class="avatar-option" data-url="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" data-special="sq931" style="cursor:pointer;text-align:center;">
-            <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="StaticQuasar">
-            <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;">Creator</div>
-          </div>
-        </div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;">${(() => {
+          const featuredAvatars = [
+            { url: 'favicon.png', name: 'SV931', special: 'sv931' },
+            { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
+            { url: 'https://image.tmdb.org/t/p/w185/im9SAqJPZKEbVZGmjXuLI4O7RvM.jpg', name: 'Robert Downey Jr.' },
+            { url: 'https://image.tmdb.org/t/p/w185/lRoaHIr0uEw4BFTZ8oS9TbMIMeJ.jpg', name: 'Millie Bobby Brown' },
+            { url: 'https://image.tmdb.org/t/p/w185/8qBylBsQf4llkGrWR3qAsOtOU8O.jpg', name: 'Tom Cruise' },
+            { url: 'https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg', name: 'Leonardo DiCaprio' },
+            { url: 'https://image.tmdb.org/t/p/w185/beKhJGQVMiWdYbVKX4cQQqF9MpX.jpg', name: 'Zendaya' },
+            { url: 'https://image.tmdb.org/t/p/w185/rLSUjr725ez1cK7SKVxC9udO03Y.jpg', name: 'Ryan Reynolds' },
+          ];
+          return featuredAvatars.map(a =>
+            `<div class="avatar-option" data-url="${a.url}"${a.special ? ` data-special="${a.special}"` : ''} style="cursor:pointer;text-align:center;">
+              <img src="${a.url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="${a.name}">
+              <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${a.name}</div>
+            </div>`
+          ).join('');
+        })()}</div>
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-top:.4rem">Search People</div>
         <div style="position:relative;">
           <input id="avatar-search-input" placeholder="Search actor, character…" style="width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:.65rem 1rem;color:var(--text);font-size:.88rem;outline:none;">

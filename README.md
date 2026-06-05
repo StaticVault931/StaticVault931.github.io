@@ -64,7 +64,7 @@ Visit **[staticvault931.github.io](https://staticvault931.github.io/)** — no l
 
 ## Credits
 
-Made by [StaticQuasar931](https://sites.google.com/view/staticquasar931/gm3z)
+Made by [StaticQuasar931](https://sites.google.com/view/staticquasar931/gm3z) · Design by [Luuk](https://www.delirealms.store/)
 
 ---
 

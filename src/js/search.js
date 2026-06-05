@@ -438,7 +438,6 @@ function checkSearchEasterEgg(q) {
     'staticvault931': { msg: 'You found the source! This is StaticVault931 — your personal cinema. Made with love by StaticQuasar931.', color: '#e50914', icon: 'movie' },
     'staticquasar931': { msg: "Hey! That's us! Hi there, explorer! StaticQuasar931 is the creator of StaticVault931. Check out our Instagram @StaticQuasar931!", color: '#6366f1', icon: 'auto_awesome' },
     'sv931': { msg: 'Short and sweet! SV931 = StaticVault931. You\'ve found the secret shorthand!', color: '#22c55e', icon: 'celebration' },
-    'iopiop': { msg: 'Nice try, dev! But this is the search bar, not the dev console. Try clicking the footer logo 5 times first...', color: '#f59e0b', icon: 'science' },
     'themoviedb': { msg: "TMDB powers StaticVault931's entire catalog! We love their API. Check them out at themoviedb.org.", color: '#06b6d4', icon: 'storage' },
     'anilist': { msg: 'AniList powers all the anime you see here! Amazing community and API.', color: '#8b5cf6', icon: 'auto_awesome' },
   };
@@ -533,6 +532,7 @@ export async function doSearch(q) {
 }
 
 async function fetchSearchPage(q, page) {
+  let _personResults = [];
   let movies = [], shows = [], anime = [];
 
   // Person search — only for queries that look like names (2+ words) or when results are sparse
@@ -654,7 +654,6 @@ async function fetchSearchPage(q, page) {
   }
 
   // Only do person search if query looks like a name or we need more results
-  let _personResults = [];
   if ((looksLikeName || all.length < 4) && page === 1 && (_sfActive === 'all' || _sfActive === 'movie' || _sfActive === 'tv')) {
     try {
       const personData = await tmdb('/search/person', { query: q });
@@ -666,19 +665,21 @@ async function fetchSearchPage(q, page) {
           .filter(m => m.media_type === 'movie' && m.poster_path && !existIds.has(m.id))
           .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
           .slice(0, 6)
-          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name }));
+          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name, _viaActorId: person.id }));
         const personShows = (credits.cast || [])
           .filter(m => m.media_type === 'tv' && m.poster_path && !existIds.has(m.id))
           .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
           .slice(0, 6)
-          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name }));
+          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name, _viaActorId: person.id }));
         _personResults.push(...personMovies, ...personShows);
       }
     } catch {}
   }
 
-  // Return combined — person results come AFTER main results
-  return [...all, ..._personResults];
+  // Return combined — person results come AFTER main results (deduped)
+  const allIds = new Set(all.map(x => x.id));
+  const dedupedPersonResults = _personResults.filter(x => x.id && !allIds.has(x.id));
+  return [...all, ...dedupedPersonResults];
 }
 
 async function loadMoreSearchResults() {
@@ -736,8 +737,9 @@ function renderSearchResults(items, q, replace) {
     const byActor = {};
     viaActor.forEach(m => { if (!byActor[m._viaActor]) byActor[m._viaActor] = []; byActor[m._viaActor].push(m); });
     for (const [actor, actorItems] of Object.entries(byActor)) {
+      const actorId = actorItems[0]?._viaActorId;
       html += `<div class="search-section-title" style="margin-top:1.5rem">
-        <span class="material-icons-round">person</span> Known for ${esc(actor)}
+        <span class="material-icons-round">person</span> Known for ${actorId ? `<span class="search-actor-link" data-person-id="${actorId}" style="cursor:pointer;color:var(--red);text-decoration:underline">${esc(actor)}</span>` : esc(actor)}
       </div>
       <div class="search-grid">${actorItems.slice(0, 8).map(m => makeCard(m, m._type)).join('')}</div>`;
     }
