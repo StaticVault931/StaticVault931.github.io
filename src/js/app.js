@@ -3718,31 +3718,77 @@ function deleteProfileFromEditor() {
 }
 
 function openPersonSearchForAvatar() {
-  const q = prompt('Search for a person (actor/character) for avatar:');
-  if (!q?.trim()) return;
-  tmdb('/search/person', { query: q }).then(d => {
-    const people = (d.results || []).slice(0, 8).filter(p => p.profile_path);
-    if (!people.length) { toast('No photos found', 'search_off'); return; }
-    const picker = document.createElement('div');
-    picker.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.92);backdrop-filter:blur(8px);display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:center;padding:3rem;cursor:pointer;';
-    picker.innerHTML = `<div style="position:absolute;top:1rem;right:1rem;color:#fff;font-size:.85rem;font-weight:700;">Click a photo to use as avatar · Click outside to cancel</div>`
-      + people.map(p =>
-          `<div style="text-align:center;cursor:pointer">
-            <img src="https://image.tmdb.org/t/p/w185${p.profile_path}" alt="${p.name}"
-              style="width:96px;height:96px;object-fit:cover;border-radius:50%;border:3px solid rgba(255,255,255,.2);transition:border .18s;"
-              data-url="https://image.tmdb.org/t/p/w185${p.profile_path}">
-            <div style="color:#fff;font-size:.72rem;margin-top:.35rem;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+  // Show built-in avatar picker with special options + search
+  const picker = document.createElement('div');
+  picker.id = 'avatar-picker-modal';
+  picker.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:1.5rem;';
+  picker.innerHTML = `
+    <div style="background:var(--s1);border-radius:14px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.95);">
+      <div style="display:flex;align-items:center;gap:.75rem;padding:1.1rem 1.3rem;border-bottom:1px solid var(--border);">
+        <h3 style="flex:1;font-size:1rem;font-weight:900;">Choose Avatar</h3>
+        <button id="avatar-picker-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.4rem;line-height:1;">×</button>
+      </div>
+      <div style="padding:1rem 1.3rem;display:flex;flex-direction:column;gap:.75rem;">
+        <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.2rem">Featured</div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;">
+          <div class="avatar-option" data-url="favicon.png" data-special="sv931" style="cursor:pointer;text-align:center;">
+            <img src="favicon.png" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="SV931">
+            <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;">SV931</div>
+          </div>
+          <div class="avatar-option" data-url="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" data-special="sq931" style="cursor:pointer;text-align:center;">
+            <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="StaticQuasar">
+            <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;">Creator</div>
+          </div>
+        </div>
+        <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-top:.4rem">Search People</div>
+        <div style="position:relative;">
+          <input id="avatar-search-input" placeholder="Search actor, character…" style="width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:.65rem 1rem;color:var(--text);font-size:.88rem;outline:none;">
+        </div>
+        <div id="avatar-search-results" style="display:flex;flex-wrap:wrap;gap:.6rem;min-height:80px;"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(picker);
+
+  // Close
+  picker.querySelector('#avatar-picker-close')?.addEventListener('click', () => picker.remove());
+  picker.addEventListener('click', e => { if (e.target === picker) picker.remove(); });
+
+  // Apply selection
+  picker.addEventListener('click', e => {
+    const opt = e.target.closest('.avatar-option');
+    if (!opt) return;
+    const url = opt.dataset.url;
+    const prev = document.getElementById('profile-avatar-preview');
+    if (prev) prev.innerHTML = `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    picker.remove();
+    // Easter egg for special avatars
+    if (opt.dataset.special === 'sv931') toast('You chose the StaticVault931 logo!', 'movie');
+    if (opt.dataset.special === 'sq931') toast('StaticQuasar931 — the creator! Nice choice!', 'auto_awesome');
+  });
+
+  // Search
+  const searchInput = picker.querySelector('#avatar-search-input');
+  const resultsEl = picker.querySelector('#avatar-search-results');
+  let searchTimer;
+  searchInput?.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    const q = this.value.trim();
+    if (!q) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">Searching…</div>';
+    searchTimer = setTimeout(async () => {
+      try {
+        const d = await tmdb('/search/person', { query: q });
+        const people = (d.results || []).slice(0, 12).filter(p => p.profile_path);
+        if (!people.length) { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">No photos found</div>'; return; }
+        resultsEl.innerHTML = people.map(p => `
+          <div class="avatar-option" data-url="https://image.tmdb.org/t/p/w185${p.profile_path}" style="cursor:pointer;text-align:center;width:64px;">
+            <img src="https://image.tmdb.org/t/p/w185${p.profile_path}" alt="${esc(p.name)}"
+              style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);display:block;margin:0 auto;">
+            <div style="font-size:.58rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${esc(p.name)}</div>
           </div>`).join('');
-    document.body.appendChild(picker);
-    picker.addEventListener('click', e => {
-      const img = e.target.closest('img');
-      if (img?.dataset.url) {
-        const prev = document.getElementById('profile-avatar-preview');
-        if (prev) prev.innerHTML = `<img src="${img.dataset.url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-      }
-      picker.remove();
-    });
-  }).catch(() => toast('Search failed', 'error'));
+      } catch { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">Search failed</div>'; }
+    }, 400);
+  });
 }
 
 /* ── TESTING MODE ──────────────────────────────────────────────────── */
@@ -3752,26 +3798,48 @@ let _testCodeTimer = null;
 const TEST_CODE = 'iopiop';
 
 function initTestMode() {
-  // Just type "iopiop" anywhere — no footer clicks needed
+  // Step 1: Click footer logo/bottom 5 times within 2.5 seconds to arm
+  let _footerClicks = 0;
+  let _footerTimer = null;
+  let _armed = false;
+
+  document.getElementById('footer')?.addEventListener('click', e => {
+    if (!e.target.closest('.footer-logo, .footer-bottom')) return;
+    _footerClicks++;
+    clearTimeout(_footerTimer);
+    if (_footerClicks >= 5) {
+      _footerClicks = 0;
+      _armed = true;
+      _testCodeBuffer = '';
+      clearTimeout(_testCodeTimer);
+      // Must type the code within 15 seconds
+      _testCodeTimer = setTimeout(() => { _armed = false; _testCodeBuffer = ''; }, 15000);
+    } else {
+      _footerTimer = setTimeout(() => { _footerClicks = 0; }, 2500);
+    }
+  });
+
+  // Step 2: Type "iopiop" after arming
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;
-    if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-      _testCodeBuffer += e.key.toLowerCase();
-      clearTimeout(_testCodeTimer);
-      if (_testCodeBuffer.length > TEST_CODE.length * 2) {
-        _testCodeBuffer = _testCodeBuffer.slice(-TEST_CODE.length * 2);
-      }
-      if (_testCodeBuffer.endsWith(TEST_CODE)) {
-        _testCodeBuffer = '';
-        const on = document.body.classList.toggle('test-mode');
-        if (on) { populateTestPanel(); goPage('prefs'); }
-        else {
-          const panel = document.getElementById('dev-test-panel');
-          if (panel) panel.style.display = 'none';
-        }
-      }
-      _testCodeTimer = setTimeout(() => { _testCodeBuffer = ''; }, 3000);
+    if (e.key.length !== 1 || !/[a-zA-Z0-9]/.test(e.key)) return;
+    _testCodeBuffer += e.key.toLowerCase();
+    clearTimeout(_testCodeTimer);
+    if (_testCodeBuffer.length > TEST_CODE.length * 2) {
+      _testCodeBuffer = _testCodeBuffer.slice(-TEST_CODE.length * 2);
     }
+    if (_testCodeBuffer.endsWith(TEST_CODE)) {
+      if (!_armed) { _testCodeBuffer = ''; return; } // must be armed first
+      _armed = false;
+      _testCodeBuffer = '';
+      const on = document.body.classList.toggle('test-mode');
+      if (on) { populateTestPanel(); goPage('prefs'); }
+      else {
+        const panel = document.getElementById('dev-test-panel');
+        if (panel) panel.style.display = 'none';
+      }
+    }
+    _testCodeTimer = setTimeout(() => { _testCodeBuffer = ''; }, 3000);
   });
 }
 
@@ -4517,6 +4585,13 @@ function initModalPanelToggles() {
 
 /* ── KEYBOARD ────────────────────────────────────────────────────── */
 function initKeyboard() {
+  // Track last hovered row for arrow key navigation
+  let _lastHoveredRow = null;
+  document.addEventListener('mouseover', e => {
+    const row = e.target.closest('.card-row');
+    if (row) _lastHoveredRow = row;
+  }, { passive: true });
+
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;
 
@@ -4573,10 +4648,21 @@ function initKeyboard() {
     if (e.key === '7') { goPage('search'); setTimeout(() => document.getElementById('search-input')?.focus(), 100); return; }
     if (e.key === '0') { cycleTheme(); return; }
 
-    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (_lastHoveredRow) {
+        // Scroll the hovered row
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        _lastHoveredRow.scrollBy({ left: dir * (_lastHoveredRow.clientWidth * 0.7), behavior: 'smooth' });
+      } else if (e.key === 'ArrowLeft') {
+        jumpHero((state.heroIdx - 1 + state.heroItems.length) % state.heroItems.length);
+      } else {
+        jumpHero((state.heroIdx + 1) % state.heroItems.length);
+      }
+    } else if (e.key === 'a' || e.key === 'A') {
       e.preventDefault();
       jumpHero((state.heroIdx - 1 + state.heroItems.length) % state.heroItems.length);
-    } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+    } else if (e.key === 'd' || e.key === 'D') {
       e.preventDefault();
       jumpHero((state.heroIdx + 1) % state.heroItems.length);
     } else if (e.key === 't' || e.key === 'T') {

@@ -428,12 +428,53 @@ export async function loadSearchDefault() {
   });
 }
 
+/* ── EASTER EGGS ─────────────────────────────────────────────────── */
+function checkSearchEasterEgg(q) {
+  const lower = q.toLowerCase().trim();
+  const area = document.getElementById('search-results-area');
+  if (!area) return false;
+
+  const eggs = {
+    'staticvault931': { msg: 'You found the source! This is StaticVault931 — your personal cinema. Made with love by StaticQuasar931.', color: '#e50914', icon: 'movie' },
+    'staticquasar931': { msg: "Hey! That's us! Hi there, explorer! StaticQuasar931 is the creator of StaticVault931. Check out our Instagram @StaticQuasar931!", color: '#6366f1', icon: 'auto_awesome' },
+    'sv931': { msg: 'Short and sweet! SV931 = StaticVault931. You\'ve found the secret shorthand!', color: '#22c55e', icon: 'celebration' },
+    'iopiop': { msg: 'Nice try, dev! But this is the search bar, not the dev console. Try clicking the footer logo 5 times first...', color: '#f59e0b', icon: 'science' },
+    'themoviedb': { msg: "TMDB powers StaticVault931's entire catalog! We love their API. Check them out at themoviedb.org.", color: '#06b6d4', icon: 'storage' },
+    'anilist': { msg: 'AniList powers all the anime you see here! Amazing community and API.', color: '#8b5cf6', icon: 'auto_awesome' },
+  };
+
+  const egg = eggs[lower];
+  if (!egg) return false;
+
+  const emojiMap = { movie: '🎬', celebration: '🎉', science: '🧪', auto_awesome: '✨', storage: '💡' };
+  const emoji = emojiMap[egg.icon] || '✨';
+
+  area.innerHTML = `
+    <div class="easter-egg-result" style="text-align:center;padding:3rem 1rem;animation:eggReveal .6s var(--ease)">
+      <div style="font-size:4rem;margin-bottom:1rem">${emoji}</div>
+      <div style="font-size:1.4rem;font-weight:900;color:${egg.color};margin-bottom:.75rem;font-family:'Bebas Neue',Impact,sans-serif;letter-spacing:.05em;text-transform:uppercase">Easter Egg Found!</div>
+      <div style="font-size:.95rem;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.7">${egg.msg}</div>
+    </div>`;
+
+  // Confetti animation
+  for (let i = 0; i < 20; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.style.cssText = `position:fixed;top:-10px;left:${Math.random() * 100}vw;width:8px;height:8px;border-radius:50%;background:${egg.color};z-index:9999;pointer-events:none;animation:confettiFall ${1 + Math.random() * 2}s ease-in forwards;`;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }, i * 80);
+  }
+  return true;
+}
+
 /* ── SEARCH ──────────────────────────────────────────────────────── */
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
 
   addRecentSearch(q);
+  if (checkSearchEasterEgg(q)) return; // stop if easter egg found
   _searchState = { query: q, page: 1, results: [], loading: true, done: false };
 
   try {
