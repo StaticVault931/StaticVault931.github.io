@@ -814,42 +814,68 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // ── ALL remaining rows: each loads independently via IntersectionObserver ──
   // Rows near the viewport fire immediately; others wait for scroll.
   // This way each row appears at its own natural time, not all at once.
-  const rowDefs = [
-    // Alternate now_playing vs upcoming each session — never show both at once
-    ...((() => {
+  // ── ROW POOL: pick a balanced selection each session ──────────────
+  // Full pool of standard rows — pick 4-6 each session for variety
+  const STD_ROW_POOL = [
+    // Now Playing OR Upcoming (alternates per session)
+    (() => {
       const showUpcoming = rng % 2 !== 0;
-      const label = showUpcoming ? 'Coming Soon' : 'Now Playing';
-      const icon  = showUpcoming ? 'upcoming' : 'fiber_new';
-      // Update the DOM label so the header matches
       requestAnimationFrame(() => {
-        const titleEl = document.querySelector('#sec-new .sec-title');
-        if (titleEl) titleEl.innerHTML = `<span class="material-icons-round sec-icon">${icon}</span>${label}`;
-        const seeAllBtn = document.querySelector('#sec-new .see-all-btn');
-        if (seeAllBtn) seeAllBtn.dataset.seeAllTitle = label;
+        const t = document.querySelector('#sec-new .sec-title');
+        if (t) t.innerHTML = `<span class="material-icons-round sec-icon">${showUpcoming ? 'upcoming' : 'fiber_new'}</span>${showUpcoming ? 'Coming Soon' : 'Now Playing'}`;
       });
-      return [{ id: 'row-new', sec: 'sec-new', fn: () => tmdb(showUpcoming ? '/movie/upcoming' : '/movie/now_playing', { page: showUpcoming ? 1 : rng }).then(d => d.results || []), type: 'movie' }];
-    })()),
-    { id: 'row-toprated',  sec: 'sec-toprated',  fn: () => tmdb('/movie/top_rated',    { page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-tv-pop',    sec: 'sec-tv-pop',    fn: () => tmdb('/tv/popular',         { page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-airing',    sec: 'sec-airing',    fn: () => tmdb('/tv/airing_today').then(d => d.results || []),                   type: 'tv' },
-    { id: 'row-action',    sec: 'sec-action',    fn: () => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []),          type: 'movie' },
-    { id: 'row-comedy',    sec: 'sec-comedy',    fn: () => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []),          type: 'movie' },
-    { id: 'row-horror',    sec: 'sec-horror',    fn: () => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []),          type: 'movie' },
-    { id: 'row-drama',     sec: 'sec-drama',     fn: () => tmdb('/discover/movie', gOpts(18, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 })).then(d => d.results || []), type: 'movie' },
-    { id: 'row-scifi',     sec: 'sec-scifi',     fn: () => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []),         type: 'movie' },
-    { id: 'row-animated',  sec: 'sec-animated',  fn: () => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []),          type: 'movie' },
-    { id: 'row-home-anime','sec': 'sec-home-anime', fn: () => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), type: 'anime' },
-    // Extra variety rows — add fresh content types
-    { id: 'row-romance',     sec: 'sec-romance',     fn: () => tmdb('/discover/movie', { with_genres: '10749', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-kdrama',      sec: 'sec-kdrama',      fn: () => tmdb('/discover/tv',    { with_original_language: 'ko', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-thriller-tv', sec: 'sec-thriller-tv', fn: () => tmdb('/discover/tv',    { with_genres: '9648', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-2020s',       sec: 'sec-2020s',       fn: () => tmdb('/discover/movie', { primary_release_date_gte: '2020-01-01', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-classics',    sec: 'sec-classics',    fn: () => tmdb('/discover/movie', { primary_release_date_lte: '1995-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-family',      sec: 'sec-family',      fn: () => tmdb('/discover/movie', { with_genres: '10751', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'movie' },
-    { id: 'row-crime-tv',    sec: 'sec-crime-tv',    fn: () => tmdb('/discover/tv',    { with_genres: '80', sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-comedy-tv',   sec: 'sec-comedy-tv',   fn: () => tmdb('/discover/tv',    { with_genres: '35', sort_by: 'popularity.desc', page: rng }).then(d => d.results || []), type: 'tv' },
-    { id: 'row-anime-home2', sec: 'sec-anime-home2', fn: () => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)), type: 'anime' },
+      return { id:'row-new', sec:'sec-new', type:'movie',
+        fn: () => tmdb(showUpcoming ? '/movie/upcoming' : '/movie/now_playing', { page: showUpcoming ? 1 : rng }).then(d => d.results || []) };
+    })(),
+    { id:'row-toprated',  sec:'sec-toprated',  type:'movie', fn:() => tmdb('/movie/top_rated',  { page: rng }).then(d => d.results || []) },
+    { id:'row-tv-pop',    sec:'sec-tv-pop',    type:'tv',    fn:() => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []) },
+    { id:'row-airing',    sec:'sec-airing',    type:'tv',    fn:() => tmdb('/tv/airing_today').then(d => d.results || []) },
+    { id:'row-action',    sec:'sec-action',    type:'movie', fn:() => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []) },
+    { id:'row-comedy',    sec:'sec-comedy',    type:'movie', fn:() => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []) },
+    { id:'row-horror',    sec:'sec-horror',    type:'movie', fn:() => tmdb('/discover/movie', gOpts(27)).then(d => d.results || []) },
+    { id:'row-drama',     sec:'sec-drama',     type:'movie', fn:() => tmdb('/discover/movie', gOpts(18, { sort_by:'vote_average.desc','vote_count.gte':200 })).then(d => d.results || []) },
+    { id:'row-scifi',     sec:'sec-scifi',     type:'movie', fn:() => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []) },
+    { id:'row-animated',  sec:'sec-animated',  type:'movie', fn:() => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []) },
+    { id:'row-home-anime',sec:'sec-home-anime',type:'anime', fn:() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
+    { id:'row-romance',   sec:'sec-romance',   type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
+    { id:'row-kdrama',    sec:'sec-kdrama',    type:'tv',    fn:() => tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
+    { id:'row-thriller-tv',sec:'sec-thriller-tv',type:'tv', fn:() => tmdb('/discover/tv', { with_genres:'9648', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
+    { id:'row-2020s',     sec:'sec-2020s',     type:'movie', fn:() => tmdb('/discover/movie', { primary_release_date_gte:'2020-01-01', sort_by:'vote_average.desc','vote_count.gte':300, page: rng }).then(d => d.results || []) },
+    { id:'row-classics',  sec:'sec-classics',  type:'movie', fn:() => tmdb('/discover/movie', { primary_release_date_lte:'1995-12-31', sort_by:'vote_average.desc','vote_count.gte':500 }).then(d => d.results || []) },
+    { id:'row-family',    sec:'sec-family',    type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10751', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
+    { id:'row-crime-tv',  sec:'sec-crime-tv',  type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'80', sort_by:'vote_average.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
+    { id:'row-comedy-tv', sec:'sec-comedy-tv', type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'35', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
+    { id:'row-anime-home2',sec:'sec-anime-home2',type:'anime',fn:() => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
   ];
+
+  // Hide all pool sections by default; show only the selected ones
+  const STD_ALWAYS = ['row-new', 'row-home-anime']; // always show these
+  const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id));
+  const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
+  let stdSelected = [];
+  try { stdSelected = JSON.parse(sessionStorage.getItem(stdSessionKey) || '[]'); } catch {}
+  if (!stdSelected.length) {
+    // Pick 4 from optional, ensuring a mix of movie/tv/anime
+    const byType = { movie: [], tv: [], anime: [] };
+    STD_OPTIONAL.forEach(r => (byType[r.type] || byType.movie).push(r.id));
+    const picks = [
+      byType.movie[Math.floor(Math.random() * byType.movie.length)],
+      byType.movie[Math.floor(Math.random() * byType.movie.length)],
+      byType.tv[Math.floor(Math.random() * byType.tv.length)],
+      byType.anime[Math.floor(Math.random() * byType.anime.length)],
+    ].filter((id, i, a) => id && a.indexOf(id) === i); // deduplicate
+    stdSelected = picks;
+    sessionStorage.setItem(stdSessionKey, JSON.stringify(stdSelected));
+  }
+  const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
+
+  // Show/hide sections based on selection
+  STD_ROW_POOL.forEach(r => {
+    const sec = document.getElementById(r.sec);
+    if (sec) sec.style.display = stdActive.has(r.id) ? '' : 'none';
+  });
+
+  const rowDefs = STD_ROW_POOL.filter(r => stdActive.has(r.id))
 
   // Each row observes itself — visible ones load first, others load as you scroll
   rowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
@@ -910,6 +936,23 @@ const ROW_CATALOG = [
     labels: ['Comfort TV','Old Reliables','Rewatch Worthy','Familiar Faces','Come Back to These','Your TV Safety Blanket'] },
   { id: 'row-discover-new', sec: 'sec-discover-new',   type: null,   persona: false,
     labels: ['Discover Something New', 'Never Seen Before?', 'Expand Your Horizons', 'Beyond Your Comfort Zone', 'Something Different', 'Try Something New Tonight', 'We Bet You Missed This', 'Off the Beaten Path'] },
+  // Additional curated rows
+  { id: 'row-miniseries',   sec: 'sec-miniseries',    type: 'tv',   persona: false,
+    labels: ['Mini-Series Worth Your Weekend', 'Binge in One Weekend', 'Short & Sweet Series', 'Self-Contained Stories', 'Commit-Free TV', 'Start & Finish This Weekend'] },
+  { id: 'row-based-on',     sec: 'sec-based-on',      type: 'movie', persona: false,
+    labels: ['Based on True Events', 'True Crime & Real Stories', 'Ripped from the Headlines', 'You Heard About This IRL', 'Fact Meets Fiction', 'The Real Story'] },
+  { id: 'row-dark-comedy',  sec: 'sec-dark-comedy',   type: null,   persona: true,
+    labels: ['Dark Comedy', 'Twisted Funny', 'Wrong in All the Right Ways', 'Laugh Until It Hurts', 'Uncomfortable Funny', 'Darkly Hilarious'] },
+  { id: 'row-superhero',    sec: 'sec-superhero',     type: null,   persona: false,
+    labels: ['Superhero Universe', 'Marvel & DC', 'Capes & Powers', 'Save the World Tonight', 'Action Heroes', 'Heroes & Villains'] },
+  { id: 'row-mystery-film', sec: 'sec-mystery-film',  type: 'movie', persona: true,
+    labels: ['Whodunit?', 'Mystery & Suspense', 'Keep Guessing', 'The Plot Thickens', 'Who Did It?', 'Unsolved Until the End'] },
+  { id: 'row-prestige-tv',  sec: 'sec-prestige-tv',   type: 'tv',   persona: true,
+    labels: ['Prestige TV', 'Emmy-Winning Drama', 'Peak Television', 'Critical Darlings', 'Award-Season Favorites', 'The Good TV'] },
+  { id: 'row-90s-nostalgia',sec: 'sec-90s-nostalgia', type: null,   persona: false,
+    labels: ['90s Nostalgia', 'Take Me Back', 'Throwback to the 90s', 'Before Streaming', 'That 90s Feeling', 'VHS Era Classics'] },
+  { id: 'row-anime-mix',    sec: 'sec-anime-mix',     type: 'anime', persona: true,
+    labels: ['Anime You'll Actually Finish', 'Anime Starter Pack', 'Gateway Anime', 'For Everyone', 'Start Here with Anime', 'Accessible Anime'] },
 ];
 
 // Labels are picked randomly per session (stored so they don't change mid-session)
@@ -945,6 +988,24 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
     sessionStorage.setItem(sessionKey, JSON.stringify(selected));
   }
 
+  // Prevent similar-themed rows from appearing side by side
+  // (e.g. "The Classics" tv-faves and "Old School Classics" retro-tv are too similar)
+  const CONFLICTS = [
+    ['row-tv-faves',    'row-retro-tv'],    // both "classics" TV
+    ['row-tv-faves',    'row-90s-nostalgia'],// classics TV vs 90s nostalgia
+    ['row-retro-tv',    'row-90s-nostalgia'],// both old TV
+    ['row-feel-good',   'row-dark-comedy'], // opposite vibes
+    ['row-intense',     'row-mystery-film'],// both suspenseful
+    ['row-documentary', 'row-based-on'],    // both "real events"
+    ['row-binge-drama', 'row-prestige-tv'], // both drama TV
+    ['row-sci-fi-tv',   'row-superhero'],   // both genre TV
+  ];
+  CONFLICTS.forEach(([a, b]) => {
+    if (selected.includes(a) && selected.includes(b)) {
+      // Keep whichever appears first in the shuffled order, drop the other
+      selected.splice(selected.indexOf(b), 1);
+    }
+  });
   const activeIds = new Set([...alwaysShow, ...selected]);
 
   // Hide sections not in active set, show ones that are
@@ -1012,6 +1073,32 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
       'vote_count.gte': 100,
       page: Math.floor(Math.random() * 5) + 1,
     }).then(d => d.results || []),
+    'row-miniseries':    () => tmdb('/discover/tv', { with_type:'3', sort_by:'vote_average.desc','vote_count.gte':80, page: pRng2 }).then(d => d.results || []),
+    'row-based-on':      () => tmdb('/discover/movie', { with_keywords:'10683,41645', sort_by:'popularity.desc','vote_count.gte':200, page: pRng2 }).then(d => d.results || []),
+    'row-dark-comedy':   () => tmdb('/discover/movie', { with_genres:'35|18|53', sort_by:'vote_average.desc','vote_count.gte':200, page: pRng2 }).then(d => d.results || []),
+    'row-superhero':     async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_genres:'28', with_keywords:'9715|180547', sort_by:'popularity.desc', page: pRng2 }),
+        tmdb('/discover/tv',    { with_keywords:'9715|180547', sort_by:'popularity.desc', page: pRng2 }),
+      ]);
+      const m = mv.status==='fulfilled'?(mv.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const t = tv.status==='fulfilled'?(tv.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(m.length,t.length);i++){if(m[i])out.push(m[i]);if(t[i])out.push(t[i]);}
+      return out;
+    },
+    'row-mystery-film':  () => tmdb('/discover/movie', pOpts(9648, {'vote_count.gte':100})).then(d => d.results || []),
+    'row-prestige-tv':   () => tmdb('/discover/tv', { sort_by:'vote_average.desc','vote_count.gte':800, page: pRng2, ...(personalize&&prefGenreStr2?{with_genres:prefGenreStr2}:{}) }).then(d => d.results || []),
+    'row-90s-nostalgia': async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { 'primary_release_date.gte':'1990-01-01','primary_release_date.lte':'1999-12-31', sort_by:'popularity.desc','vote_count.gte':300 }),
+        tmdb('/discover/tv',    { 'first_air_date.gte':'1990-01-01','first_air_date.lte':'1999-12-31', sort_by:'popularity.desc','vote_count.gte':200 }),
+      ]);
+      const m = mv.status==='fulfilled'?(mv.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const t = tv.status==='fulfilled'?(tv.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(m.length,t.length);i++){if(m[i])out.push(m[i]);if(t[i])out.push(t[i]);}
+      return out;
+    },
+    'row-anime-mix':     () => aniQuery(`query{Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`).then(d => (d?.data?.Page?.media||[]).map(normalizeAnime)),
   };
 
   // Load each active row
@@ -2090,11 +2177,19 @@ function initEventDelegation() {
 
     const itemId = +card.dataset.id;
     const itemType = card.dataset.type;
-    if (itemId && itemType) openMedia(itemId, itemType, {
-      title: card.dataset.title,
-      poster_path: card.dataset.poster,
-      backdrop_path: card.dataset.backdrop,
-    });
+    if (itemId && itemType) {
+      // If clicked from inside person overlay, close it first so media opens on top
+      const personOv = document.getElementById('person-overlay');
+      if (personOv?.classList.contains('open') && e.target.closest('#person-overlay')) {
+        personOv.classList.remove('open');
+        document.body.style.overflow = '';
+      }
+      openMedia(itemId, itemType, {
+        title: card.dataset.title,
+        poster_path: card.dataset.poster,
+        backdrop_path: card.dataset.backdrop,
+      });
+    }
   });
 
   // Keyboard on cards
@@ -3780,28 +3875,53 @@ function showShortcuts() {
 function initShortcutsModal() {
   const ov = document.getElementById('shortcuts-overlay');
   if (!ov) return;
-  const grid = document.getElementById('shortcuts-grid');
-  if (grid) {
+
+  function renderShortcutsGrid() {
+    const grid = document.getElementById('shortcuts-grid');
+    if (!grid) return;
+    const disabled = state.disabledShortcuts || {};
     const groups = [...new Set(SHORTCUTS.map(s => s.group))];
-    // Split groups evenly into 2 columns
     const half = Math.ceil(groups.length / 2);
-    const leftGroups = groups.slice(0, half);
+    const leftGroups  = groups.slice(0, half);
     const rightGroups = groups.slice(half);
 
     const renderGroup = (g) => `
       <div class="sc-group">
         <div class="sc-group-label">${g}</div>
-        ${SHORTCUTS.filter(s => s.group === g).map(s =>
-          `<div class="sc-item"><kbd class="sc-key">${esc(s.key)}</kbd><span class="sc-desc">${esc(s.desc)}</span></div>`
-        ).join('')}
+        ${SHORTCUTS.filter(s => s.group === g).map(s => {
+          const keyId = s.key.toLowerCase().replace(/[^a-z0-9/]/g, '_');
+          const isOff = !!disabled[keyId];
+          return `<div class="sc-item shortcut-row${isOff ? ' disabled' : ''}" data-shortcut-id="${keyId}" title="${isOff ? 'Click to re-enable' : 'Click to disable this shortcut'}">
+            <kbd class="sc-key shortcut-key">${esc(s.key)}</kbd>
+            <span class="sc-desc">${esc(s.desc)}${isOff ? '<span class="shortcut-disabled-badge">off</span>' : ''}</span>
+          </div>`;
+        }).join('')}
       </div>`;
 
     grid.innerHTML = `
       <div class="sc-col">${leftGroups.map(renderGroup).join('')}</div>
-      <div class="sc-col">${rightGroups.map(renderGroup).join('')}</div>`;
+      <div class="sc-col">${rightGroups.map(renderGroup).join('')}</div>
+      <p style="grid-column:1/-1;font-size:.65rem;color:var(--dim);text-align:center;margin-top:.5rem">Click any shortcut to toggle it on/off</p>`;
+
+    // Click to toggle shortcut
+    grid.querySelectorAll('.shortcut-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const kid = row.dataset.shortcutId;
+        if (!kid) return;
+        if (!state.disabledShortcuts) state.disabledShortcuts = {};
+        state.disabledShortcuts[kid] = !state.disabledShortcuts[kid];
+        if (!state.disabledShortcuts[kid]) delete state.disabledShortcuts[kid];
+        persist('disabledShortcuts');
+        renderShortcutsGrid(); // re-render with updated state
+      });
+    });
   }
+
+  renderShortcutsGrid();
   ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
   document.getElementById('shortcuts-close')?.addEventListener('click', () => ov.classList.remove('open'));
+  // Re-render when shortcuts overlay opens (in case state changed)
+  ov.addEventListener('transitionend', () => { if (ov.classList.contains('open')) renderShortcutsGrid(); });
 }
 
 /* ── TESTING MODE ────────────────────────────────────────────────── */
@@ -4883,14 +5003,20 @@ function initKeyboard() {
     }
   });
 
+  // Get disabled shortcuts from profile settings
+  function _isShortcutEnabled(key) {
+    const disabled = state.disabledShortcuts || {};
+    return !disabled[key.toLowerCase()];
+  }
+
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;
 
-    // Escape closes modal
+    // Escape closes modal — always enabled
     if (e.key === 'Escape') { closeModal(); return; }
 
     // / opens search
-    if (e.key === '/') {
+    if (e.key === '/' && _isShortcutEnabled('/')) {
       e.preventDefault();
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 150);

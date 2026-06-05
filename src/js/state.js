@@ -68,6 +68,9 @@ export const state = {
   prefGenres:   load('sv_pref_genres', []),   // [genreId]
   lastProvider: load('sv_last_provider', 'vidsrc'),
 
+  // Per-account settings
+  disabledShortcuts: load('sv_disabled_shortcuts', {}),
+
   // Runtime (not persisted)
   currentMedia:  null,
   currentPage:   'home',
@@ -92,7 +95,8 @@ const PERSIST_MAP = {
   prefLikes:        'sv_pref_likes',
   prefDislikes:     'sv_pref_dislikes',
   prefGenres:       'sv_pref_genres',
-  lastProvider:     'sv_last_provider',
+  lastProvider:         'sv_last_provider',
+  disabledShortcuts:    'sv_disabled_shortcuts',
 };
 
 /* ── ITEM VALIDATION ─────────────────────────────────────────────── */

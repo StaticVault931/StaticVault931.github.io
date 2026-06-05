@@ -14,6 +14,7 @@ const PROFILE_STATE_KEYS = [
   'watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed',
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
+  'disabledShortcuts', // per-profile shortcut overrides
 ];
 
 const PERSIST_MAP_KEYS = {
