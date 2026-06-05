@@ -63,10 +63,12 @@ const LEGAL_CONTENT = {
       <p><strong>Dailymotion:</strong> Trailer fallback videos from Dailymotion. See <a href="https://www.dailymotion.com/legal" target="_blank" rel="noopener">Dailymotion Privacy</a>.</p>
       <p><strong>Logo.dev:</strong> Brand logos from logo.dev. See <a href="https://logo.dev/" target="_blank" rel="noopener">logo.dev</a>.</p>
       <p><strong>Video Embed Providers:</strong> VidSrc, Cineby, VidLink, 2Embed, SuperEmbed, VidSrc Pro, AutoEmbed, and Videasy operate independently. When you load a video, their servers receive your IP address and browser information as part of standard HTTP requests. StaticVault931 has no control over their data practices.</p>
+      <p><strong>Vidsrc-embed.ru:</strong> We use vidsrc-embed.ru for content embed URLs and recently-added feeds. See their terms at <a href="https://vidsrc-embed.ru" target="_blank" rel="noopener">vidsrc-embed.ru</a>.</p>
+      <p><strong>TasteDive:</strong> Recommendation data from tastedive.com. See <a href="https://tastedive.com/read/privacy" target="_blank" rel="noopener">TasteDive Privacy</a>.</p>
       <h3>4. Cookies & Tracking</h3>
-      <p>StaticVault931 itself sets no cookies and uses no tracking technologies. Embed providers may set their own cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers from running on the page.</p>
+      <p>Embed providers may set cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers, but cannot guarantee complete coverage.</p>
       <h3>5. Analytics</h3>
-      <p>We do not run any analytics platform (Google Analytics, Mixpanel, etc.) on StaticVault931.</p>
+      <p>StaticVault931 uses <strong>Google Analytics 4 (GA4)</strong> to understand aggregate usage patterns (pageviews, session counts, general regions). This helps us improve the site. Google Analytics sets cookies in your browser. You can opt out using <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. We do not use any other analytics platform (Mixpanel, Amplitude, etc.).</p>
       <h3>6. Children's Privacy</h3>
       <p>StaticVault931 is not directed at children under 13. We do not knowingly collect data from children. If you believe a child has used the service inappropriately, please contact us.</p>
       <h3>7. Your Rights</h3>
@@ -1028,6 +1030,46 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     return results.filter(Boolean);
   }, 'movie');
 
+  // ── Provider-specific rows: Only on Netflix/Disney+/Hulu (rotates daily) ──
+  const providerDay = Math.floor(Date.now() / (24*3600000)) % 3;
+  if (providerDay === 0) {
+    // Only on Netflix (Netflix network = 213, TMDB provider = 8)
+    _scheduleRowLoad('row-on-netflix', 'sec-on-netflix', async () => {
+      const [m, t] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_watch_providers:8, watch_region:'US', with_networks:213, sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/tv',    { with_watch_providers:8, watch_region:'US', with_networks:213, sort_by:'popularity.desc', page: rng }),
+      ]);
+      const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(movies.length,shows.length);i++){if(movies[i])out.push(movies[i]);if(shows[i])out.push(shows[i]);}
+      return out;
+    }, null);
+  } else if (providerDay === 1) {
+    // Only on Disney+ (network=2739, provider=337)
+    _scheduleRowLoad('row-on-disney', 'sec-on-disney', async () => {
+      const [m, t] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_watch_providers:337, watch_region:'US', with_networks:2739, sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/tv',    { with_watch_providers:337, watch_region:'US', with_networks:2739, sort_by:'popularity.desc', page: rng }),
+      ]);
+      const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(movies.length,shows.length);i++){if(movies[i])out.push(movies[i]);if(shows[i])out.push(shows[i]);}
+      return out;
+    }, null);
+  } else {
+    // Only on Hulu (network=453, provider=15)
+    _scheduleRowLoad('row-on-hulu', 'sec-on-hulu', async () => {
+      const [m, t] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_watch_providers:15, watch_region:'US', sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/tv',    { with_watch_providers:15, watch_region:'US', with_networks:453, sort_by:'popularity.desc', page: rng }),
+      ]);
+      const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(movies.length,shows.length);i++){if(movies[i])out.push(movies[i]);if(shows[i])out.push(shows[i]);}
+      return out;
+    }, null);
+  }
+
   // Load curated rows (random selection, alt names, personalization-aware)
   loadCuratedRows(prefG, prefGenreStr, pRng);
 
@@ -1292,17 +1334,22 @@ async function loadSeasonalRow() {
 
       // Pride Month: search by exact title — most reliable approach
       // Using TMDB search guarantees we get the right movie, not a wrong-ID result
+      // Comprehensive LGBTQ+ film/TV list — expanded with more variety
       const prideMovieTitles = [
-        'Brokeback Mountain', 'Moonlight', 'Call Me by Your Name',
-        'Carol', 'Love, Simon', 'Portrait of a Lady on Fire',
-        'The Danish Girl', 'Milk', 'The Birdcage',
-        'Blue Is the Warmest Colour', 'Beautiful Thing', "God's Own Country",
-        'Brokeback Mountain', 'The Kids Are All Right',
+        'Brokeback Mountain', 'Moonlight', 'Call Me by Your Name', 'Carol',
+        'Love, Simon', 'Portrait of a Lady on Fire', 'The Danish Girl', 'Milk',
+        'The Birdcage', 'Blue Is the Warmest Colour', 'The Kids Are All Right',
+        'Beautiful Thing', "God's Own Country", 'Weekend', 'Holding the Man',
+        'Pride', 'Pariah', 'The Normal Heart', 'Philadelphia',
+        'Rocketman', 'Bohemian Rhapsody', 'The Way He Looks', 'Handsome Devil',
+        'Freeheld', 'A Single Man', 'Keep the Lights On',
       ];
       const prideTvTitles = [
-        'Heartstopper', 'Pose', 'Sex Education',
-        "Schitt's Creek", 'Orange Is the New Black',
-        "It's a Sin", 'Queer as Folk', "RuPaul's Drag Race",
+        'Heartstopper', 'Pose', 'Sex Education', "Schitt's Creek",
+        'Orange Is the New Black', "It's a Sin", 'Queer as Folk', "RuPaul's Drag Race",
+        'Euphoria', 'Looking', 'The L Word', 'Brothers and Sisters',
+        'Will and Grace', 'Modern Family', 'Glee', 'Sense8',
+        'Cucumber', 'Banana', 'Years and Years',
       ];
 
       const searchMovie = (title) => tmdb('/search/movie', { query: title }).then(d => {
@@ -1320,9 +1367,13 @@ async function loadSeasonalRow() {
       const mTitles = [...prideMovieTitles.slice(mStart), ...prideMovieTitles.slice(0, mStart)].slice(0, 8);
       const tTitles = [...prideTvTitles.slice(tStart), ...prideTvTitles.slice(0, tStart)].slice(0, 6);
 
-      const [movieResults, tvResults] = await Promise.all([
+      // Search hardcoded titles + keyword discovery in parallel
+      const [movieResults, tvResults, kwMovies, kwTv] = await Promise.all([
         Promise.all(mTitles.map(searchMovie)),
         Promise.all(tTitles.map(searchTv)),
+        // TMDB keyword search: "coming out" (158718), "male homosexuality" (3799), "sexual identity" (209726)
+        tmdb('/discover/movie', { with_keywords:'158718,3799,209726,155310', sort_by:'vote_average.desc', 'vote_count.gte':100, page: rPage }).then(d=>(d.results||[]).map(x=>({...x,media_type:'movie'}))).catch(()=>[]),
+        tmdb('/discover/tv',    { with_keywords:'158718,3799,209726', sort_by:'vote_average.desc', 'vote_count.gte':50, page: rPage }).then(d=>(d.results||[]).map(x=>({...x,media_type:'tv'}))).catch(()=>[]),
       ]);
 
       const movies_ok = movieResults.filter(Boolean);
@@ -1336,6 +1387,10 @@ async function loadSeasonalRow() {
         if (m && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
         if (t && !seenIds.has(t.id)) { seenIds.add(t.id); combined.push(t); }
       }
+      // Supplement with keyword-discovered content if we have room
+      [...kwMovies, ...kwTv].forEach(x => {
+        if (x?.id && !seenIds.has(x.id)) { seenIds.add(x.id); combined.push(x); }
+      });
       return combined.slice(0, 20);
     };
     _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
@@ -5710,112 +5765,87 @@ async function showNetflixCard(card) {
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
 
-  // Fetch rich metadata in parallel
+  // ── STEP 1: Start ALL fetches in parallel immediately ──
+  const cleanTitle = title.replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
+  // Dailymotion is fetched FIRST — this runs in parallel with TMDB data fetch
+  const dmPromise = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
+
+  // ── STEP 2: Fetch TMDB trailer key + rich details in parallel ──
   const [trailerKey, details] = await Promise.all([
     fetchTrailerKey(id, type),
     _genreCache.has(id) ? Promise.resolve(_genreCache.get(id)) : fetchRichDetails(id, type),
   ]);
 
-  // If no YouTube trailer, pre-fetch Dailymotion (non-blocking)
-  let _dmTrailerData = null;
-  if (trailerKey === '__none__') {
-    _dmTrailerData = await fetchDailymotionTrailer(`${title} ${year}`).catch(() => null);
-  }
-
-  // Resolve DM trailer — use if available and strictly matches title
-  const _dmResult = await _dmFetch;
-  if (_dmResult?.embed_url && frame && _hoverActive && _hoverCurrentCard === card) {
-    // Use Dailymotion: stop YouTube if it was loading
-    if (frame.src.includes('youtube')) frame.removeAttribute('src');
-    frame.src = `${_dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-    if (backdrop) backdrop.style.opacity = '0';
-  } else if (!frame.src && trailerKey && trailerKey !== '__none__') {
-    // DM had no match — use YouTube
-    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-  }
-
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
-  // Update rich metadata
+  // ── STEP 3: Update rich metadata (fixes "Loading..." stuck state) ──
   if (details) {
     const genres = details.genres || [];
     const runtime = details.runtime || details.episode_run_time?.[0];
     const seasons = details.number_of_seasons;
     const certification = details._cert || '';
 
-    // Genres
-    if (genresEl && genres.length) {
-      genresEl.innerHTML = genres.slice(0, 3).map(g =>
-        `<span class="nc-genre-chip">${esc(g)}</span>`
-      ).join('<span class="nc-dot">·</span>');
-    } else if (genresEl) {
-      genresEl.innerHTML = '';
+    if (genresEl) {
+      genresEl.innerHTML = genres.length
+        ? genres.slice(0, 3).map(g => `<span class="nc-genre-chip">${esc(g)}</span>`).join('<span class="nc-dot">·</span>')
+        : '';
     }
 
-    // Enhanced meta: runtime / seasons / certification
     const extraMeta = [];
-    if (runtime) {
-      const h = Math.floor(runtime / 60);
-      const m = runtime % 60;
-      extraMeta.push(h > 0 ? `${h}h ${m}m` : `${m}m`);
-    }
+    if (runtime) { const h = Math.floor(runtime/60), m = runtime%60; extraMeta.push(h>0?`${h}h ${m}m`:`${m}m`); }
     if (seasons > 1) extraMeta.push(`${seasons} Seasons`);
     else if (seasons === 1) extraMeta.push('1 Season');
     if (certification) extraMeta.push(`<span class="nc-cert">${esc(certification)}</span>`);
-
-    if (metaEl && extraMeta.length) {
-      metaEl.innerHTML += extraMeta.map(m => `<span class="nc-extra">${m}</span>`).join('');
-    }
+    if (metaEl && extraMeta.length) metaEl.innerHTML += extraMeta.map(m => `<span class="nc-extra">${m}</span>`).join('');
   } else if (genresEl) {
     genresEl.innerHTML = '';
   }
 
-  // Load trailer: fetch DM and YouTube in parallel, use DM if strict title match
-  const cleanTitle = title.replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
-  const _dmFetch = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
+  if (!_hoverActive || _hoverCurrentCard !== card) return;
 
-  if (frame && trailerKey && trailerKey !== '__none__') {
-    // Keep backdrop visible until we confirm playback
-    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
-    // Use enablejsapi=1 so YouTube sends postMessage events
+  // ── STEP 4: Load trailer — Dailymotion FIRST, YouTube fallback ──
+  // Race: DM result vs 2.5 second timeout
+  const dmResult = await Promise.race([
+    dmPromise,
+    new Promise(res => setTimeout(() => res(null), 2500)),
+  ]);
+
+  if (!_hoverActive || _hoverCurrentCard !== card) return;
+
+  if (dmResult?.embed_url && frame) {
+    // ✅ Dailymotion matched — use it immediately
+    if (backdrop) backdrop.style.opacity = '0';
+    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1&ui-logo=0`;
+    frame.style.display = '';
+  } else if (frame && trailerKey && trailerKey !== '__none__') {
+    // ⟳ DM timed out or no match — use YouTube
+    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
     frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
-    // YouTube postMessage API: state 1 = playing, -1 = unstarted, 5 = cued
-    const msgHandler = (e) => {
+    // YouTube postMessage: hide backdrop when actually playing
+    const ytMsgHandler = (e) => {
       if (e.origin !== 'https://www.youtube.com') return;
       try {
         const d = JSON.parse(e.data);
         if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
-          // Actually playing — hide backdrop
           if (backdrop) backdrop.style.opacity = '0';
-          window.removeEventListener('message', msgHandler);
-        }
-        if (d.event === 'infoDelivery' && d.info?.playerState === -1) {
-          // Error or unstarted — keep backdrop, clean up
-          if (backdrop) backdrop.style.opacity = '1';
+          window.removeEventListener('message', ytMsgHandler);
         }
       } catch {}
     };
-    window.addEventListener('message', msgHandler);
+    window.addEventListener('message', ytMsgHandler);
 
-    // 5s timeout: if YouTube didn't play, try Dailymotion then backdrop
-    setTimeout(async () => {
-      window.removeEventListener('message', msgHandler);
-      if (backdrop && backdrop.style.opacity === '1') {
-        if (_dmTrailerData?.embed_url && frame) {
-          // Try Dailymotion as fallback
-          frame.src = `${_dmTrailerData.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-          return;
-        }
-        backdrop.style.opacity = '1';
+    // 6s failsafe: if YouTube still hasn't played, go to backdrop-only
+    setTimeout(() => {
+      window.removeEventListener('message', ytMsgHandler);
+      if (backdrop?.style.opacity === '1' && _hoverCurrentCard === card) {
         if (frame) frame.removeAttribute('src');
+        backdrop.style.opacity = '1';
       }
-    }, 5000);
-  } else if (backdrop) {
-    // No trailer key — just show backdrop as full preview (bigger, no iframe)
-    backdrop.style.opacity = '1';
-    backdrop.style.objectFit = 'cover';
+    }, 6000);
+  } else {
+    // No trailer at all — backdrop only
+    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.objectFit = 'cover'; }
     if (frame) frame.removeAttribute('src');
   }
 }

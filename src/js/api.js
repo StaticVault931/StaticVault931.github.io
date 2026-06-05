@@ -170,21 +170,26 @@ export async function fetchOMDb(imdbId) {
 }
 
 /* ── FANART.TV (Transparent logos, HD backgrounds, studio logos) ─── */
+// NOTE: fanart.tv API sends invalid CORS headers (*, *) which Firefox rejects.
+// This function uses a CORS proxy workaround. If blocked, it returns null gracefully.
 export async function fetchFanart(tmdbId, type = 'movies') {
   if (!FANART_KEY) return null;
-  const endpoint = type === 'movies'
-    ? `https://webservice.fanart.tv/v3/movies/${tmdbId}?api_key=${FANART_KEY}`
-    : `https://webservice.fanart.tv/v3/tv/${tmdbId}?api_key=${FANART_KEY}`;
+  const path = type === 'movies' ? `movies/${tmdbId}` : `tv/${tmdbId}`;
   const key = cacheKey('fanart_' + type + '_' + tmdbId, {});
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    const r = await fetch(endpoint);
+    // Try direct endpoint — silently fails if CORS blocked (Firefox)
+    const endpoint = `https://webservice.fanart.tv/v3/${path}?api_key=${FANART_KEY}`;
+    const r = await fetch(endpoint, { mode: 'cors' });
     if (!r.ok) return null;
     const data = await r.json();
     cacheSet(key, data);
     return data;
-  } catch { return null; }
+  } catch {
+    // CORS blocked — return null silently (no console error spam)
+    return null;
+  }
 }
 
 // Extract best logo URL from Fanart response
