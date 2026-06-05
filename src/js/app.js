@@ -4042,18 +4042,44 @@ export async function openProviderPage(providerId, providerName) {
     });
   }
 
+  clearHoverTrailer();
+  // Provider network IDs for "Only on" rows (originals)
+  const PROVIDER_NETWORK_IDS = {
+    8:   213,  // Netflix
+    337: 2739, // Disney+
+    15:  453,  // Hulu
+    384: 49,   // Max / HBO
+    9:   1024, // Prime Video / Amazon
+    350: 2552, // Apple TV+
+    531: 4330, // Paramount+
+    386: 3353, // Peacock
+    283: 1655, // Crunchyroll
+  };
+  const networkId = PROVIDER_NETWORK_IDS[providerId];
+  const logoUrl = getProviderLogoUrl(providerName, 64);
+
   _openCompanyOverlay({
     name: providerName,
     subtitle: 'Streaming Provider',
-    logoUrl: getProviderLogoUrl(providerName, 64),
+    logoUrl,
     fetchFn: async () => {
-      const [movies, tv] = await Promise.allSettled([
+      // Fetch: popular movies, popular TV, top-rated, and originals in parallel
+      const [popMovies, popTv, topMovies, origMovies, origTv] = await Promise.allSettled([
         tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
         tmdb('/discover/tv',    { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
+        tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: 1 }),
+        networkId ? tmdb('/discover/movie', { with_networks: networkId, sort_by: 'popularity.desc', page: 1 }) : Promise.resolve({ results: [] }),
+        networkId ? tmdb('/discover/tv',    { with_networks: networkId, sort_by: 'popularity.desc', page: 1 }) : Promise.resolve({ results: [] }),
       ]);
-      const m = movies.status==='fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
-      const t = tv.status==='fulfilled'    ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
-      return { movies: m, tv: t };
+
+      const m  = popMovies.status==='fulfilled'  ? (popMovies.value.results||[]).map(x=>({...x,media_type:'movie'}))  : [];
+      const t  = popTv.status==='fulfilled'      ? (popTv.value.results||[]).map(x=>({...x,media_type:'tv'}))        : [];
+      const tr = topMovies.status==='fulfilled'  ? (topMovies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+      const om = origMovies.status==='fulfilled' ? (origMovies.value.results||[]).map(x=>({...x,media_type:'movie'})): [];
+      const ot = origTv.status==='fulfilled'     ? (origTv.value.results||[]).map(x=>({...x,media_type:'tv'}))      : [];
+      const originals = [...om, ...ot].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+
+      return { movies: m, tv: t, topRated: tr, originals };
     },
   });
 }
@@ -4225,26 +4251,53 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
       heroImg.src = data.backdropUrl; heroImg.style.display = '';
     }
 
-    const movies = data.movies || [];
-    const tv     = data.tv     || [];
-    const all    = [...movies, ...tv];
+    const movies    = data.movies    || [];
+    const tv        = data.tv        || [];
+    const topRated  = data.topRated  || [];
+    const originals = data.originals || [];
+    const all       = [...movies, ...tv];
 
-    // Row view
-    if (moviesRow) {
-      moviesRow.innerHTML = movies.length ? movies.slice(0,20).map(m => makeCard(m, m.media_type||'movie')).join('') : '<p style="padding:1rem;color:var(--muted)">No movies found</p>';
-      moviesRow.scrollLeft = 0;
-    }
-    if (moviesSec) moviesSec.style.display = movies.length ? '' : 'none';
-    if (tvRow && tv.length) {
-      tvRow.innerHTML = tv.slice(0,20).map(t => makeCard(t, t.media_type||'tv')).join('');
-      tvRow.scrollLeft = 0;
-      if (tvSec) tvSec.style.display = '';
+    // ── ROW VIEW: Multiple rows like home page ──────────────────────
+    const rowView = ov.querySelector('#company-row-view');
+    if (rowView) {
+      rowView.innerHTML = ''; // clear and rebuild with all rows
+
+      const makeRow = (rowId, secTitle, items, type) => {
+        if (!items.length) return '';
+        return `<div class="section">
+          <div class="sec-header"><div class="sec-title" style="font-size:1rem;font-weight:900">${esc(secTitle)}</div></div>
+          <div class="row-wrap">
+            <div class="row-arrow row-arrow-l hidden"><button data-scroll-row="${rowId}" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+            <div class="card-row" id="${rowId}">${items.slice(0,20).map(m => makeCard(m, m.media_type || type)).join('')}</div>
+            <div class="row-arrow row-arrow-r"><button data-scroll-row="${rowId}" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
+          </div>
+        </div>`;
+      };
+
+      // Build rows: Originals (if any), Popular, TV Shows, Top Rated, mixed
+      rowView.innerHTML = [
+        originals.length ? makeRow('cp-originals', `Only on ${name}`, originals, null) : '',
+        movies.length    ? makeRow('cp-movies',    'Popular Movies',  movies,    'movie') : '',
+        tv.length        ? makeRow('cp-tv',        'Popular Shows',   tv,        'tv')    : '',
+        topRated.length  ? makeRow('cp-toprated',  'Top Rated',       topRated,  'movie') : '',
+      ].filter(Boolean).join('') || '<p style="padding:2rem;color:var(--muted);text-align:center">No content found for this provider</p>';
+
+      // Wire scroll arrows
+      rowView.querySelectorAll('[data-scroll-row]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = rowView.querySelector(`#${btn.dataset.scrollRow}`);
+          if (row) {
+            const dir = +btn.dataset.scrollDir;
+            row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' });
+          }
+        });
+      });
     }
 
-    // Compact view
+    // ── COMPACT VIEW: all content in grid ──────────────────────────
     if (grid) {
       grid.innerHTML = all.length
-        ? all.slice(0,40).map(m => makeCard(m, m.media_type||'movie')).join('')
+        ? all.slice(0,48).map(m => makeCard(m, m.media_type||'movie')).join('')
         : '<p style="padding:1rem;color:var(--muted)">No content found</p>';
     }
   } catch (e) {
@@ -4466,26 +4519,27 @@ async function _enrichInfoPage(id, type, details, credits) {
     const collEl  = document.getElementById('info-collection-link');
     if (collSec) {
       collSec.style.display = '';
-      // Fetch the full collection and show movies in a horizontal row
+      // Show collection name as clickable link
+      if (collEl) {
+        collEl.textContent = `${col.name} →`;
+        collEl.dataset.collectionId = col.id;
+        collEl.style.display = '';
+        collEl.onclick = null;
+        collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
+      }
+      // Fetch the full collection and show movies in a compact horizontal row
       tmdb(`/collection/${col.id}`).then(colData => {
         const parts = (colData.parts || [])
           .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1);
         if (!parts.length) return;
-        // Build a mini row of collection films
         const collGrid = collSec.querySelector('#info-collection-grid');
         if (collGrid) {
-          collGrid.innerHTML = parts.map(m => makeCard({...m,media_type:'movie'},'movie')).join('');
+          // Use compact card style — override width with inline style wrapper
+          collGrid.innerHTML = `<div class="row-wrap" style="margin:0"><div class="card-row" style="gap:.4rem">${
+            parts.map(m => `<div style="flex-shrink:0;width:120px">${makeCard({...m,media_type:'movie'},'movie')}</div>`).join('')
+          }</div></div>`;
         }
-        if (collEl) {
-          collEl.textContent = col.name;
-          collEl.dataset.collectionId = col.id;
-          collEl.style.display = '';
-          collEl.onclick = null;
-          collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
-        }
-      }).catch(() => {
-        if (collEl) { collEl.innerHTML = `<span class="material-icons-round">collections</span>${esc(col.name)}`; collEl.style.display = ''; }
-      });
+      }).catch(() => {});
     }
   }
 }
@@ -5832,31 +5886,15 @@ async function showNetflixCard(card) {
 
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
-  // ── STEP 4: Load trailer — Dailymotion FIRST, YouTube fallback ──
-  // Race: DM result vs 2.5 second timeout
-  const dmResult = await Promise.race([
-    dmPromise,
-    new Promise(res => setTimeout(() => res(null), 2500)),
-  ]);
+  // ── STEP 4: Load trailer — YouTube immediately, DM replaces if found ──
+  // Strategy: YouTube loads instantly (no black screen), DM replaces it if/when found
+  if (!frame) { if (backdrop) backdrop.style.opacity = '1'; return; }
 
-  if (!_hoverActive || _hoverCurrentCard !== card) return;
-
-  if (dmResult?.embed_url && frame) {
-    // ✅ Dailymotion matched — show at reduced opacity while video loads
-    // DON'T set opacity 0 — that causes black screen. Let DM iframe layer on top.
-    if (backdrop) { backdrop.style.opacity = '0.35'; backdrop.style.transition = 'opacity .3s'; }
-    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-    frame.style.display = '';
-    // Fade backdrop further once DM likely started (3s delay, no postMessage API)
-    setTimeout(() => {
-      if (_hoverCurrentCard === card && _hoverActive) {
-        if (backdrop) backdrop.style.opacity = '0';
-      }
-    }, 3000);
-  } else if (frame && trailerKey && trailerKey !== '__none__') {
-    // ⟳ DM timed out or no match — use YouTube
+  if (trailerKey && trailerKey !== '__none__') {
+    // Load YouTube immediately — user sees something right away
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
     frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+    frame.style.display = '';
 
     // YouTube postMessage: hide backdrop when actually playing
     const ytMsgHandler = (e) => {
@@ -5864,25 +5902,43 @@ async function showNetflixCard(card) {
       try {
         const d = JSON.parse(e.data);
         if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
-          if (backdrop) backdrop.style.opacity = '0';
+          if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
           window.removeEventListener('message', ytMsgHandler);
         }
       } catch {}
     };
     window.addEventListener('message', ytMsgHandler);
 
-    // 6s failsafe: if YouTube still hasn't played, go to backdrop-only
+    // DM override: if DM finds a match within 3s, replace YouTube with DM
+    dmPromise.then(dmResult => {
+      if (!dmResult?.embed_url || !_hoverActive || _hoverCurrentCard !== card) return;
+      // Replace YouTube with Dailymotion
+      window.removeEventListener('message', ytMsgHandler);
+      if (backdrop) { backdrop.style.opacity = '0.3'; }
+      frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+      // Full fade after 2.5s (DM should be playing by then)
+      setTimeout(() => {
+        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
+      }, 2500);
+    }).catch(() => {});
+
+    // 8s failsafe
     setTimeout(() => {
       window.removeEventListener('message', ytMsgHandler);
-      if (backdrop && _hoverCurrentCard === card) {
-        if (frame) frame.removeAttribute('src');
-        if (backdrop) backdrop.style.opacity = '1';
-      }
-    }, 6000);
+    }, 8000);
+
   } else {
-    // No trailer at all — backdrop only, always visible
+    // No YouTube trailer — try DM only, then show backdrop
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.objectFit = 'cover'; }
-    if (frame) frame.removeAttribute('src');
+    dmPromise.then(dmResult => {
+      if (!dmResult?.embed_url || !_hoverActive || _hoverCurrentCard !== card) return;
+      if (backdrop) backdrop.style.opacity = '0.3';
+      frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+      frame.style.display = '';
+      setTimeout(() => {
+        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
+      }, 2500);
+    }).catch(() => {});
   }
 }
 
