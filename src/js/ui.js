@@ -136,6 +136,8 @@ export function renderRow(rowId, items, typeOverride, numbered = false) {
     return makeCard(m, t, { numbered: numbered ? i + 1 : undefined });
   }).join('');
 
+  // Always reset to start — prevents browser scroll-snap drift when cards replace skeletons
+  el.scrollLeft = 0;
   syncRowArrows(el);
   if (!el.dataset.arrowInit) {
     el.dataset.arrowInit = '1';

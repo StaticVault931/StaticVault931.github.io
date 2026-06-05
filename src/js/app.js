@@ -236,6 +236,15 @@ const SHORTCUTS = [
     }
   }, 4000);
 
+  // Force reload if NOTHING loads after 12 seconds (network failure, stale state)
+  setTimeout(() => {
+    const hasAnyCard = document.querySelector('#page-home .card');
+    if (!hasAnyCard && state.currentPage === 'home') {
+      console.warn('[SV] No content loaded after 12s — force reloading page');
+      location.reload();
+    }
+  }, 12000);
+
   // Idle cache warming — refresh cache silently when browser is idle
   // so next visit is always instant
   if ('requestIdleCallback' in window) {
@@ -305,11 +314,19 @@ const SHORTCUTS = [
   } else if (pageParam) {
     setTimeout(() => goPage(pageParam), 100);
   } else if (searchParam) {
-    setTimeout(() => {
+    const _triggerSearch = (attempts = 0) => {
       goPage('search');
       const inp = document.getElementById('search-input');
-      if (inp) { inp.value = searchParam; inp.dispatchEvent(new Event('input', { bubbles: true })); }
-    }, 100);
+      if (inp) {
+        inp.value = decodeURIComponent(searchParam.replace(/\+/g, ' '));
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        // Update URL to reflect the search without query param (avoids infinite reload)
+        history.replaceState({ page: 'search' }, '', location.pathname + '?page=search');
+      } else if (attempts < 8) {
+        setTimeout(() => _triggerSearch(attempts + 1), 200);
+      }
+    };
+    setTimeout(() => _triggerSearch(), 300);
   } else if (sp.get('person')) {
     const personId = +sp.get('person');
     if (personId > 0) {
@@ -740,19 +757,21 @@ async function loadHomeRows() {
   }
 }
 
-function _shuffleTrendingPosition() {
+function _moveTrendingDown() {
+  // Each view: move trending 2 positions lower in the page
+  // After enough views, reset to position 2 (just after For You)
   const trendSec = document.getElementById('sec-trending');
   if (!trendSec) return;
   const home = document.getElementById('page-home');
   if (!home) return;
-  // Get all section elements as anchors for trending placement
-  const sections = Array.from(home.querySelectorAll('.section')).filter(s => s.id !== 'sec-trending');
-  if (sections.length < 3) return;
-  // Pick a random position in the first 5 sections
-  const pos = Math.floor(Math.random() * Math.min(4, sections.length));
-  const anchor = sections[pos];
-  // Move trending before this anchor
-  try { home.insertBefore(trendSec, anchor); } catch {}
+  const sections = Array.from(home.querySelectorAll('.section:not(#sec-trending)'));
+  if (sections.length < 2) return;
+  const views = parseInt(sessionStorage.getItem('sv_trend_views') || '0');
+  // Position: starts at 1 (second section), moves down 2 per view, max at 8, then reset to 1
+  const maxPos = Math.min(8, sections.length - 1);
+  const targetPos = Math.min(1 + (views * 2), maxPos);
+  const anchor = sections[targetPos] || sections[sections.length - 1];
+  try { home.insertBefore(trendSec, anchor.nextSibling); } catch {}
 }
 
 async function _loadHomeRowsFresh(showSkeletons = false) {
@@ -772,17 +791,15 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   await Promise.allSettled([
     tmdb('/trending/all/week').then(d => {
       const allTrending = d.results || [];
-      const views = parseInt(sessionStorage.getItem('sv_trend_views') || '0');
-      // Rotate: every 2 views, shift by 2 positions
-      const offset = Math.min((views * 2) % Math.max(allTrending.length - 14, 1), allTrending.length - 14);
-      const items = allTrending.slice(offset, offset + 14);
+      // Keep authentic trending order — always show top 14 (position in page changes per view, not content)
+      const items = allTrending.slice(0, 14);
       items.forEach(m => _homeSeenIds.add(m.id));
       renderRow('row-trending', items, null, true);
       _saveRowCache('row-trending', items);
-      // Track trending views to rotate content over time
-      const trendViewKey = 'sv_trend_views';
-      const trendViews = (parseInt(sessionStorage.getItem(trendViewKey) || '0') + 1);
-      sessionStorage.setItem(trendViewKey, String(trendViews));
+      // Track view count and move trending row down 2 positions each view
+      const trendViews = (parseInt(sessionStorage.getItem('sv_trend_views') || '0') + 1);
+      sessionStorage.setItem('sv_trend_views', String(trendViews));
+      _moveTrendingDown(); // repositions trending based on view count
     }),
     loadForYou(),
   ]);
@@ -1010,21 +1027,19 @@ async function loadSeasonalRow() {
   if (secEl) secEl.style.display = '';
 
   if (theme.special === 'lgbtq') {
-    // TMDB LGBTQ+ keyword IDs: 158718 (gay), 210024 (lgbt), 209726 (coming out), 3799 (homosexuality), 155310 (bisexuality)
-    const lgbtqKeywords = '158718,210024,209726,3799,155310';
-    const pRng2 = state._randomPage || 1;
+    // Fetch known LGBTQ+ titles directly by TMDB ID — guaranteed to return content
+    const lgbtqMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 158852, 38787, 424694];
+    const lgbtqTvIds   = [125988, 80028, 81356, 68004, 62852, 1485, 13227, 84773];
     const lgbtqFetch = async () => {
-      const [movies, tv] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_keywords: lgbtqKeywords, sort_by: 'popularity.desc', 'vote_count.gte': 20, page: pRng2 }),
-        tmdb('/discover/tv', { with_keywords: lgbtqKeywords, sort_by: 'popularity.desc', page: pRng2 }),
-      ]);
-      const m = movies.status === 'fulfilled' ? (movies.value.results || []).map(x => ({...x, media_type: 'movie'})) : [];
-      const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({...x, media_type: 'tv'})) : [];
-      // Interleave movies and TV
-      const out = [];
-      const max = Math.max(m.length, t.length);
-      for (let i = 0; i < max; i++) { if (m[i]) out.push(m[i]); if (t[i]) out.push(t[i]); }
-      return out.slice(0, 16);
+      // Fetch details for hardcoded IDs in parallel (fast, guaranteed)
+      const movieFetches = lgbtqMovieIds.slice(0, 7).map(id => tmdb(`/movie/${id}`).then(r => ({...r, media_type: 'movie'})).catch(() => null));
+      const tvFetches    = lgbtqTvIds.slice(0, 6).map(id => tmdb(`/tv/${id}`).then(r => ({...r, media_type: 'tv'})).catch(() => null));
+      const results = await Promise.all([...movieFetches, ...tvFetches]);
+      const items = results.filter(Boolean);
+      if (items.length >= 8) return items;
+      // Fallback: discover with romance genre + LGBTQ keyword
+      const disc = await tmdb('/discover/movie', { with_genres: 10749, with_keywords: '158718,210024', sort_by: 'popularity.desc', 'vote_count.gte': 50 }).catch(() => ({ results: [] }));
+      return [...items, ...(disc.results || []).map(x => ({...x, media_type: 'movie'}))].slice(0, 16);
     };
     _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
     return;
@@ -3041,6 +3056,7 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   _homeSeenIds.clear();
   _homeLoading = false;
   _clearRowCache(); // force fresh fetch on next load
+  sessionStorage.removeItem('sv_trend_views'); // reset trending position to near-top
 
   // ALWAYS use a random page so refresh shows genuinely different content
   // Each refresh picks a new page (2-7) ensuring variety
@@ -3859,15 +3875,16 @@ function openPersonSearchForAvatar() {
           const featuredAvatars = [
             { url: 'favicon.png', name: 'SV931', special: 'sv931' },
             { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
-            { url: 'https://image.tmdb.org/t/p/w185/im9SAqJPZKEbVZGmjXuLI4O7RvM.jpg', name: 'Robert Downey Jr.' },
-            { url: 'https://image.tmdb.org/t/p/w185/lRoaHIr0uEw4BFTZ8oS9TbMIMeJ.jpg', name: 'Millie Bobby Brown' },
-            { url: 'https://image.tmdb.org/t/p/w185/8qBylBsQf4llkGrWR3qAsOtOU8O.jpg', name: 'Tom Cruise' },
-            { url: 'https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg', name: 'Leonardo DiCaprio' },
-            { url: 'https://image.tmdb.org/t/p/w185/beKhJGQVMiWdYbVKX4cQQqF9MpX.jpg', name: 'Zendaya' },
-            { url: 'https://image.tmdb.org/t/p/w185/rLSUjr725ez1cK7SKVxC9udO03Y.jpg', name: 'Ryan Reynolds' },
+            // Person IDs used: RDJ=3223, MBB=1373737, TC=2037, Leo=6193, Zendaya=1355642, RR=10859
+            { url: 'https://image.tmdb.org/t/p/w185/im9SAqJPZKEbVZGmjXuLI4O7RvM.jpg', name: 'Robert Downey Jr.', personId: 3223 },
+            { url: 'https://image.tmdb.org/t/p/w185/lRoaHIr0uEw4BFTZ8oS9TbMIMeJ.jpg', name: 'Millie Bobby Brown', personId: 1373737 },
+            { url: 'https://image.tmdb.org/t/p/w185/8qBylBsQf4llkGrWR3qAsOtOU8O.jpg', name: 'Tom Cruise', personId: 2037 },
+            { url: 'https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg', name: 'Leonardo DiCaprio', personId: 6193 },
+            { url: 'https://image.tmdb.org/t/p/w185/beKhJGQVMiWdYbVKX4cQQqF9MpX.jpg', name: 'Zendaya', personId: 1355642 },
+            { url: 'https://image.tmdb.org/t/p/w185/3lHMFgkNH9xEjkGzY3gBlDxJ4UA.jpg', name: 'Ryan Reynolds', personId: 10859 },
           ];
           return featuredAvatars.map(a =>
-            `<div class="avatar-option" data-url="${a.url}"${a.special ? ` data-special="${a.special}"` : ''} style="cursor:pointer;text-align:center;">
+            `<div class="avatar-option" data-url="${a.url}"${a.special ? ` data-special="${a.special}"` : ''}${a.personId ? ` data-person-id="${a.personId}"` : ''} style="cursor:pointer;text-align:center;">
               <img src="${a.url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);" alt="${a.name}">
               <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${a.name}</div>
             </div>`
@@ -3881,6 +3898,22 @@ function openPersonSearchForAvatar() {
       </div>
     </div>`;
   document.body.appendChild(picker);
+
+  // Fix broken avatar images by fetching current profile_path from TMDB
+  picker.querySelectorAll('.avatar-option[data-person-id] img').forEach(img => {
+    img.addEventListener('error', function onBroken() {
+      img.removeEventListener('error', onBroken);
+      const pid = img.closest('.avatar-option')?.dataset?.personId;
+      if (!pid) return;
+      tmdb(`/person/${pid}`).then(d => {
+        if (d.profile_path) {
+          const u = `https://image.tmdb.org/t/p/w185${d.profile_path}`;
+          img.src = u;
+          img.closest('.avatar-option').dataset.url = u;
+        }
+      }).catch(() => {});
+    }, { once: true });
+  });
 
   // Close
   picker.querySelector('#avatar-picker-close')?.addEventListener('click', () => picker.remove());
