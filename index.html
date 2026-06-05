@@ -864,29 +864,17 @@
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
   </div>
 
-  <!-- Provider & API Testing Section -->
+  <!-- Single combined Provider + API test section -->
   <div class="pref-section pref-section-full" id="provider-test-section" style="margin-top:2rem">
-    <h3><span class="material-icons-round">dns</span>Provider &amp; API Testing</h3>
-    <p class="pref-hint">Test which video sources and APIs are working for you. Results are specific to your browser and network.</p>
+    <h3><span class="material-icons-round">monitor_heart</span>Video Sources &amp; API Health</h3>
+    <p class="pref-hint">Test all video providers and external APIs in one click. Results are specific to your browser and network.</p>
     <div id="provider-test-grid" class="provider-test-grid"></div>
     <div class="pref-actions-row" style="margin-top:.75rem">
-      <button class="data-btn data-btn-primary" id="test-all-providers-cyf-btn">
-        <span class="material-icons-round">play_arrow</span>Test All Sources
-      </button>
-      <button class="data-btn" id="test-tmdb-btn">Test TMDB API</button>
-      <button class="data-btn" id="test-anilist-btn">Test AniList API</button>
-    </div>
-  </div>
-
-  <div class="pref-section pref-section-full" style="margin-top:1.5rem">
-    <h3><span class="material-icons-round">api</span>External API Status</h3>
-    <p class="pref-hint">Check which enrichment APIs are configured and working. OMDb, Fanart.tv, and Watchmode need API keys set in <code>src/js/api.js</code>.</p>
-    <div class="pref-actions-row" style="margin-top:.5rem">
-      <button class="data-btn data-btn-primary" id="test-all-apis-btn">
-        <span class="material-icons-round">check_circle</span>Test APIs
+      <button class="data-btn data-btn-primary" id="test-all-apis-btn" style="min-width:220px">
+        <span class="material-icons-round">play_circle</span>Test Everything
       </button>
     </div>
-    <div id="api-test-results"></div>
+    <div id="api-test-results" style="margin-top:.75rem"></div>
   </div>
 
   <div style="height:3rem"></div>

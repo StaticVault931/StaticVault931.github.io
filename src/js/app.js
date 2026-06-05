@@ -1740,49 +1740,54 @@ function buildProviderTestUI() {
 
   // Test APIs button
   // Combined: test providers AND APIs in one click
-  document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', async () => {
-    // Redirect to api test
-    document.getElementById('test-all-apis-btn')?.click();
-  });
-  document.getElementById('test-all-apis-btn')?.addEventListener('click', async () => {
+  // Single "Test Everything" button — tests both providers and APIs
+  const _runAllTests = async () => {
     const btn = document.getElementById('test-all-apis-btn');
     const output = document.getElementById('api-test-results');
     if (!btn || !output) return;
+    if (btn.disabled) return; // prevent double-click
     btn.disabled = true;
-    btn.innerHTML = '<span class="material-icons-round" style="font-size:.8rem;animation:spin 1s linear infinite">refresh</span> Testing all…';
+    btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;font-size:.9rem">refresh</span> Testing…';
     output.style.display = 'block';
-    output.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:.5rem">Running all API and provider checks…</div>';
+    output.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:.5rem">Running all checks — providers and APIs…</div>';
+
     try {
+      // Test video providers first (fast)
+      if (typeof window._testProv === 'function') {
+        PROVIDERS.forEach(p => window._testProv(p.id));
+      }
+
+      // Then test all external APIs
       const apiResults = await testAllAPIs();
-      const okCount = apiResults.filter(r => r.status === 'ok').length;
-      const errCount = apiResults.filter(r => r.status === 'error').length;
+      const okCount   = apiResults.filter(r => r.status === 'ok').length;
+      const errCount  = apiResults.filter(r => r.status === 'error').length;
       const missCount = apiResults.filter(r => r.status === 'missing').length;
 
       output.innerHTML = `
-        <div style="display:flex;gap:.75rem;align-items:center;padding:.5rem 0 .75rem;border-bottom:1px solid var(--border);margin-bottom:.5rem">
-          <span style="color:#22c55e;font-weight:800;font-size:.82rem">✅ ${okCount} working</span>
-          ${errCount ? `<span style="color:#f87171;font-weight:800;font-size:.82rem">❌ ${errCount} failed</span>` : ''}
-          ${missCount ? `<span style="color:#f59e0b;font-weight:800;font-size:.82rem">⚠️ ${missCount} no key</span>` : ''}
+        <div style="display:flex;gap:.65rem;align-items:center;padding:.4rem 0 .65rem;border-bottom:1px solid var(--border);margin-bottom:.4rem;flex-wrap:wrap">
+          <span style="font-size:.75rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-right:.3rem">External APIs</span>
+          <span style="color:#22c55e;font-weight:800;font-size:.78rem">✅ ${okCount} working</span>
+          ${errCount  ? `<span style="color:#f87171;font-weight:800;font-size:.78rem">❌ ${errCount} failed</span>`  : ''}
+          ${missCount ? `<span style="color:#f59e0b;font-weight:800;font-size:.78rem">⚠️ ${missCount} no key</span>` : ''}
         </div>
         ${apiResults.map(r => {
-          const icon = r.status === 'ok' ? '✅' : r.status === 'missing' ? '⚠️' : '❌';
+          const icon  = r.status === 'ok' ? '✅' : r.status === 'missing' ? '⚠️' : '❌';
           const color = r.status === 'ok' ? '#22c55e' : r.status === 'missing' ? '#f59e0b' : '#f87171';
-          return `<div style="display:flex;align-items:center;gap:.5rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem;">
-            <span style="width:18px">${icon}</span>
-            <span style="font-weight:800;min-width:120px;color:var(--text)">${r.name}</span>
-            <span style="color:${color}">${r.note}</span>
+          return `<div style="display:flex;align-items:center;gap:.45rem;padding:.22rem 0;border-bottom:1px solid var(--border);font-size:.74rem;">
+            <span style="width:16px;flex-shrink:0">${icon}</span>
+            <span style="font-weight:800;min-width:115px;color:var(--text)">${r.name}</span>
+            <span style="color:${color};flex:1">${r.note}</span>
           </div>`;
         }).join('')}`;
     } catch (e) {
       output.innerHTML = `<div style="color:#f87171;padding:.5rem">Test failed: ${e.message}</div>`;
     }
     btn.disabled = false;
-    btn.innerHTML = '<span class="material-icons-round">check_circle</span> Test APIs';
-  });
+    btn.innerHTML = '<span class="material-icons-round">play_circle</span>Test Everything';
+  };
 
-  document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', () => {
-    PROVIDERS.forEach(p => window._testProv(p.id));
-  });
+  document.getElementById('test-all-apis-btn')?.addEventListener('click', _runAllTests);
+  document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', _runAllTests);
 }
 
 function buildAgeRatingUI() {
@@ -3564,6 +3569,7 @@ function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
 }
 
 export async function openInfoPage(id, type, hint = {}) {
+  clearHoverTrailer(); // stop hover trailer before opening info page
   // Close other overlays first — only one overlay open at a time
   document.getElementById('person-overlay')?.classList.remove('open');
   document.getElementById('company-overlay')?.classList.remove('open');
@@ -3607,7 +3613,7 @@ export async function openInfoPage(id, type, hint = {}) {
       credits = { cast: details._cast || [] };
     } else {
       [details, credits] = await Promise.all([
-        tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,keywords,release_dates,content_ratings' }),
+        tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,keywords,release_dates,content_ratings,next_episode_to_air' }),
         tmdb(`/${type}/${id}/credits`),
       ]);
     }
@@ -3653,12 +3659,21 @@ export async function openInfoPage(id, type, hint = {}) {
     const metaEl = document.getElementById('info-meta');
     if (metaEl) {
       const parts = [];
+      // Runtime / episodes per episode
+      const epRuntime = details.episode_run_time?.[0];
       if (details.runtime) {
         const h = Math.floor(details.runtime / 60), m = details.runtime % 60;
         parts.push(h > 0 ? `${h}h ${m}m` : `${m}m`);
+      } else if (epRuntime) {
+        parts.push(`~${epRuntime}m / ep`);
       }
+      // TV-specific
       if (details.number_of_seasons) parts.push(`${details.number_of_seasons} Season${details.number_of_seasons > 1 ? 's' : ''}`);
+      if (details.number_of_episodes) parts.push(`${details.number_of_episodes} Episodes`);
+      if (details.first_air_date && type === 'tv') parts.push(details.first_air_date.slice(0, 4));
       if (details.status) parts.push(details.status);
+      // Release year for movies
+      if (type === 'movie' && details.release_date) parts.push(details.release_date.slice(0, 4));
       const genres = (details.genres || []).slice(0, 4).map(g => `<span class="info-genre">${esc(g.name)}</span>`).join('');
       metaEl.innerHTML = parts.map(p => `<span class="info-meta-item">${esc(p)}</span>`).join('') + (genres ? `<div class="info-genres">${genres}</div>` : '');
     }
@@ -3724,6 +3739,10 @@ export async function openInfoPage(id, type, hint = {}) {
             ${prodCos ? `<div class="info-detail-row"><span class="info-detail-key">Studio</span><span class="info-detail-val">${(details.production_companies||[]).slice(0,2).map(c=>`<span class="info-studio-link" data-company-id="${c.id}" data-company-type="company">${esc(c.name)}</span>`).join(', ')}</span></div>` : ''}
             ${budget ? `<div class="info-detail-row"><span class="info-detail-key">Budget</span><span class="info-detail-val">${budget}</span></div>` : ''}
             ${revenue ? `<div class="info-detail-row"><span class="info-detail-key">Revenue</span><span class="info-detail-val">${revenue}</span></div>` : ''}
+            ${details.last_air_date ? `<div class="info-detail-row"><span class="info-detail-key">Last Air Date</span><span class="info-detail-val">${esc(details.last_air_date)}</span></div>` : ''}
+            ${details.next_episode_to_air?.air_date ? `<div class="info-detail-row"><span class="info-detail-key">Next Episode</span><span class="info-detail-val" style="color:#22c55e">${esc(details.next_episode_to_air.air_date)}</span></div>` : ''}
+            ${details.in_production === true ? `<div class="info-detail-row"><span class="info-detail-key">Status</span><span class="info-detail-val" style="color:#22c55e">🟢 In Production</span></div>` : ''}
+            ${details.type && type === 'tv' ? `<div class="info-detail-row"><span class="info-detail-key">Show Type</span><span class="info-detail-val">${esc(details.type)}</span></div>` : ''}
           </div>
         </div>`;
     }
@@ -4108,6 +4127,8 @@ export async function openCollectionPage(collectionId, collectionName) {
 
 /* ── UNIFIED COMPANY / PROVIDER / COLLECTION OVERLAY ─────────────── */
 async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
+  // Stop hover trailer immediately — don't let it play behind the overlay
+  clearHoverTrailer();
   const ov = document.getElementById('company-overlay');
   if (!ov) return;
   ov.classList.add('open');
@@ -4277,7 +4298,8 @@ async function _enrichInfoPage(id, type, details, credits) {
   if (imdbId) {
     if (showRatings) fetchOMDb(imdbId).then(omdb => {
       if (!omdb || omdb.Response === 'False') return;
-      // Rotten Tomatoes: make sure it shows (was missing before)
+      // In dev/test mode, show which API sourced each piece of data
+      const isDevMode = document.body.classList.contains('test-mode');
 
       // Rating pills row (IMDb / RT / Metacritic)
       const ratingsEl = document.getElementById('info-multi-ratings');
@@ -4312,7 +4334,14 @@ async function _enrichInfoPage(id, type, details, credits) {
           </div>` : '',
         ].filter(Boolean).join('');
 
-        if (pills) { ratingsEl.innerHTML = pills; ratingsEl.style.display = ''; }
+        if (pills) {
+          // In dev mode: show source label
+          const sourceLabel = isDevMode
+            ? `<span style="font-size:.6rem;background:rgba(245,197,24,.15);color:#f5c518;padding:.06rem .35rem;border-radius:3px;font-weight:700;align-self:center;margin-left:.3rem">via OMDb</span>`
+            : '';
+          ratingsEl.innerHTML = pills + sourceLabel;
+          ratingsEl.style.display = '';
+        }
       }
 
       // Awards banner (only if nominated/won something meaningful)
@@ -5813,10 +5842,17 @@ async function showNetflixCard(card) {
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
   if (dmResult?.embed_url && frame) {
-    // ✅ Dailymotion matched — use it immediately
-    if (backdrop) backdrop.style.opacity = '0';
-    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1&ui-logo=0`;
+    // ✅ Dailymotion matched — show at reduced opacity while video loads
+    // DON'T set opacity 0 — that causes black screen. Let DM iframe layer on top.
+    if (backdrop) { backdrop.style.opacity = '0.35'; backdrop.style.transition = 'opacity .3s'; }
+    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
     frame.style.display = '';
+    // Fade backdrop further once DM likely started (3s delay, no postMessage API)
+    setTimeout(() => {
+      if (_hoverCurrentCard === card && _hoverActive) {
+        if (backdrop) backdrop.style.opacity = '0';
+      }
+    }, 3000);
   } else if (frame && trailerKey && trailerKey !== '__none__') {
     // ⟳ DM timed out or no match — use YouTube
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
@@ -5838,13 +5874,13 @@ async function showNetflixCard(card) {
     // 6s failsafe: if YouTube still hasn't played, go to backdrop-only
     setTimeout(() => {
       window.removeEventListener('message', ytMsgHandler);
-      if (backdrop?.style.opacity === '1' && _hoverCurrentCard === card) {
+      if (backdrop && _hoverCurrentCard === card) {
         if (frame) frame.removeAttribute('src');
-        backdrop.style.opacity = '1';
+        if (backdrop) backdrop.style.opacity = '1';
       }
     }, 6000);
   } else {
-    // No trailer at all — backdrop only
+    // No trailer at all — backdrop only, always visible
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.objectFit = 'cover'; }
     if (frame) frame.removeAttribute('src');
   }
