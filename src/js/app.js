@@ -994,9 +994,24 @@ async function loadSeasonalRow() {
   if (secEl) secEl.style.display = '';
 
   if (theme.special === 'lgbtq') {
-    const params2 = { with_keywords: '158718', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: state._randomPage || 1 };
-    _scheduleRowLoad('row-seasonal', null, () => tmdb('/discover/movie', params2).then(d => d.results || []), 'movie');
-    return; // skip the normal path
+    // TMDB LGBTQ+ keyword IDs: 158718 (gay), 210024 (lgbt), 209726 (coming out), 3799 (homosexuality), 155310 (bisexuality)
+    const lgbtqKeywords = '158718,210024,209726,3799,155310';
+    const pRng2 = state._randomPage || 1;
+    const lgbtqFetch = async () => {
+      const [movies, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_keywords: lgbtqKeywords, sort_by: 'popularity.desc', 'vote_count.gte': 20, page: pRng2 }),
+        tmdb('/discover/tv', { with_keywords: lgbtqKeywords, sort_by: 'popularity.desc', page: pRng2 }),
+      ]);
+      const m = movies.status === 'fulfilled' ? (movies.value.results || []).map(x => ({...x, media_type: 'movie'})) : [];
+      const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({...x, media_type: 'tv'})) : [];
+      // Interleave movies and TV
+      const out = [];
+      const max = Math.max(m.length, t.length);
+      for (let i = 0; i < max; i++) { if (m[i]) out.push(m[i]); if (t[i]) out.push(t[i]); }
+      return out.slice(0, 16);
+    };
+    _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
+    return;
   }
 
   const params = {
@@ -3367,6 +3382,12 @@ export async function openPersonPage(personId) {
       photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w185') : '';
       photoEl.style.display = person.profile_path ? '' : 'none';
     }
+    // SEO: update page title and meta for person pages
+    document.title = `${person.name} — Films & TV — StaticVault931`;
+    document.querySelector('meta[name="description"]')?.setAttribute('content',
+      `See all movies and TV shows featuring ${person.name}. ${person.biography?.slice(0,100) || ''}`);
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${location.origin}/?person=${personId}`);
     if (metaEl) {
       const dept = person.known_for_department || '';
       const bday = person.birthday?.slice(0, 4) || '';
@@ -4632,6 +4653,16 @@ function initKeyboard() {
     const row = e.target.closest('.card-row');
     if (row) _lastHoveredRow = row;
   }, { passive: true });
+
+  // Intercept Ctrl+F / Cmd+F to open app search instead of browser find
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault(); // stop browser find
+      goPage('search');
+      setTimeout(() => document.getElementById('search-input')?.focus(), 100);
+      return;
+    }
+  });
 
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;

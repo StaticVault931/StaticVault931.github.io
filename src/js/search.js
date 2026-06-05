@@ -473,7 +473,53 @@ export async function doSearch(q) {
   if (!area) return;
 
   addRecentSearch(q);
-  if (checkSearchEasterEgg(q)) return; // stop if easter egg found
+  if (checkSearchEasterEgg?.(q)) return; // stop if easter egg found
+
+  // ── :topic SEARCH ──────────────────────────────────────────────────
+  // Prefix with : to search by topic/keyword instead of title
+  // e.g. ":funny" ":coming out" ":space adventure"
+  if (q.startsWith(':')) {
+    const topic = q.slice(1).trim();
+    if (!topic) return;
+    area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
+    try {
+      // Search TMDB keywords
+      const kwRes = await tmdb('/search/keyword', { query: topic });
+      const keywords = (kwRes.results || []).slice(0, 5);
+      
+      let allItems = [];
+      const existIds = new Set();
+      
+      for (const kw of keywords) {
+        const [mv, tv] = await Promise.allSettled([
+          tmdb('/discover/movie', { with_keywords: kw.id, sort_by: 'popularity.desc', 'vote_count.gte': 30 }),
+          tmdb('/discover/tv', { with_keywords: kw.id, sort_by: 'popularity.desc' }),
+        ]);
+        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'movie', _keyword: kw.name}); existIds.add(m.id); }});
+        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'tv', _keyword: kw.name}); existIds.add(m.id); }});
+      }
+      
+      allItems.sort((a,b) => (b.popularity||0) - (a.popularity||0));
+      
+      if (!allItems.length) {
+        area.innerHTML = `<div class="search-empty"><span class="material-icons-round">search_off</span><p>No topic results for "<strong>${esc(topic)}</strong>"</p><p class="muted-note">Try different keywords like :funny, :space, :romance</p></div>`;
+        return;
+      }
+      
+      const matched = keywords.map(k => k.name).filter(Boolean).join(', ');
+      area.innerHTML = `
+        <div class="search-did-you-mean" style="border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.08);color:#a78bfa">
+          <span class="material-icons-round">tag</span>
+          <span>Topic search: matching <strong>${esc(matched)}</strong></span>
+          <span style="font-size:.72rem;color:var(--dim);margin-left:auto">Tip: Use : prefix to search by topic</span>
+        </div>
+        <div class="search-section-title"><span class="material-icons-round">auto_awesome</span> "${esc(topic)}" — ${allItems.length} results</div>
+        <div class="search-grid">${allItems.slice(0,24).map(m => makeCard(m, m._type)).join('')}</div>`;
+    } catch {
+      area.innerHTML = `<div class="search-empty"><span class="material-icons-round">wifi_off</span><p>Topic search failed.</p></div>`;
+    }
+    return;
+  }
   _searchState = { query: q, page: 1, results: [], loading: true, done: false };
 
   try {
