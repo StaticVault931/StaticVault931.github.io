@@ -197,7 +197,7 @@ export function clearSection(key, label) {
 
 export function clearAllData() {
   const keys = ['watchlist', 'liked', 'disliked', 'recentlyViewed', 'continueWatching',
-    'prefLikes', 'prefDislikes', 'prefGenres'];
+    'prefLikes', 'prefDislikes', 'prefGenres', 'prefTagLikes', 'prefTagDislikes'];
   keys.forEach(k => {
     state[k] = Array.isArray(state[k]) ? [] : {};
     persist(k);

@@ -66,6 +66,8 @@ export const state = {
   prefLikes:    load('sv_pref_likes', []),    // [{id,type,title,poster,score}]
   prefDislikes: load('sv_pref_dislikes', []), // [{id,type,title,poster}]
   prefGenres:   load('sv_pref_genres', []),   // [genreId]
+  prefTagLikes:    load('sv_pref_tag_likes', []),    // [{id,name}] — liked TMDB keywords
+  prefTagDislikes: load('sv_pref_tag_dislikes', []), // [{id,name}] — disliked TMDB keywords
   lastProvider: load('sv_last_provider', 'vidsrc'),
 
   // Per-account settings
@@ -94,8 +96,10 @@ const PERSIST_MAP = {
   ageRating:        'sv_age',
   prefLikes:        'sv_pref_likes',
   prefDislikes:     'sv_pref_dislikes',
-  prefGenres:       'sv_pref_genres',
-  lastProvider:         'sv_last_provider',
+  prefGenres:         'sv_pref_genres',
+  prefTagLikes:       'sv_pref_tag_likes',
+  prefTagDislikes:    'sv_pref_tag_dislikes',
+  lastProvider:       'sv_last_provider',
   disabledShortcuts:    'sv_disabled_shortcuts',
 };
 
@@ -211,6 +215,45 @@ export function getImpressionPenalty(id) {
   const count = state.impressions[id] || 0;
   // After 20 unseen impressions, penalize. Linear penalty up to -5 at 100 impressions.
   return Math.min(5, Math.max(0, (count - 20) / 16));
+}
+
+/* ── TAG PREFERENCES ─────────────────────────────────────────────── */
+export function isTagLiked(id) { return state.prefTagLikes.some(x => x.id == id); }
+export function isTagDisliked(id) { return state.prefTagDislikes.some(x => x.id == id); }
+
+export function toggleTagLike(tag) {
+  // tag = {id, name}
+  // If already liked, remove. If disliked, move to liked. Else add to liked.
+  const disIdx = state.prefTagDislikes.findIndex(x => x.id == tag.id);
+  if (disIdx >= 0) { state.prefTagDislikes.splice(disIdx, 1); persist('prefTagDislikes'); }
+
+  const likeIdx = state.prefTagLikes.findIndex(x => x.id == tag.id);
+  if (likeIdx >= 0) {
+    state.prefTagLikes.splice(likeIdx, 1);
+    persist('prefTagLikes');
+    return false; // removed
+  }
+  state.prefTagLikes.push({ id: tag.id, name: tag.name });
+  if (state.prefTagLikes.length > 40) state.prefTagLikes = state.prefTagLikes.slice(-40);
+  persist('prefTagLikes');
+  return true; // added
+}
+
+export function toggleTagDislike(tag) {
+  // tag = {id, name}
+  const likeIdx = state.prefTagLikes.findIndex(x => x.id == tag.id);
+  if (likeIdx >= 0) { state.prefTagLikes.splice(likeIdx, 1); persist('prefTagLikes'); }
+
+  const disIdx = state.prefTagDislikes.findIndex(x => x.id == tag.id);
+  if (disIdx >= 0) {
+    state.prefTagDislikes.splice(disIdx, 1);
+    persist('prefTagDislikes');
+    return false; // removed
+  }
+  state.prefTagDislikes.push({ id: tag.id, name: tag.name });
+  if (state.prefTagDislikes.length > 40) state.prefTagDislikes = state.prefTagDislikes.slice(-40);
+  persist('prefTagDislikes');
+  return true; // added
 }
 
 /* ── RECENT SEARCHES ─────────────────────────────────────────────── */

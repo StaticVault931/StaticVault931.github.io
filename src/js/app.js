@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
@@ -1672,6 +1672,7 @@ function syncLikedToPrefLikes() {
 function loadPrefsPage() {
   syncLikedToPrefLikes();
   renderPrefLists();
+  renderTagPrefsSection();
   buildRatingDescriptions();
   buildGenreChips('pref-genres', GENRES, (id, _name, chipEl) => {
     const i = state.prefGenres.indexOf(id);
@@ -2074,6 +2075,77 @@ function renderPrefLists() {
         </button>
       </div>`).join('') || '<p class="muted-note" style="font-size:.8rem">No disliked titles yet.</p>';
   }
+}
+
+/* ── TAG PREFS SECTION ───────────────────────────────────────────── */
+function renderTagPrefsSection() {
+  const sec = document.getElementById('pref-tags-section');
+  if (!sec) return;
+
+  const likes    = state.prefTagLikes;
+  const dislikes = state.prefTagDislikes;
+
+  if (!likes.length && !dislikes.length) {
+    sec.innerHTML = `<p class="muted-note" style="font-size:.8rem;padding:.4rem 0">No tag preferences yet. Open any title and click a keyword tag to like or dislike it.</p>`;
+    return;
+  }
+
+  const likeChips = likes.map(t =>
+    `<span class="pref-keyword-chip liked" data-tag-id="${t.id}" data-tag-type="like">
+      <span class="material-icons-round" style="font-size:.7rem;color:#4ade80">favorite</span>
+      ${esc(t.name)}
+      <button class="pref-kw-remove" data-remove-tag-like="${t.id}" aria-label="Remove">
+        <span class="material-icons-round">close</span>
+      </button>
+    </span>`
+  ).join('');
+
+  const dislikeChips = dislikes.map(t =>
+    `<span class="pref-keyword-chip disliked" data-tag-id="${t.id}" data-tag-type="dislike">
+      <span class="material-icons-round" style="font-size:.7rem;color:#f87171">thumb_down</span>
+      ${esc(t.name)}
+      <button class="pref-kw-remove" data-remove-tag-dislike="${t.id}" aria-label="Remove">
+        <span class="material-icons-round">close</span>
+      </button>
+    </span>`
+  ).join('');
+
+  sec.innerHTML = `
+    ${likes.length ? `
+      <div class="pref-tag-subhead">
+        <span class="material-icons-round" style="color:#4ade80;font-size:.9rem">favorite</span>
+        Liked Tags
+      </div>
+      <div class="pref-keyword-row">${likeChips}</div>
+    ` : ''}
+    ${dislikes.length ? `
+      <div class="pref-tag-subhead" style="margin-top:${likes.length ? '.8rem' : '0'}">
+        <span class="material-icons-round" style="color:#f87171;font-size:.9rem">thumb_down</span>
+        Disliked Tags
+      </div>
+      <div class="pref-keyword-row">${dislikeChips}</div>
+    ` : ''}
+  `;
+
+  // Wire remove buttons
+  sec.querySelectorAll('[data-remove-tag-like]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tagId = +btn.dataset.removeTagLike;
+      state.prefTagLikes = state.prefTagLikes.filter(t => t.id !== tagId);
+      persist('prefTagLikes');
+      renderTagPrefsSection();
+    });
+  });
+  sec.querySelectorAll('[data-remove-tag-dislike]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tagId = +btn.dataset.removeTagDislike;
+      state.prefTagDislikes = state.prefTagDislikes.filter(t => t.id !== tagId);
+      persist('prefTagDislikes');
+      renderTagPrefsSection();
+    });
+  });
 }
 
 /* ── PREF AUTOCOMPLETE ───────────────────────────────────────────── */
@@ -2829,6 +2901,13 @@ function initEventDelegation() {
       renderPrefLists(); toast('Titles I Dislike cleared', 'thumb_down_off_alt');
     }
   });
+  document.getElementById('btn-clear-tag-prefs')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Tag Preferences', 'Remove all liked and disliked tag preferences?')) {
+      state.prefTagLikes = []; persist('prefTagLikes');
+      state.prefTagDislikes = []; persist('prefTagDislikes');
+      renderTagPrefsSection(); toast('Tag preferences cleared', 'tag');
+    }
+  });
   document.getElementById('btn-reset-all')?.addEventListener('click', async () => {
     if (await showConfirm('Reset ALL Data', 'This permanently clears EVERYTHING: watchlist, liked, history, preferences, settings. Cannot be undone.')) clearAllData();
   });
@@ -2896,6 +2975,8 @@ function initEventDelegation() {
       prefLikes:        state.prefLikes,
       prefDislikes:     state.prefDislikes,
       prefGenres:       state.prefGenres,
+      prefTagLikes:     state.prefTagLikes,
+      prefTagDislikes:  state.prefTagDislikes,
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
     };
@@ -2938,6 +3019,8 @@ function initEventDelegation() {
         if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
         if (data.prefDislikes)     { state.prefDislikes = merge(state.prefDislikes, data.prefDislikes); persist('prefDislikes'); }
         if (data.prefGenres)       { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
+        if (data.prefTagLikes)     { state.prefTagLikes = merge(state.prefTagLikes, data.prefTagLikes); persist('prefTagLikes'); }
+        if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
         if (data.continueWatching) {
           Object.assign(state.continueWatching, data.continueWatching);
           persist('continueWatching');
@@ -3802,25 +3885,25 @@ export async function openInfoPage(id, type, hint = {}) {
     if (trailerKey && trailerWrap) {
       trailerWrap.style.cursor = 'default';
       if (trailerFallback) trailerFallback.style.display = 'none';
-      // Info page trailer: try DM first, fall back to YouTube
+      // ── Guard: save a token so stale async callbacks don't clobber a newer open ──
+      const _trailerToken = id; // the TMDB id of this open
       const _infoTitle = (title || '').replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
+      // DM first (non-blocking) — check token before setting src
       fetchDailymotionTrailer(`${_infoTitle} ${year}`).then(dmVid => {
         if (!trailerFrame) return;
+        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale — new item opened
         if (dmVid?.embed_url) {
-          // Use Dailymotion
           trailerFrame.style.display = '';
           trailerFrame.src = `${dmVid.embed_url.split('?')[0]}?autoplay=1&mute=0`;
         } else {
-          // Fall back to YouTube
           trailerFrame.style.display = '';
           trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
         }
       }).catch(() => {
-        // DM failed — use YouTube
-        if (trailerFrame) {
-          trailerFrame.style.display = '';
-          trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-        }
+        if (!trailerFrame) return;
+        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale
+        trailerFrame.style.display = '';
+        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
       });
 
       // Detect Error 153 / failed trailer and show backdrop image instead
@@ -3831,33 +3914,35 @@ export async function openInfoPage(id, type, hint = {}) {
           if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
             window.removeEventListener('message', infoMsgHandler);
             clearTimeout(infoTrailerTimer);
-            _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+            if (state.currentInfoMedia?.id === _trailerToken)
+              _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
           }
         } catch {}
       };
       window.addEventListener('message', infoMsgHandler);
       const infoTrailerTimer = setTimeout(async () => {
         window.removeEventListener('message', infoMsgHandler);
+        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale
         if (trailerFallback?.style.display !== '' && trailerFrame?.src) {
           // TMDB trailer failed — try tv-api.com as backup
           const imdbIdForTrailer = details.imdb_id ||
             (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
           if (imdbIdForTrailer) {
             const ytData = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
-            if (ytData?.videoId) {
+            if (ytData?.videoId && state.currentInfoMedia?.id === _trailerToken) {
               if (trailerFrame) {
                 trailerFrame.src = `https://www.youtube.com/embed/${ytData.videoId}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-                return; // give it a chance
+                return;
               }
             }
-            // tv-api didn't have it — try Dailymotion
             const dmVideo = await fetchDailymotionTrailer(`${title} ${String(details.release_date||'').slice(0,4)}`).catch(() => null);
-            if (dmVideo?.embed_url && trailerFrame) {
+            if (dmVideo?.embed_url && trailerFrame && state.currentInfoMedia?.id === _trailerToken) {
               trailerFrame.src = dmVideo.embed_url;
               return;
             }
           }
-          _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+          if (state.currentInfoMedia?.id === _trailerToken)
+            _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
         }
       }, 7000);
     } else {
@@ -4062,17 +4147,33 @@ export async function openProviderPage(providerId, providerName) {
 
   clearHoverTrailer();
 
-  // TMDB network IDs for "Only on X" originals rows
+  // TMDB network IDs for "Originals & Exclusives" rows
+  // Using network IDs is the most accurate way to find originals on TMDB
   const PROVIDER_NETWORK_IDS = {
-    8:213, 337:2739, 15:453, 384:49, 9:1024,
-    350:2552, 531:4330, 386:3353, 283:1655,
+    8:    213,   // Netflix
+    337:  2739,  // Disney+
+    15:   453,   // Hulu
+    384:  49,    // Max (HBO)
+    1899: 49,    // Max (alt ID)
+    9:    1024,  // Prime Video
+    350:  2552,  // Apple TV+
+    2:    2552,  // Apple TV (alt)
+    531:  4330,  // Paramount+
+    386:  3353,  // Peacock
+    283:  1655,  // Crunchyroll
+    8:    213,   // Netflix
+    37:   2,     // Showtime
+    43:   67,    // Starz
+    123:  318,   // Shudder
+    39:   174,   // AMC
+    11:   174,   // AMC (alt)
   };
   const networkId  = PROVIDER_NETWORK_IDS[providerId];
   const logoUrl    = getProviderLogoUrl(providerName, 48);
   const base       = { with_watch_providers: providerId, watch_region: 'US' };
   const provPageId = 'page-provider';
 
-  // Known providers for the switcher bar
+  // Known providers for the switcher bar — expanded to cover more services
   const KNOWN_PROVIDERS = [
     { id:8,   name:'Netflix',       domain:'netflix.com' },
     { id:337, name:'Disney+',       domain:'disneyplus.com' },
@@ -4083,6 +4184,12 @@ export async function openProviderPage(providerId, providerName) {
     { id:531, name:'Paramount+',    domain:'paramountplus.com' },
     { id:386, name:'Peacock',       domain:'peacocktv.com' },
     { id:283, name:'Crunchyroll',   domain:'crunchyroll.com' },
+    { id:37,  name:'Showtime',      domain:'showtime.com' },
+    { id:43,  name:'Starz',         domain:'starz.com' },
+    { id:387, name:'Mubi',          domain:'mubi.com' },
+    { id:73,  name:'Tubi',          domain:'tubi.tv' },
+    { id:300, name:'BritBox',       domain:'britbox.com' },
+    { id:123, name:'Shudder',       domain:'shudder.com' },
   ];
 
   // ── Create provider page if needed ──
@@ -4236,7 +4343,7 @@ export async function openProviderPage(providerId, providerName) {
 
     const rows = [
       forYou.length     ? makeHomeRow('auto_awesome',          '#a78bfa', `For You on ${providerName}`, 'pv-foryou',     forYou,     null)    : '',
-      originals.length  ? makeHomeRow('star',                  '#f5c518', `Only on ${providerName}`,    'pv-originals',  originals,  null)    : '',
+      originals.length  ? makeHomeRow('star',                  '#f5c518', `${providerName} Originals & Exclusives`, 'pv-originals', originals, null) : '',
       mix(popMovies,popTv).length ? makeHomeRow('local_fire_department','#f97316',`Trending on ${providerName}`,'pv-trending',mix(popMovies,popTv),''):'',
       popMovies.length  ? makeHomeRow('movie',                 '',        'Popular Movies',              'pv-pop-movies', popMovies,  'movie') : '',
       popTv.length      ? makeHomeRow('tv',                    '',        'Popular Shows',               'pv-pop-tv',     popTv,      'tv')    : '',
@@ -4562,6 +4669,45 @@ async function _enrichInfoPage(id, type, details, credits) {
     return;
   }
 
+  // ── TV show aggregate_credits: adds directors/writers/crew ──────────
+  // For TV shows, individual episode directors aren't in /credits — use aggregate_credits
+  if (type === 'tv' && credits) {
+    tmdb(`/tv/${id}/aggregate_credits`).then(agg => {
+      if (!agg) return;
+      const extraEl = document.querySelector('#info-overlay .info-extra-details');
+      if (!extraEl) return;
+
+      // Top directors across episodes
+      const dirMap = {};
+      (agg.crew || []).filter(c => c.jobs?.some(j => j.job === 'Director')).forEach(c => {
+        dirMap[c.name] = (dirMap[c.name] || 0) + (c.jobs?.find(j => j.job === 'Director')?.episode_count || 1);
+      });
+      const topDirs = Object.entries(dirMap).sort((a,b) => b[1]-a[1]).slice(0,2).map(([n]) => n);
+
+      // Top writers
+      const wrMap = {};
+      (agg.crew || []).filter(c => c.jobs?.some(j => ['Writer','Teleplay','Story'].includes(j.job))).forEach(c => {
+        wrMap[c.name] = (wrMap[c.name] || 0) + (c.jobs?.[0]?.episode_count || 1);
+      });
+      const topWrs = Object.entries(wrMap).sort((a,b) => b[1]-a[1]).slice(0,2).map(([n]) => n);
+
+      const addDetail = (key, names) => {
+        if (!names.length) return;
+        // Skip if already shown from credits
+        const existing = [...extraEl.querySelectorAll('.info-detail-key')].some(el => el.textContent === key);
+        if (existing) return;
+        const row = document.createElement('div');
+        row.className = 'info-detail-row';
+        row.innerHTML = `<span class="info-detail-key">${esc(key)}</span><span class="info-detail-val info-clickable-people">${names.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span>`;
+        // Insert at top of extra-details
+        extraEl.insertBefore(row, extraEl.firstChild);
+      };
+
+      if (topWrs.length) addDetail('Writer', topWrs);
+      if (topDirs.length) addDetail('Director', topDirs);
+    }).catch(() => {});
+  }
+
   // ── Resolve IMDB ID (needed for OMDb + Watchmode) ─────────────────
   let imdbId = details.imdb_id;
   if (!imdbId) {
@@ -4718,20 +4864,109 @@ async function _enrichInfoPage(id, type, details, credits) {
   const kwEl  = document.getElementById('info-keywords-tags');
   const kwSec = document.getElementById('info-keywords-section');
   if (showKeywords && kwEl && kws.length) {
-    kwEl.innerHTML = kws.map(k =>
-      `<span class="info-keyword-tag" data-kw-name="${esc(k.name)}">${esc(k.name)}</span>`
-    ).join('');
-    kwEl.querySelectorAll('.info-keyword-tag').forEach(tag => {
-      tag.addEventListener('click', () => {
+    const _renderKwTags = () => {
+      kwEl.innerHTML = kws.map(k => {
+        const liked    = isTagLiked(k.id);
+        const disliked = isTagDisliked(k.id);
+        const cls = liked ? ' kw-liked' : disliked ? ' kw-disliked' : '';
+        return `<span class="info-keyword-tag${cls}" data-kw-id="${k.id}" data-kw-name="${esc(k.name)}">${esc(k.name)}</span>`;
+      }).join('');
+      kwEl.querySelectorAll('.info-keyword-tag').forEach(tag => {
+        tag.addEventListener('click', (e) => {
+          e.stopPropagation();
+          _showTagMenu(tag, { id: +tag.dataset.kwId, name: tag.dataset.kwName });
+        });
+      });
+    };
+    _renderKwTags();
+    if (kwSec) kwSec.style.display = '';
+  }
+
+  function _showTagMenu(anchorEl, tag) {
+    // Remove any existing tag menu
+    document.getElementById('tag-action-menu')?.remove();
+    const liked    = isTagLiked(tag.id);
+    const disliked = isTagDisliked(tag.id);
+    const menu = document.createElement('div');
+    menu.id = 'tag-action-menu';
+    menu.className = 'tag-action-menu';
+    menu.innerHTML = `
+      <div class="tag-menu-title">${esc(tag.name)}</div>
+      <button class="tag-menu-btn${liked ? ' active' : ''}" data-action="like">
+        <span class="material-icons-round">${liked ? 'favorite' : 'favorite_border'}</span>
+        ${liked ? 'Liked — click to remove' : 'Like this tag'}
+      </button>
+      <button class="tag-menu-btn${disliked ? ' active warn' : ''}" data-action="dislike">
+        <span class="material-icons-round">${disliked ? 'thumb_down' : 'thumb_down_off_alt'}</span>
+        ${disliked ? 'Disliked — click to remove' : 'Show less like this'}
+      </button>
+      <button class="tag-menu-btn secondary" data-action="search">
+        <span class="material-icons-round">search</span>
+        Search this tag
+      </button>
+    `;
+
+    // Position near anchor
+    document.body.appendChild(menu);
+    const rect = anchorEl.getBoundingClientRect();
+    const mw = 220;
+    let left = rect.left;
+    if (left + mw > window.innerWidth - 12) left = window.innerWidth - mw - 12;
+    if (left < 8) left = 8;
+    let top = rect.bottom + 6; // fixed positioning: viewport-relative, no scrollY
+    // Clamp to viewport
+    menu.style.left = left + 'px';
+    menu.style.top  = top + 'px';
+    menu.style.width = mw + 'px';
+
+    // Focus for keyboard dismiss
+    menu.setAttribute('tabindex', '-1');
+    setTimeout(() => menu.focus(), 10);
+
+    const _close = () => menu.remove();
+
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'like') {
+        toggleTagLike(tag);
+      } else if (action === 'dislike') {
+        toggleTagDislike(tag);
+      } else if (action === 'search') {
+        _close();
         closeInfoPage();
         goPage('search');
         setTimeout(() => {
           const inp = document.getElementById('search-input');
-          if (inp) { inp.value = ':' + tag.dataset.kwName; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+          if (inp) { inp.value = ':' + tag.name; inp.dispatchEvent(new Event('input', { bubbles: true })); }
         }, 150);
-      });
+        return;
+      }
+      // Re-render the tag chip state
+      const chip = kwEl?.querySelector(`[data-kw-id="${tag.id}"]`);
+      if (chip) {
+        chip.classList.remove('kw-liked', 'kw-disliked');
+        if (isTagLiked(tag.id)) chip.classList.add('kw-liked');
+        else if (isTagDisliked(tag.id)) chip.classList.add('kw-disliked');
+      }
+      _close();
+      // Refresh prefs page if open
+      if (state.currentPage === 'prefs') renderTagPrefsSection();
     });
-    if (kwSec) kwSec.style.display = '';
+
+    menu.addEventListener('blur', (e) => {
+      if (!menu.contains(e.relatedTarget)) setTimeout(_close, 120);
+    });
+
+    // Click outside dismisses
+    const _outsideClick = (e) => {
+      if (!menu.contains(e.target) && e.target !== anchorEl) {
+        _close();
+        document.removeEventListener('mousedown', _outsideClick, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', _outsideClick, true), 80);
   }
 
   // ── TMDB Collection / Franchise — show actual movies in row ────────
@@ -6018,9 +6253,9 @@ function clearHoverTrailer() {
     // Run any DM cleanup timers
     if (nc._dmCleanup) { nc._dmCleanup(); nc._dmCleanup = null; }
   }
-  // Stop iframe immediately (no delay) to prevent audio leak
+  // Force-stop iframe immediately — removeAttribute alone doesn't stop audio in all browsers
   const frame = document.getElementById('nc-frame');
-  if (frame) frame.removeAttribute('src');
+  if (frame) { frame.removeAttribute('src'); frame.src = 'about:blank'; }
   // Reset backdrop
   const bd = document.getElementById('nc-backdrop');
   if (bd) { bd.style.opacity = '1'; bd.style.transition = ''; }

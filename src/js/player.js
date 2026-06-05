@@ -6,26 +6,26 @@ import { state, persist } from './state.js';
 // 4K: VidLink, Cineby have 4K for select titles
 export const PROVIDERS = [
   {
-    // #1 — Most reliable, widest library, consistent HD
+    // #1 — VidSrc CC (vidsrc.to replacement, widest library, reliable HD)
     id: 'vidsrc',
     label: 'VidSrc',
     prio: 'high',
     note: 'HD · Wide library',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.to/embed/movie/${id}`
-      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+      ? `https://vidsrc.cc/v2/embed/movie/${id}`
+      : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #2 — 4K available on select titles, clean UI, solid reliability
-    id: 'cineby',
-    label: 'Cineby',
+    // #2 — Embed.su: very reliable, clean UI, no ads
+    id: 'embedsu',
+    label: 'Embed.su',
     prio: 'high',
-    note: '4K available',
-    types: ['movie', 'tv'],
+    note: 'Clean · Fast',
+    types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
-      ? `https://www.cineby.sc/movie/${id}`
-      : `https://www.cineby.sc/tv/${id}/${s}/${e}`,
+      ? `https://embed.su/embed/movie/${id}`
+      : `https://embed.su/embed/tv/${id}/${s}/${e}`,
   },
   {
     // #3 — 4K on some titles, anime support, good reliability
@@ -39,7 +39,51 @@ export const PROVIDERS = [
       : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
   },
   {
-    // #4 — Good coverage, reliable fallback
+    // #4 — Cineby: 4K available on select titles
+    id: 'cineby',
+    label: 'Cineby',
+    prio: 'high',
+    note: '4K available',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://www.cineby.app/movie/${id}`
+      : `https://www.cineby.app/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #5 — VidSrc Me: alternate vidsrc backend
+    id: 'vidsrcme',
+    label: 'VidSrc.me',
+    prio: 'med',
+    note: 'Alt backend',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.me/embed/movie?tmdb=${id}`
+      : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+  },
+  {
+    // #6 — Good for movies, multi-source fallback internally
+    id: 'superembed',
+    label: 'MultiEmbed',
+    prio: 'med',
+    note: 'Multi-source',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
+      : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
+  },
+  {
+    // #7 — VidSrc Pro: separate library
+    id: 'vidsrcpro',
+    label: 'VidSrc Pro',
+    prio: 'med',
+    note: 'Pro library',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.pro/embed/movie/${id}`
+      : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #8 — 2Embed: good coverage
     id: 'embed2',
     label: '2Embed',
     prio: 'med',
@@ -50,29 +94,7 @@ export const PROVIDERS = [
       : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    // #5 — Good for movies, multi-source fallback internally
-    id: 'superembed',
-    label: 'SuperEmbed',
-    prio: 'med',
-    note: 'Multi-source',
-    types: ['movie', 'tv'],
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
-      : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
-  },
-  {
-    // #6 — VidSrc Pro: different backend than vidsrc.to, good library
-    id: 'vidsrcpro',
-    label: 'VidSrc Pro',
-    prio: 'med',
-    note: 'Alt backend',
-    types: ['movie', 'tv'],
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.pro/embed/movie/${id}`
-      : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    // #7 — Medium reliability, good for recent content
+    // #9 — AutoEmbed: good for recent content
     id: 'autoembed',
     label: 'AutoEmbed',
     prio: 'med',
@@ -83,11 +105,22 @@ export const PROVIDERS = [
       : `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #8 — Fallback, lower reliability
+    // #10 — Smashy Stream: solid fallback
+    id: 'smashy',
+    label: 'SmashyStream',
+    prio: 'low',
+    note: 'Fallback',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://player.smashy.stream/movie/${id}`
+      : `https://player.smashy.stream/tv/${id}?s=${s}&e=${e}`,
+  },
+  {
+    // #11 — Videasy: last resort fallback
     id: 'videasy',
     label: 'Videasy',
     prio: 'low',
-    note: 'Fallback',
+    note: 'Last resort',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.videasy.net/movie/${id}`

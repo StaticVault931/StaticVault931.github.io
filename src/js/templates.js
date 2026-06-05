@@ -55,7 +55,7 @@ export function injectOverlays() {
             </div>
             <iframe id="player-frame"
               sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
-              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+              allow="autoplay; fullscreen"
               referrerpolicy="no-referrer"
               title="Content player">
             </iframe>
@@ -97,7 +97,7 @@ export function injectOverlays() {
   <div class="nc-video">
     <iframe id="nc-frame"
       sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-      allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+      allow="autoplay; fullscreen"
       referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>
@@ -198,7 +198,7 @@ export function injectOverlays() {
     </div>
     <div class="trailer-ov-video">
       <iframe id="trailer-ov-frame"
-        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+        allow="autoplay; fullscreen"
         allowfullscreen
         referrerpolicy="no-referrer"
         title="Trailer">
@@ -228,8 +228,8 @@ export function injectOverlays() {
     <div class="info-toolbar">
       <button id="info-close" aria-label="Close info"><span class="material-icons-round">close</span></button>
       <div class="info-toolbar-title" id="info-toolbar-title"></div>
-      <button class="info-toolbar-btn" id="info-play-btn" title="Watch now">
-        <span class="material-icons-round">play_arrow</span> Watch
+      <button class="info-play-btn-big" id="info-play-btn" title="Watch now">
+        <span class="material-icons-round">play_circle_filled</span> Watch Now
       </button>
       <button class="info-toolbar-btn info-wt-btn" id="info-watch-together" title="Watch Together">
         <span class="material-icons-round">group</span>
@@ -266,7 +266,7 @@ export function injectOverlays() {
             <div class="info-trailer-inner">
               <iframe id="info-trailer-frame"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+                allow="autoplay; fullscreen"
                 referrerpolicy="no-referrer"
                 title="Trailer">
               </iframe>

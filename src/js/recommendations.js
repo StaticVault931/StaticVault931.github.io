@@ -41,17 +41,36 @@ export async function loadForYou() {
 
     // Use random page offset if feed randomize was requested
     const randomPage = state._randomPage || 1;
-    const [discoverRes, discoverTvRes, ...recResults] = await Promise.allSettled([
+
+    // Build tag-based params
+    const likedTagIds  = (state.prefTagLikes  || []).map(t => t.id).join('|');
+    const dislikedTagIds = (state.prefTagDislikes || []).map(t => t.id).join(',');
+    const tagMovieParams = { sort_by: 'popularity.desc', page: randomPage,
+      ...(likedTagIds    ? { with_keywords: likedTagIds }    : { with_genres: genreIds }),
+      ...(dislikedTagIds ? { without_keywords: dislikedTagIds } : {}),
+    };
+    const tagTvParams = { ...tagMovieParams };
+
+    const [discoverRes, discoverTvRes, tagMovieRes, tagTvRes, ...recResults] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'popularity.desc', with_genres: genreIds, page: randomPage }),
       tmdb('/discover/tv', { sort_by: 'popularity.desc', with_genres: genreIds, page: randomPage }),
+      likedTagIds ? tmdb('/discover/movie', tagMovieParams) : Promise.resolve({ results: [] }),
+      likedTagIds ? tmdb('/discover/tv',    tagTvParams)   : Promise.resolve({ results: [] }),
       ...recRequests,
     ]);
 
-    const discover = discoverRes.status === 'fulfilled' ? discoverRes.value.results || [] : [];
+    const discover   = discoverRes.status === 'fulfilled'   ? discoverRes.value.results || [] : [];
     const discoverTv = discoverTvRes.status === 'fulfilled'
       ? (discoverTvRes.value.results || []).map(x => ({ ...x, media_type: 'tv' }))
       : [];
+    const tagMovies = tagMovieRes.status === 'fulfilled'
+      ? (tagMovieRes.value.results || []).map(x => ({ ...x, _tagMatch: true }))
+      : [];
+    const tagShows = tagTvRes.status === 'fulfilled'
+      ? (tagTvRes.value.results || []).map(x => ({ ...x, media_type: 'tv', _tagMatch: true }))
+      : [];
     const recItems = recResults.flatMap(r => r.status === 'fulfilled' ? r.value.results || [] : []);
+    const dislikedTagIdSet = new Set((state.prefTagDislikes || []).map(t => t.id));
 
     // IDs currently shown in Trending row — exclude to avoid repeats
     const trendingRowIds = new Set(
@@ -66,7 +85,7 @@ export async function loadForYou() {
     const watchedIds = new Set(state.watched.map(x => x.id));
     const seen = new Set();
     const tolerance = state._repeatTolerance || 'medium';
-    const pool = [...recItems, ...discover, ...discoverTv].filter(m => {
+    const pool = [...tagMovies, ...tagShows, ...recItems, ...discover, ...discoverTv].filter(m => {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
       if (!passesAgeFilter(m)) return false;
@@ -87,6 +106,7 @@ export async function loadForYou() {
         if (state.prefGenres.length)
           s += (m.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
         s += ((m.vote_average || 0) / 20);
+        if (m._tagMatch) s += 4; // big boost for items from liked-tag discover
         s -= getImpressionPenalty(m.id); // subtract penalty for over-shown content
         return s;
       };

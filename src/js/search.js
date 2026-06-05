@@ -166,17 +166,60 @@ async function browseByFilters() {
 
 /* ── QUERY NORMALISER ────────────────────────────────────────────── */
 function normalizeQuery(q) {
-  // Strip common leading articles and special chars for fallback search
   return q
-    .replace(/^(the|a|an)\s+/i, '')     // strip leading "the", "a", "an"
-    .replace(/[''`""]/g, '')             // strip smart quotes / apostrophes
-    .replace(/[^\w\s-]/g, ' ')           // replace special chars with space
+    .replace(/^(the|a|an)\s+/i, '')
+    .replace(/[''`""]/g, '')
+    .replace(/[^\w\s-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function normalizeNoSpaces(q) {
   return q.replace(/\s+/g, '').toLowerCase();
+}
+
+/* ── LEVENSHTEIN (fuzzy / typo correction) ───────────────────────── */
+function levenshtein(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const dp = Array.from({length: a.length + 1}, (_, i) =>
+    Array.from({length: b.length + 1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+// Score how similar a title is to a query (0 = perfect, higher = worse)
+function titleSimilarity(query, title) {
+  if (!title) return 999;
+  const q = query.toLowerCase().trim();
+  const t = title.toLowerCase().trim();
+  if (t === q) return 0;
+  if (t.startsWith(q)) return 1;
+  if (t.includes(q)) return 2;
+  const dist = levenshtein(q, t);
+  // Only count as "close" if edit distance is small relative to query length
+  return dist <= Math.ceil(q.length * 0.3) ? 3 + dist : 999;
+}
+
+// Build a variant spelling list for a query (catches common misspellings)
+function queryVariants(q) {
+  const variants = new Set([q]);
+  // Double letters → single (e.g. "jurrasic" → "jurasic")
+  variants.add(q.replace(/(.)\1+/g, '$1'));
+  // Common vowel swaps
+  variants.add(q.replace(/[aeiou]/gi, m => ({ a:'e',e:'a',i:'e',o:'u',u:'o' }[m.toLowerCase()] || m)));
+  // Remove trailing s/es
+  if (q.endsWith('s')) variants.add(q.slice(0, -1));
+  if (q.endsWith('es')) variants.add(q.slice(0, -2));
+  return [...variants].filter(v => v !== q && v.length >= 3);
 }
 
 let _acDebounce = null;
@@ -619,10 +662,33 @@ async function fetchSearchPage(q, page) {
   all.forEach(m => {
     if (m._type === 'anime' && !m.vote_average && m.averageScore) {
       m.vote_average = m.averageScore / 10;
-      m.popularity = m.popularity || 1; // low priority without explicit popularity
+      m.popularity = m.popularity || 1;
     }
   });
-  all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+  // ── SORT: movies/TV first, anime last unless exact/close match ──────
+  // Anime comes last by default — only float to top if it's clearly what the user searched
+  if (_sfActive === 'all') {
+    const qLow = q.toLowerCase().trim();
+    all.sort((a, b) => {
+      const aIsAnime = a._type === 'anime';
+      const bIsAnime = b._type === 'anime';
+      const aSim = titleSimilarity(qLow, a.title || a.name || '');
+      const bSim = titleSimilarity(qLow, b.title || b.name || '');
+      const aExact = aSim <= 2;
+      const bExact = bSim <= 2;
+      // If one is an exact/close anime match and the other isn't, anime wins
+      if (aIsAnime && bIsAnime) return (b.popularity || 0) - (a.popularity || 0);
+      if (aIsAnime && aExact && !(bIsAnime)) return -1; // anime exact match floats up
+      if (bIsAnime && bExact && !(aIsAnime)) return 1;
+      if (aIsAnime && !bIsAnime) return 1;  // anime goes below movies/TV
+      if (!aIsAnime && bIsAnime) return -1;
+      // Both same category — sort by popularity
+      return (b.popularity || 0) - (a.popularity || 0);
+    });
+  } else {
+    all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  }
 
   // Apply language filter
   if (_filters.language) {
@@ -640,11 +706,14 @@ async function fetchSearchPage(q, page) {
   if (page === 1 && all.length < 4 && _sfActive !== 'anime') {
     const normalized = normalizeQuery(q);
     const noSpaces = normalizeNoSpaces(q);
+    // Levenshtein-based variants (catches "jurrasic world", "avengrs", etc.)
+    const typoVariants = queryVariants(q);
 
     const fallbackQueries = [
-      normalized !== q ? normalized : null,     // stripped articles / punctuation
-      noSpaces !== q.toLowerCase() ? noSpaces : null, // no spaces version
-    ].filter(Boolean);
+      normalized !== q ? normalized : null,
+      noSpaces !== q.toLowerCase() ? noSpaces : null,
+      ...typoVariants,
+    ].filter(Boolean).slice(0, 4);
 
     const existIds = new Set(all.map(x => x.id));
 
