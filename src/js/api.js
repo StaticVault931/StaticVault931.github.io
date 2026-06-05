@@ -381,31 +381,40 @@ export async function fetchTvApiBoxOffice() {
 /* ── DAILYMOTION — Trailer search (strict: must be official trailer) ─ */
 export async function fetchDailymotionTrailer(titleQuery) {
   if (!titleQuery) return null;
-  const key = cacheKey('dm_trailer_v2_' + titleQuery, {});
+  const key = cacheKey('dm_trailer_v3_' + titleQuery, {});
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    // Search for "[title] official trailer" — be very specific
     const q = encodeURIComponent(`${titleQuery} official trailer`);
     const r = await fetch(
-      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=8&language=en`
+      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=10&language=en`
     );
     if (!r.ok) return null;
     const data = await r.json();
-    const titleLower = titleQuery.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+    const list = data.list || [];
+    if (!list.length) return null;
 
-    // STRICT filter: video title must contain the movie/show title AND "trailer"
-    // This prevents totally unrelated videos
-    const video = (data.list || []).find(v => {
-      const vt = (v.title || '').toLowerCase();
-      const titleWords = titleLower.split(' ').filter(w => w.length > 2);
-      const titleMatch = titleWords.some(w => vt.includes(w));
-      const isTrailer = vt.includes('trailer') || vt.includes('official') || vt.includes('teaser');
+    const titleLower = titleQuery.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    const titleWords = titleLower.split(' ').filter(w => w.length > 3);
+
+    // Level 1: strict — title words AND trailer keyword
+    let video = list.find(v => {
+      const vt = (v.title||'').toLowerCase();
+      const titleMatch = titleWords.length > 0 && titleWords.some(w => vt.includes(w));
+      const isTrailer  = vt.includes('trailer') || vt.includes('official') || vt.includes('teaser');
       return titleMatch && isTrailer;
     });
-    if (!video) return null;
-    // Use embed with autoplay=0 (let the player control it)
-    if (video.embed_url) video.embed_url = video.embed_url.replace('autoplay=1','autoplay=0');
+
+    // Level 2: any video with a trailer keyword (still filtered by search query)
+    if (!video) video = list.find(v => {
+      const vt = (v.title||'').toLowerCase();
+      return vt.includes('trailer') || vt.includes('teaser') || vt.includes('official');
+    });
+
+    // Level 3: just use the first result (search was already specific)
+    if (!video) video = list[0];
+
+    if (!video?.embed_url) return null;
     cacheSet(key, video);
     return video;
   } catch { return null; }

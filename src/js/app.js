@@ -3798,11 +3798,27 @@ export async function openInfoPage(id, type, hint = {}) {
 
     if (trailerKey && trailerWrap) {
       trailerWrap.style.cursor = 'default';
-      if (trailerFrame) {
-        trailerFrame.style.display = '';
-        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-      }
       if (trailerFallback) trailerFallback.style.display = 'none';
+      // Info page trailer: try DM first, fall back to YouTube
+      const _infoTitle = (title || '').replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
+      fetchDailymotionTrailer(`${_infoTitle} ${year}`).then(dmVid => {
+        if (!trailerFrame) return;
+        if (dmVid?.embed_url) {
+          // Use Dailymotion
+          trailerFrame.style.display = '';
+          trailerFrame.src = `${dmVid.embed_url.split('?')[0]}?autoplay=1&mute=0`;
+        } else {
+          // Fall back to YouTube
+          trailerFrame.style.display = '';
+          trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+        }
+      }).catch(() => {
+        // DM failed — use YouTube
+        if (trailerFrame) {
+          trailerFrame.style.display = '';
+          trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+        }
+      });
 
       // Detect Error 153 / failed trailer and show backdrop image instead
       const infoMsgHandler = (e) => {
@@ -4001,12 +4017,11 @@ async function loadInfoEpisodes(showId, season) {
     const eps = d.episodes || [];
     grid.innerHTML = eps.map(ep => {
       const th = imgUrl(ep.still_path, 'w300');
-      return `<div class="info-ep-card">
-        ${th ? `<img class="info-ep-thumb" src="${th}" alt="Episode ${ep.episode_number}" loading="lazy">` : `<div class="info-ep-thumb-ph"><span class="material-icons-round">play_circle</span></div>`}
+      return `<div class="info-ep-card" title="Ep ${ep.episode_number}: ${esc(ep.name || '')}">
+        ${th ? `<img class="info-ep-thumb" src="${th}" alt="Ep ${ep.episode_number}" loading="lazy">` : `<div class="info-ep-thumb-ph"><span class="material-icons-round">play_circle</span></div>`}
         <div class="info-ep-info">
           <div class="info-ep-num">Ep ${ep.episode_number}${ep.runtime ? ` · ${ep.runtime}m` : ''}</div>
           <div class="info-ep-name">${esc(ep.name || '')}</div>
-          ${ep.overview ? `<div class="info-ep-overview">${esc(ep.overview.slice(0, 80))}…</div>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -4043,44 +4058,159 @@ export async function openProviderPage(providerId, providerName) {
   }
 
   clearHoverTrailer();
-  // TMDB network IDs for provider originals/exclusives
+
+  // TMDB network IDs for "Only on X" originals rows
   const PROVIDER_NETWORK_IDS = {
-    8: 213, 337: 2739, 15: 453, 384: 49, 9: 1024,
-    350: 2552, 531: 4330, 386: 3353, 283: 1655, 526: 174,
+    8:213, 337:2739, 15:453, 384:49, 9:1024,
+    350:2552, 531:4330, 386:3353, 283:1655,
   };
-  const networkId = PROVIDER_NETWORK_IDS[providerId];
-  const logoUrl   = getProviderLogoUrl(providerName, 64);
-  const base      = { with_watch_providers: providerId, watch_region: 'US' };
+  const networkId  = PROVIDER_NETWORK_IDS[providerId];
+  const logoUrl    = getProviderLogoUrl(providerName, 48);
+  const base       = { with_watch_providers: providerId, watch_region: 'US' };
+  const provPageId = 'page-provider';
 
-  _openCompanyOverlay({
-    name: providerName,
-    subtitle: 'Streaming Provider',
-    logoUrl,
-    fetchFn: async () => {
-      // Fetch 8 data sets in parallel — maximum variety
-      const fetches = await Promise.allSettled([
-        tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),             // 0: popular movies
-        tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),             // 1: popular TV
-        tmdb('/discover/movie', { ...base, sort_by:'vote_average.desc', 'vote_count.gte':100, page:1 }), // 2: top rated movies
-        tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }), // 3: top rated TV
-        tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),             // 4: more movies
-        tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),             // 5: more TV
-        networkId ? tmdb('/discover/movie', { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}), // 6: originals movies
-        networkId ? tmdb('/discover/tv',    { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}), // 7: originals TV
-      ]);
+  // ── Create provider page if needed ──
+  if (!document.getElementById(provPageId)) {
+    const pg = document.createElement('main');
+    pg.className = 'page';
+    pg.id = provPageId;
+    pg.innerHTML = `
+      <div class="provider-page-header" id="provider-page-header">
+        <div class="provider-page-header-inner">
+          <button class="provider-back-btn" id="provider-back-btn" aria-label="Go back">
+            <span class="material-icons-round">arrow_back</span>
+          </button>
+          <img id="provider-page-logo" class="provider-page-logo" src="" alt="" style="display:none">
+          <span id="provider-page-title" class="provider-page-title"></span>
+        </div>
+      </div>
+      <div id="provider-page-body" style="padding-top:64px"></div>`;
+    document.getElementById('footer').before(pg);
 
-      const get = (i, mt) => fetches[i].status==='fulfilled' ? (fetches[i].value.results||[]).map(x=>({...x,media_type:mt})) : [];
+    // Back button → go back to previous page
+    pg.querySelector('#provider-back-btn')?.addEventListener('click', () => {
+      goPage(state._prevPage || 'home');
+    });
 
-      return {
-        movies:    get(0,'movie'),
-        tv:        get(1,'tv'),
-        topMovies: get(2,'movie'),
-        topTv:     get(3,'tv'),
-        moreMovies:get(4,'movie'),
-        moreTv:    get(5,'tv'),
-        originals: [...get(6,'movie'), ...get(7,'tv')].sort((a,b)=>(b.popularity||0)-(a.popularity||0)),
-      };
-    },
+    registerLoader('provider', () => {}); // no-op loader (content loaded manually)
+  }
+
+  // ── Wire dynamic nav tab ──
+  let provTab = document.querySelector('.nav-tab[data-page="provider"]');
+  if (!provTab) {
+    provTab = document.createElement('div');
+    provTab.className = 'nav-tab provider-tab';
+    provTab.setAttribute('role','button');
+    provTab.setAttribute('tabindex','0');
+    provTab.dataset.page = 'provider';
+    document.getElementById('nav-tabs')?.appendChild(provTab);
+  }
+  // Set tab label with logo
+  const tabLogoHtml = logoUrl
+    ? `<img src="${logoUrl}" style="height:18px;border-radius:3px;vertical-align:middle;margin-right:.3rem" onerror="this.style.display='none'">`
+    : '';
+  provTab.innerHTML = `${tabLogoHtml}<span>${esc(providerName)}</span>`;
+
+  // ── Update page header ──
+  const hdrLogo  = document.getElementById('provider-page-logo');
+  const hdrTitle = document.getElementById('provider-page-title');
+  if (hdrLogo && logoUrl) { hdrLogo.src = logoUrl; hdrLogo.style.display = ''; }
+  if (hdrTitle) hdrTitle.textContent = providerName;
+
+  // ── Navigate to provider page ──
+  state._prevPage = state.currentPage;
+  goPage('provider');
+
+  // ── Build rows ──
+  const body = document.getElementById('provider-page-body');
+  if (body) body.innerHTML = '<div style="padding:2rem 3.5rem;color:var(--muted)">Loading…</div>';
+
+  const makeHomeRow = (icon, iconColor, title, rowId, items, type) => {
+    if (!items || !items.length) return '';
+    const skel = items.slice(0,20).map(m => makeCard(m, m.media_type || type)).join('');
+    return `<div class="section">
+      <div class="sec-header">
+        <div class="sec-title">
+          <span class="material-icons-round sec-icon" style="color:${iconColor}">${icon}</span>${esc(title)}
+        </div>
+      </div>
+      <div class="row-wrap">
+        <div class="row-arrow row-arrow-l hidden">
+          <button data-scroll-row="${rowId}" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button>
+        </div>
+        <div class="card-row" id="${rowId}">${skel}</div>
+        <div class="row-arrow row-arrow-r">
+          <button data-scroll-row="${rowId}" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  // Fetch all provider content in parallel (8 queries)
+  Promise.allSettled([
+    tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),
+    tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),
+    tmdb('/discover/movie', { ...base, sort_by:'vote_average.desc', 'vote_count.gte':100, page:1 }),
+    tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }),
+    tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),
+    tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),
+    networkId ? tmdb('/discover/movie', { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    networkId ? tmdb('/discover/tv',    { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+  ]).then(results => {
+    if (state.currentPage !== 'provider') return; // don't update if navigated away
+
+    const get = (i, mt) => results[i].status==='fulfilled'
+      ? (results[i].value.results||[]).map(x=>({...x,media_type:mt})) : [];
+
+    const popMovies  = get(0,'movie');
+    const popTv      = get(1,'tv');
+    const topMovies  = get(2,'movie');
+    const topTv      = get(3,'tv');
+    const moreMovies = get(4,'movie');
+    const moreTv     = get(5,'tv');
+    const origMovies = get(6,'movie');
+    const origTv     = get(7,'tv');
+    const originals  = [...origMovies, ...origTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+
+    // Interleave helpers
+    const mix = (a, b) => { const out=[]; for(let i=0;i<Math.max(a.length,b.length);i++){if(a[i])out.push(a[i]);if(b[i])out.push(b[i]);} return out; };
+
+    const rows = [
+      originals.length  ? makeHomeRow('star',                  '#f5c518', `Only on ${providerName}`,   'pv-originals',  originals,  null)    : '',
+      popMovies.length  ? makeHomeRow('local_fire_department', '#f97316', 'Popular Movies',             'pv-pop-movies', popMovies,  'movie') : '',
+      popTv.length      ? makeHomeRow('local_fire_department', '#f97316', 'Popular Shows',              'pv-pop-tv',     popTv,      'tv')    : '',
+      mix(popMovies,popTv).length ? makeHomeRow('whatshot','#ef4444','Trending on ' + providerName,'pv-trending',mix(popMovies,popTv),''):'',
+      topMovies.length  ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',           'pv-top-movies', topMovies,  'movie') : '',
+      topTv.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',            'pv-top-tv',     topTv,      'tv')    : '',
+      moreMovies.length ? makeHomeRow('movie',                 '',        'More Movies',                'pv-more-movies',moreMovies,'movie') : '',
+      moreTv.length     ? makeHomeRow('tv',                    '',        'More Shows',                 'pv-more-tv',    moreTv,     'tv')    : '',
+    ].filter(Boolean);
+
+    if (body) {
+      body.innerHTML = rows.join('') || '<p style="padding:3rem;color:var(--muted);text-align:center">No content available from this provider in your region.</p>';
+
+      // Wire scroll arrows
+      body.querySelectorAll('[data-scroll-row]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const rowEl = document.getElementById(btn.dataset.scrollRow);
+          if (rowEl) rowEl.scrollBy({ left: +btn.dataset.scrollDir * rowEl.clientWidth * 0.75, behavior: 'smooth' });
+        });
+      });
+
+      // Wire card clicks
+      body.querySelectorAll('.card[data-id][data-type]').forEach(cardEl => {
+        cardEl.addEventListener('click', e => {
+          if (e.target.closest('button')) return;
+          openMedia(+cardEl.dataset.id, cardEl.dataset.type, {
+            title: cardEl.dataset.title,
+            poster_path: cardEl.dataset.poster,
+          });
+        });
+      });
+    }
+  }).catch(e => {
+    if (body) body.innerHTML = '<p style="padding:2rem;color:var(--muted)">Failed to load provider content.</p>';
+    console.warn('[SV] Provider page error:', e?.message);
   });
 }
 
@@ -5940,9 +6070,10 @@ async function showNetflixCard(card) {
   if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
 
   // Wait for DM (max 2.5s from when we started)
+  // Wait up to 4s for DM — generous enough for slow connections
   const dmResult = await Promise.race([
     dmPromise,
-    new Promise(res => setTimeout(() => res(null), 2500)),
+    new Promise(res => setTimeout(() => res(null), 4000)),
   ]);
 
   // Check card is still active

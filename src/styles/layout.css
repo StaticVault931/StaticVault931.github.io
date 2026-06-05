@@ -1355,3 +1355,37 @@ body.sv-hide-ratings .card-rating { display: none !important; }
 .ptest-name { font-weight: 700; flex: 1; font-size: .74rem; }
 .ptest-note { display: none; }
 .ptest-status { font-size: .64rem; color: var(--muted); white-space: nowrap; }
+
+/* ── PROVIDER PAGE ─────────────────────────────────────────────────── */
+#page-provider { padding-top: 0; }
+.provider-page-header {
+  position: sticky; top: 0; z-index: 90;
+  background: rgba(5,5,5,.95); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.provider-page-header-inner {
+  display: flex; align-items: center; gap: .85rem;
+  padding: .65rem 2rem; max-width: 100%;
+}
+.provider-back-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--s3); border: 1px solid var(--border2);
+  color: var(--text); cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .18s;
+}
+.provider-back-btn:hover { background: var(--red); }
+.provider-page-logo { height: 32px; max-width: 120px; object-fit: contain; border-radius: 5px; }
+.provider-page-title {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 1.4rem; letter-spacing: .04em; text-transform: uppercase;
+}
+#provider-page-body { padding-bottom: 3rem; }
+#provider-page-body .section { padding: 0 2rem; margin-bottom: 1.2rem; }
+
+/* ── NAV: provider tab styling ────────────────────────────────────── */
+.nav-tab.provider-tab {
+  display: flex; align-items: center; gap: .3rem;
+  border-left: 1px solid var(--border2);
+  padding-left: .75rem;
+}

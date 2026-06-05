@@ -533,16 +533,21 @@
   padding-top: 1.5rem; margin-top: .5rem;
 }
 
-/* ── EPISODES: 2 per row in side column ─────────────────────────── */
+/* ── EPISODES: 4 per row in side column ─────────────────────────── */
 .info-col-side .info-ep-grid {
-  grid-template-columns: 1fr 1fr !important;
-  gap: .4rem !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: .35rem !important;
 }
-.info-col-side .info-ep-card { flex-direction: column; gap: .25rem; }
+.info-col-side .info-ep-card {
+  flex-direction: column; gap: .2rem; padding: 0; border-radius: 4px; overflow: hidden;
+}
 .info-col-side .info-ep-thumb,
 .info-col-side .info-ep-thumb-ph {
-  width: 100% !important; height: auto !important; aspect-ratio: 16/9;
+  width: 100% !important; height: auto !important; aspect-ratio: 16/9; flex-shrink: 0;
 }
+.info-col-side .info-ep-info { padding: .25rem .3rem; }
+.info-col-side .info-ep-num  { font-size: .58rem; }
+.info-col-side .info-ep-name { font-size: .62rem; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* ── INFO RELATED GRID in side column — 1 col ────────────────────── */
 .info-col-side .info-related-grid {
