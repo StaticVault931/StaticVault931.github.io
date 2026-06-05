@@ -2,7 +2,9 @@ import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
 import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState } from './state.js';
-import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern } from './api.js';
+import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
+  fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
+  fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
@@ -1157,17 +1159,22 @@ async function loadSeasonalRow() {
       // Rotate pages each view so content is mostly different each time
       const rPage = Math.floor(Math.random() * 5) + 1;
 
-      // Step 1: find keyword IDs dynamically from TMDB keyword search
-      let kwIds = '158718,3799,18242,193554'; // fallback: gay, homosexuality, same-sex, lgbtq
+      // Step 1: use verified TMDB LGBTQ keyword IDs + discover more dynamically
+      // Verified working: 158718=gay, 3799=homosexuality, 18242=same-sex,
+      // 155310=bisexuality, 209726=coming out, 180819=gay relationship, 193554=lgbtq
+      let kwIds = '158718,3799,18242,155310,209726,180819,193554';
       try {
-        const [kw1, kw2, kw3] = await Promise.all([
-          tmdb('/search/keyword', { query: 'lgbtq' }).catch(() => ({ results: [] })),
-          tmdb('/search/keyword', { query: 'gay'   }).catch(() => ({ results: [] })),
+        const [kw1, kw2, kw3, kw4] = await Promise.all([
+          tmdb('/search/keyword', { query: 'lgbtq'   }).catch(() => ({ results: [] })),
+          tmdb('/search/keyword', { query: 'gay'     }).catch(() => ({ results: [] })),
           tmdb('/search/keyword', { query: 'lesbian' }).catch(() => ({ results: [] })),
+          tmdb('/search/keyword', { query: 'queer'   }).catch(() => ({ results: [] })),
         ]);
-        const found = [...(kw1.results||[]), ...(kw2.results||[]), ...(kw3.results||[])]
-          .map(k => k.id).filter(Boolean);
-        if (found.length) kwIds = [...new Set([...found, 158718, 3799, 18242])].slice(0,8).join(',');
+        const found = [
+          ...(kw1.results||[]), ...(kw2.results||[]),
+          ...(kw3.results||[]), ...(kw4.results||[]),
+        ].map(k => k.id).filter(Boolean);
+        if (found.length) kwIds = [...new Set([...found, 158718, 3799, 18242, 155310, 209726])].slice(0,10).join(',');
       } catch {}
 
       // Step 2: discover movies + TV, random page for variety each view
@@ -1547,6 +1554,33 @@ function buildProviderTestUI() {
     } catch {
       if (btn) { btn.textContent = '✗ AniList Failed'; btn.style.color = '#f87171'; }
     }
+  });
+
+  // Test APIs button
+  document.getElementById('test-all-apis-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('test-all-apis-btn');
+    const output = document.getElementById('api-test-results');
+    if (!btn || !output) return;
+    btn.disabled = true;
+    btn.textContent = 'Testing…';
+    output.style.display = 'block';
+    output.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Running tests…</div>';
+    try {
+      const results = await testAllAPIs();
+      output.innerHTML = results.map(r => {
+        const icon = r.status === 'ok' ? '✅' : r.status === 'missing' ? '⚠️' : '❌';
+        const color = r.status === 'ok' ? '#22c55e' : r.status === 'missing' ? '#f59e0b' : '#f87171';
+        return `<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem 0;border-bottom:1px solid var(--border);font-size:.78rem;">
+          <span>${icon}</span>
+          <span style="font-weight:800;min-width:110px">${r.name}</span>
+          <span style="color:${color}">${r.note}</span>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      output.innerHTML = `<div style="color:#f87171">Test failed: ${e.message}</div>`;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Test APIs';
   });
 
   document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', () => {
@@ -3423,9 +3457,12 @@ export async function openInfoPage(id, type, hint = {}) {
       metaEl.innerHTML = parts.map(p => `<span class="info-meta-item">${esc(p)}</span>`).join('') + (genres ? `<div class="info-genres">${genres}</div>` : '');
     }
 
-    // Overview
+    // Overview — scrollable, no collapse
     const ovEl = document.getElementById('info-overview');
     if (ovEl) ovEl.textContent = details.overview || '';
+
+    // ── Enrich with external APIs (non-blocking — run in background) ──
+    _enrichInfoPage(id, type, details, credits).catch(() => {});
 
     // Side: full ratings + extra details
     const ratingsEl = document.getElementById('info-ratings');
@@ -3641,21 +3678,26 @@ export async function openInfoPage(id, type, hint = {}) {
       }
     } catch {}
 
+    // ── Fanart.tv logo (replace text title with transparent logo if available)
+    if (type !== 'anime') {
+      fetchFanart(id, type === 'movie' ? 'movies' : 'tv').then(fanart => {
+        const logoUrl = getFanartLogo(fanart);
+        if (logoUrl) {
+          const titleEl = document.getElementById('info-title');
+          if (titleEl) {
+            titleEl.innerHTML = `<img class="info-fanart-logo" src="${logoUrl}" alt="${esc(title)}" onerror="this.style.display='none'">`;
+          }
+        }
+      }).catch(() => {});
+    }
+
     // Wire clickable studio/person/network links in info page
     document.querySelectorAll('#info-overlay .info-studio-link').forEach(link => {
       link.addEventListener('click', () => {
         const cid = link.dataset.companyId;
-        const ctype = link.dataset.companyType; // 'company' | 'network'
         if (!cid) return;
         closeInfoPage();
-        goPage('search');
-        setTimeout(() => {
-          const inp = document.getElementById('search-input');
-          if (inp) {
-            inp.value = link.textContent.trim();
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }, 150);
+        setTimeout(() => openCompanyPage(+cid, link.textContent.trim()), 80);
       });
     });
     document.querySelectorAll('#info-overlay .info-person-link').forEach(link => {
@@ -3721,6 +3763,300 @@ async function loadInfoEpisodes(showId, season) {
 }
 
 /* ── PERSON FILMOGRAPHY PAGE ─────────────────────────────────────── */
+/* ── COMPANY PAGE ────────────────────────────────────────────────── */
+export async function openCompanyPage(companyId, companyName) {
+  const ov = document.getElementById('company-overlay');
+  if (!ov) return;
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const nameEl = ov.querySelector('.company-name');
+  const logoEl = ov.querySelector('#company-logo');
+  const descEl = ov.querySelector('#company-desc');
+  const gridEl = ov.querySelector('#company-grid');
+  const closeBtn = ov.querySelector('#company-close');
+
+  if (!ov._wired) {
+    ov._wired = true;
+    closeBtn?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
+    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
+    // Card clicks in company grid
+    ov.addEventListener('click', e => {
+      const card = e.target.closest('.card[data-id][data-type]');
+      if (!card || e.target.closest('button')) return;
+      ov.classList.remove('open'); document.body.style.overflow = '';
+      setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
+    });
+  }
+
+  if (nameEl) nameEl.textContent = companyName || 'Loading…';
+  if (logoEl) { logoEl.src = ''; logoEl.style.display = 'none'; }
+  if (descEl) descEl.textContent = '';
+  if (gridEl) gridEl.innerHTML = skelCards(8);
+
+  try {
+    const [company, moviePage1] = await Promise.all([
+      tmdb(`/company/${companyId}`),
+      tmdb('/discover/movie', { with_companies: companyId, sort_by: 'popularity.desc', page: 1 }),
+    ]);
+
+    if (nameEl) nameEl.textContent = company.name || companyName;
+    if (logoEl && company.logo_path) {
+      logoEl.src = imgUrl(company.logo_path, 'w300');
+      logoEl.style.display = '';
+    }
+    if (descEl) {
+      descEl.textContent = company.description ||
+        (company.headquarters ? `Based in ${company.headquarters}` : '') +
+        (company.origin_country ? ` · ${company.origin_country}` : '');
+    }
+    // Parent company
+    const parentEl = ov.querySelector('#company-parent');
+    if (parentEl) parentEl.textContent = company.parent_company?.name ? `Part of ${company.parent_company.name}` : '';
+
+    // Also try wikipedia for rich description
+    fetchWikipediaSummary(company.name).then(wiki => {
+      if (wiki?.extract && descEl) descEl.textContent = wiki.extract.slice(0, 400) + (wiki.extract.length > 400 ? '…' : '');
+    }).catch(() => {});
+
+    const movies = (moviePage1.results || []).slice(0, 20);
+    if (gridEl) {
+      if (movies.length) gridEl.innerHTML = movies.map(m => makeCard(m, 'movie')).join('');
+      else gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No content found.</p>`;
+    }
+  } catch (e) {
+    if (nameEl) nameEl.textContent = companyName;
+    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load company info.</p>`;
+  }
+}
+
+/* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
+export async function openCollectionPage(collectionId, collectionName) {
+  const ov = document.getElementById('company-overlay'); // reuse company overlay layout
+  if (!ov) return;
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const nameEl  = ov.querySelector('.company-name');
+  const descEl  = ov.querySelector('#company-desc');
+  const gridEl  = ov.querySelector('#company-grid');
+  const logoEl  = ov.querySelector('#company-logo');
+  const parentEl = ov.querySelector('#company-parent');
+
+  if (!ov._wired) {
+    ov._wired = true;
+    ov.querySelector('#company-close')?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
+    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
+    ov.addEventListener('click', e => {
+      const card = e.target.closest('.card[data-id][data-type]');
+      if (!card || e.target.closest('button')) return;
+      ov.classList.remove('open'); document.body.style.overflow = '';
+      setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
+    });
+  }
+
+  if (nameEl) nameEl.textContent = collectionName || 'Loading…';
+  if (logoEl) { logoEl.style.display = 'none'; }
+  if (parentEl) parentEl.textContent = 'Film Collection';
+  if (gridEl) gridEl.innerHTML = skelCards(6);
+
+  try {
+    const col = await tmdb(`/collection/${collectionId}`);
+    if (nameEl) nameEl.textContent = col.name || collectionName;
+    if (descEl) descEl.textContent = col.overview || '';
+    if (col.backdrop_path && logoEl) {
+      // Show backdrop as header image
+      const heroEl = ov.querySelector('.company-hero');
+      if (heroEl) { heroEl.style.backgroundImage = `url(${imgUrl(col.backdrop_path, 'w780')})`; heroEl.style.display = ''; }
+    }
+    const movies = (col.parts || []).sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1);
+    if (gridEl) {
+      if (movies.length) gridEl.innerHTML = movies.map(m => makeCard({...m, media_type:'movie'}, 'movie')).join('');
+      else gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No movies found.</p>`;
+    }
+  } catch {
+    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load collection.</p>`;
+  }
+}
+
+/* ── EXTERNAL API ENRICHMENT FOR INFO PAGE ───────────────────────── */
+async function _enrichInfoPage(id, type, details, credits) {
+  // ── Reset all enrichment sections first (clean slate between opens) ──
+  const resetIds = ['info-multi-ratings','info-wtw-section','info-collection-section',
+                    'info-keywords-section','info-ani-tags'];
+  resetIds.forEach(rid => {
+    const el = document.getElementById(rid);
+    if (el) { el.style.display = 'none'; el.innerHTML = rid === 'info-multi-ratings' ? '' : el.innerHTML; }
+  });
+  const collLink = document.getElementById('info-collection-link');
+  if (collLink) collLink.style.display = 'none';
+
+  // ── ANIME: show AniList tags ──────────────────────────────────────
+  if (type === 'anime') {
+    const tagData = details._aniTags || [];
+    if (tagData.length) {
+      const tagsEl = document.getElementById('info-ani-tags');
+      const kwSec = document.getElementById('info-keywords-section');
+      if (tagsEl) {
+        tagsEl.innerHTML = tagData.map(t =>
+          `<span class="info-ani-tag" title="${esc(t.category)}">${esc(t.name)}</span>`
+        ).join('');
+      }
+      if (kwSec) kwSec.style.display = '';
+    }
+    return;
+  }
+
+  // ── Resolve IMDB ID (needed for OMDb + Watchmode) ─────────────────
+  let imdbId = details.imdb_id;
+  if (!imdbId) {
+    const extIds = await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}));
+    imdbId = extIds?.imdb_id || null;
+  }
+
+  // ── OMDb: IMDb, Rotten Tomatoes, Metacritic, Awards, Box Office ───
+  if (imdbId) {
+    fetchOMDb(imdbId).then(omdb => {
+      if (!omdb || omdb.Response === 'False') return;
+
+      // Rating pills row (IMDb / RT / Metacritic)
+      const ratingsEl = document.getElementById('info-multi-ratings');
+      if (ratingsEl) {
+        const imdbR = (omdb.imdbRating !== 'N/A') ? omdb.imdbRating : null;
+        const rtVal  = omdb.Ratings?.find(r => r.Source === 'Rotten Tomatoes')?.Value;
+        const mcVal  = omdb.Ratings?.find(r => r.Source === 'Metacritic')?.Value;
+        const rt = (rtVal && rtVal !== 'N/A') ? rtVal : null;
+        const mc = (mcVal && mcVal !== 'N/A') ? mcVal.replace('/100','') : null;
+        const rtPct = rt ? parseInt(rt) : -1;
+
+        const pills = [
+          imdbR ? `<div class="rating-pill imdb" title="IMDb rating">
+            <svg width="14" height="14" viewBox="0 0 100 100" style="flex-shrink:0"><rect width="100" height="100" rx="8" fill="#f5c518"/><text x="50" y="68" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="54" fill="#000">IMDb</text></svg>
+            ${imdbR}<span style="font-size:.65em;opacity:.7">/10</span>
+          </div>` : '',
+
+          rt ? `<div class="rating-pill ${rtPct >= 60 ? 'rt-fresh' : 'rt-rotten'}" title="Rotten Tomatoes">
+            <svg width="14" height="14" viewBox="0 0 100 100" style="flex-shrink:0"><circle cx="50" cy="50" r="50" fill="${rtPct>=60?'#fa320a':'#6e9b1f'}"/><text x="50" y="66" text-anchor="middle" font-family="serif" font-size="60" fill="#fff">${rtPct>=60?'🍅':'🦠'}</text></svg>
+            ${rt}
+          </div>` : '',
+
+          mc ? `<div class="rating-pill metacritic" title="Metacritic score">
+            <span style="background:#6c3;color:#fff;font-weight:900;padding:.08rem .28rem;border-radius:3px;font-size:.72em">M</span>
+            ${mc}<span style="font-size:.65em;opacity:.7">/100</span>
+          </div>` : '',
+        ].filter(Boolean).join('');
+
+        if (pills) { ratingsEl.innerHTML = pills; ratingsEl.style.display = ''; }
+      }
+
+      // Awards banner (only if nominated/won something meaningful)
+      const awards = (omdb.Awards && omdb.Awards !== 'N/A') ? omdb.Awards : null;
+      if (awards) {
+        const awardsEl = document.getElementById('info-awards-banner');
+        if (awardsEl) {
+          awardsEl.textContent = awards;
+          awardsEl.style.display = '';
+        }
+      }
+
+      // Box office + extra details in side panel
+      const extraEl = document.querySelector('#info-overlay .info-extra-details');
+      if (extraEl) {
+        const addDetail = (key, val) => {
+          if (!val || val === 'N/A') return;
+          const existing = [...extraEl.querySelectorAll('.info-detail-key')].some(el => el.textContent === key);
+          if (existing) return;
+          const row = document.createElement('div');
+          row.className = 'info-detail-row omdb-detail';
+          row.innerHTML = `<span class="info-detail-key">${esc(key)}</span><span class="info-detail-val">${esc(val)}</span>`;
+          extraEl.appendChild(row);
+        };
+        addDetail('Box Office', omdb.BoxOffice);
+        addDetail('Rated', omdb.Rated);
+        // Add IMDB link
+        if (imdbId) {
+          const existing = extraEl.querySelector('.imdb-link-row');
+          if (!existing) {
+            const row = document.createElement('div');
+            row.className = 'info-detail-row imdb-link-row';
+            row.innerHTML = `<span class="info-detail-key">IMDb</span><a class="info-detail-val" href="https://www.imdb.com/title/${imdbId}/" target="_blank" rel="noopener" style="color:#f5c518;text-decoration:none">View on IMDb ↗</a>`;
+            extraEl.appendChild(row);
+          }
+        }
+      }
+    }).catch(() => {});
+
+    // ── Watchmode: Where to Watch ──────────────────────────────────
+    fetchWatchmode(imdbId).then(sources => {
+      if (!sources?.length) return;
+      const wtwEl  = document.getElementById('info-where-to-watch');
+      const wtwSec = document.getElementById('info-wtw-section');
+      if (!wtwEl || !wtwSec) return;
+
+      // Sort: free first, then subscription, then rent/buy
+      const typeOrder = { free: 0, sub: 1, rent: 2, buy: 3 };
+      const sorted = [...sources].sort((a,b) => (typeOrder[a.type]??9) - (typeOrder[b.type]??9));
+
+      // Deduplicate by service name, max 8
+      const seen = new Set();
+      const unique = sorted.filter(s => { if (!s.name || seen.has(s.name)) return false; seen.add(s.name); return true; }).slice(0,8);
+
+      const typeColors = { free: '#22c55e', sub: '#b3b3b3', rent: '#f59e0b', buy: '#f97316' };
+      const typeLabels = { free: 'Free', sub: 'Subscription', rent: 'Rent', buy: 'Buy' };
+
+      wtwEl.innerHTML = unique.map(s => {
+        const color = typeColors[s.type] || '#888';
+        const label = typeLabels[s.type] || s.type;
+        const initial = (s.name||'?').slice(0,2).toUpperCase();
+        const href = (s.web_url && s.web_url !== 'N/A') ? s.web_url : `https://www.google.com/search?q=watch+on+${encodeURIComponent(s.name)}`;
+        return `<a class="wtw-badge wtw-${s.type||'sub'}" href="${href}" target="_blank" rel="noopener">
+          <span class="wtw-icon" style="background:${color}22;color:${color};border:1px solid ${color}44">${initial}</span>
+          <span>${esc(s.name)}</span>
+          <span style="font-size:.58rem;color:${color};font-weight:700;margin-left:.15rem">${label}</span>
+        </a>`;
+      }).join('');
+
+      if (unique.length) wtwSec.style.display = '';
+    }).catch(() => {});
+  }
+
+  // ── TMDB Keywords as clickable tags ───────────────────────────────
+  const kws = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 16);
+  const kwEl  = document.getElementById('info-keywords-tags');
+  const kwSec = document.getElementById('info-keywords-section');
+  if (kwEl && kws.length) {
+    kwEl.innerHTML = kws.map(k =>
+      `<span class="info-keyword-tag" data-kw-name="${esc(k.name)}">${esc(k.name)}</span>`
+    ).join('');
+    kwEl.querySelectorAll('.info-keyword-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        closeInfoPage();
+        goPage('search');
+        setTimeout(() => {
+          const inp = document.getElementById('search-input');
+          if (inp) { inp.value = ':' + tag.dataset.kwName; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+        }, 150);
+      });
+    });
+    if (kwSec) kwSec.style.display = '';
+  }
+
+  // ── TMDB Collection / Franchise ────────────────────────────────────
+  if (details.belongs_to_collection) {
+    const col = details.belongs_to_collection;
+    const collEl  = document.getElementById('info-collection-link');
+    const collSec = document.getElementById('info-collection-section');
+    if (collEl) {
+      collEl.innerHTML = `<span class="material-icons-round">collections</span>${esc(col.name)}`;
+      collEl.dataset.collectionId = col.id;
+      collEl.style.display = '';
+      collEl.onclick = null;
+      collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
+    }
+    if (collSec) collSec.style.display = '';
+  }
+}
+
 export async function openPersonPage(personId) {
   const ov = document.getElementById('person-overlay');
   if (!ov) return;
@@ -4088,7 +4424,10 @@ function initProfilesUI() {
       if (!sw) return;
       colorRow.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s === sw));
       const prev = document.getElementById('profile-avatar-preview');
-      if (prev) prev.style.background = sw.dataset.color;
+      const chosenColor = sw.dataset.color;
+      if (prev) prev.style.background = chosenColor === 'transparent'
+        ? 'conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px'
+        : chosenColor;
     });
   }
   document.getElementById('profile-change-avatar-btn')?.addEventListener('click', openPersonSearchForAvatar);
@@ -4125,7 +4464,7 @@ function renderProfilesGrid() {
   const activeId = getActiveProfileId();
   grid.innerHTML = profiles.map(p => `
     <div class="profile-card${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" tabindex="0" role="button">
-      <div class="profile-avatar-circle" style="background:${p.color || '#e50914'}">
+      <div class="profile-avatar-circle" style="${p.color === 'transparent' ? 'background: conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px' : 'background:' + (p.color || '#e50914')}">
         ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : `<span class="material-icons-round">person</span>`}
       </div>
       <div class="profile-card-name">${esc(p.name)}</div>
@@ -4189,7 +4528,9 @@ function openProfileEditor(profileId) {
   if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
   const color = profile?.color || '#e50914';
   if (preview) {
-    preview.style.background = color;
+    preview.style.background = color === 'transparent'
+      ? 'conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px'
+      : color;
     preview.innerHTML = profile?.avatar
       ? `<img src="${esc(profile.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
       : `<span class="material-icons-round">person</span>`;

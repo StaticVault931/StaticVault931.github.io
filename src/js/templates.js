@@ -274,6 +274,23 @@ export function injectOverlays() {
               </div>
             </div>
           </div>
+          <!-- Multi-source ratings: IMDb / RT / Metacritic (filled by OMDb) -->
+          <div class="info-multi-ratings" id="info-multi-ratings" style="display:none"></div>
+          <!-- Awards banner (filled by OMDb) -->
+          <div class="info-awards-banner" id="info-awards-banner" style="display:none"></div>
+
+          <!-- Where to watch (filled by Watchmode) -->
+          <div class="info-section" id="info-wtw-section" style="display:none">
+            <div class="info-section-label">Where to Watch</div>
+            <div class="info-where-to-watch" id="info-where-to-watch"></div>
+          </div>
+
+          <!-- Part of a collection (franchise) -->
+          <div class="info-section" id="info-collection-section" style="display:none">
+            <div class="info-section-label">Part of</div>
+            <span class="info-collection-link" id="info-collection-link" style="display:none"></span>
+          </div>
+
           <div class="info-section" id="info-cast-section">
             <div class="info-section-label">Cast</div>
             <div class="info-cast-row" id="info-cast-row"></div>
@@ -285,6 +302,14 @@ export function injectOverlays() {
             </div>
             <div class="info-ep-grid" id="info-ep-grid"></div>
           </div>
+
+          <!-- Keywords / Anime Tags -->
+          <div class="info-section" id="info-keywords-section" style="display:none">
+            <div class="info-section-label">Keywords &amp; Tags</div>
+            <div id="info-keywords-tags"></div>
+            <div id="info-ani-tags"></div>
+          </div>
+
           <div class="info-section" id="info-related-section">
             <div class="info-section-label">More Like This</div>
             <div class="info-related-grid" id="info-related-grid"></div>
@@ -325,6 +350,26 @@ export function injectOverlays() {
   </div>
 </div>`;
   frag.appendChild(person);
+
+  // ── COMPANY / COLLECTION PAGE OVERLAY ────────────────────────────
+  const company = document.createElement('div');
+  company.id = 'company-overlay';
+  company.setAttribute('role', 'dialog');
+  company.innerHTML = `
+<div id="company-panel">
+  <button id="company-close" aria-label="Close"><span class="material-icons-round">close</span></button>
+  <div class="company-hero" id="company-hero" style="display:none"></div>
+  <div class="company-header">
+    <img id="company-logo" class="company-logo" src="" alt="" style="display:none">
+    <div class="company-header-info">
+      <h2 class="company-name"></h2>
+      <p id="company-parent" class="company-parent"></p>
+      <p id="company-desc" class="company-desc"></p>
+    </div>
+  </div>
+  <div class="search-grid company-grid" id="company-grid"></div>
+</div>`;
+  frag.appendChild(company);
 
   // ── PROFILES OVERLAY ──────────────────────────────────────────────
   const profiles = document.createElement('div');

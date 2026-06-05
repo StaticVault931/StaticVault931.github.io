@@ -155,25 +155,121 @@
   border-radius: 3px;
 }
 .info-overview {
-  font-size: .85rem;
-  color: rgba(255,255,255,.75);
-  line-height: 1.65;
-  max-width: 680px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: .88rem;
+  color: rgba(255,255,255,.8);
+  line-height: 1.7;
+  max-width: 720px;
+  max-height: 110px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.2) transparent;
+  padding-right: .4rem;
+  margin-top: .5rem;
 }
 
 /* ── MAIN CONTENT ─────────────────────────────────────────────────── */
 .info-content {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 360px;
   gap: 2.5rem;
   padding: 2rem 3rem 4rem;
 }
 .info-col-main { min-width: 0; }
 .info-col-side { display: flex; flex-direction: column; gap: 1.2rem; }
+
+/* ── WHERE TO WATCH ──────────────────────────────────────────────── */
+.info-where-to-watch { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; }
+.wtw-badge {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .35rem .8rem; border-radius: 6px;
+  font-size: .75rem; font-weight: 800;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  color: var(--text); cursor: pointer;
+  transition: all .18s; white-space: nowrap;
+}
+.wtw-badge:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+.wtw-badge .wtw-icon {
+  width: 20px; height: 20px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .65rem; font-weight: 900; flex-shrink: 0;
+}
+.wtw-free { border-color: #22c55e; }
+.wtw-sub  { border-color: rgba(255,255,255,.15); }
+.wtw-rent { border-color: #f59e0b; }
+
+/* ── MULTI-RATING ROW (IMDb, RT, Metacritic) ─────────────────────── */
+.info-multi-ratings {
+  display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem;
+}
+.rating-pill {
+  display: flex; align-items: center; gap: .35rem;
+  padding: .3rem .75rem; border-radius: 6px;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  font-size: .78rem; font-weight: 800; cursor: default;
+}
+.rating-pill-icon { font-size: .85rem; }
+.rating-pill.imdb   { border-color: #f5c518; color: #f5c518; }
+.rating-pill.rt-fresh    { border-color: #fa320a; color: #fa320a; }
+.rating-pill.rt-rotten   { border-color: #6e9b1f; color: #6e9b1f; }
+.rating-pill.metacritic  { border-color: #6c3; }
+.rating-pill.awards      { border-color: #f5c518; color: var(--text); font-size: .72rem; }
+
+/* ── FANART LOGO (transparent title logo) ────────────────────────── */
+.info-fanart-logo {
+  max-height: 80px; max-width: 360px;
+  object-fit: contain; display: block;
+  margin-bottom: .5rem; filter: drop-shadow(0 2px 8px rgba(0,0,0,.8));
+}
+
+/* ── COMPANY / COLLECTION LINK ───────────────────────────────────── */
+.info-company-link, .info-collection-link {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .25rem .65rem; border-radius: 5px;
+  font-size: .72rem; font-weight: 800;
+  background: var(--s3); border: 1px solid var(--border2);
+  color: var(--text); cursor: pointer;
+  transition: all .18s; margin-right: .3rem; margin-bottom: .3rem;
+}
+.info-company-link:hover { border-color: #54b9c5; color: #54b9c5; }
+.info-collection-link:hover { border-color: var(--gold); color: var(--gold); }
+.info-company-link .material-icons-round,
+.info-collection-link .material-icons-round { font-size: .8rem; }
+
+/* ── KEYWORDS AS TAGS ────────────────────────────────────────────── */
+.info-keyword-tag {
+  display: inline-flex; align-items: center;
+  padding: .18rem .52rem; border-radius: 4px;
+  font-size: .68rem; font-weight: 700;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.6); cursor: pointer;
+  transition: all .15s; margin: .15rem;
+}
+.info-keyword-tag:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+/* ── ANIME TAGS (AniList rich tags) ──────────────────────────────── */
+.info-ani-tag {
+  display: inline-flex; align-items: center;
+  padding: .18rem .52rem; border-radius: 4px;
+  font-size: .68rem; font-weight: 700;
+  background: rgba(249,115,22,.12); border: 1px solid rgba(249,115,22,.25);
+  color: #fb923c; margin: .15rem; cursor: default;
+}
+
+/* ── WIKI BIO SUPPLEMENT ─────────────────────────────────────────── */
+.info-wiki-bio {
+  font-size: .82rem; color: var(--muted); line-height: 1.65;
+  max-height: 140px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent;
+  padding-right: .3rem; border-left: 2px solid var(--border2);
+  padding-left: .75rem; margin-top: .4rem;
+}
+
+/* ── STREAMING PROVIDER PAGE hint ────────────────────────────────── */
+.provider-page-link {
+  font-size: .7rem; color: var(--dim); cursor: pointer;
+  text-decoration: underline dotted; transition: color .15s;
+}
+.provider-page-link:hover { color: var(--text); }
 
 .info-section { margin-bottom: 2rem; }
 .info-section-label {
@@ -329,3 +425,37 @@
   .person-sidebar { position: static; }
   .person-photo { width: 120px; aspect-ratio: 2/3; }
 }
+
+/* ── AWARDS BANNER ───────────────────────────────────────────────── */
+.info-awards-banner {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .9rem; border-radius: 6px;
+  background: rgba(245,197,24,.08); border: 1px solid rgba(245,197,24,.25);
+  font-size: .76rem; color: var(--gold); font-weight: 700;
+  margin-bottom: .75rem; cursor: default;
+}
+.info-awards-banner::before {
+  content: '🏆'; font-size: 1rem; flex-shrink: 0;
+}
+
+/* ── RATING PILLS IMPROVEMENTS ───────────────────────────────────── */
+.info-multi-ratings {
+  display: flex; flex-wrap: wrap; gap: .45rem;
+  margin-bottom: .75rem; align-items: center;
+}
+.rating-pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .32rem .7rem; border-radius: 6px;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  font-size: .8rem; font-weight: 800; cursor: default;
+  white-space: nowrap;
+}
+.rating-pill svg { flex-shrink: 0; }
+.rating-pill.imdb   { border-color: rgba(245,197,24,.4); background: rgba(245,197,24,.07); }
+.rating-pill.rt-fresh  { border-color: rgba(250,50,10,.4); background: rgba(250,50,10,.07); color: #fa8072; }
+.rating-pill.rt-rotten { border-color: rgba(110,155,31,.4); background: rgba(110,155,31,.07); color: #a3c74b; }
+.rating-pill.metacritic { border-color: rgba(102,204,51,.4); background: rgba(102,204,51,.07); }
+
+/* Where-to-watch badges improvements */
+.wtw-badge { text-decoration: none; }
+.wtw-badge:hover { box-shadow: 0 4px 16px rgba(0,0,0,.5) !important; border-color: rgba(255,255,255,.3) !important; }

@@ -2085,3 +2085,55 @@ img[alt]::after {
   .profile-card-name { font-size: 1rem !important; }
   .profiles-add-btn { min-height: 175px !important; }
 }
+
+/* ── COMPANY / COLLECTION OVERLAY ────────────────────────────────── */
+#company-overlay {
+  position: fixed; inset: 0; z-index: 9050;
+  background: rgba(0,0,0,.92); backdrop-filter: blur(14px);
+  display: none; overflow-y: auto;
+}
+#company-overlay.open { display: block; }
+#company-panel {
+  max-width: 1200px; margin: 1.5rem auto; padding: 1.8rem;
+  background: var(--bg); border-radius: 16px;
+  box-shadow: 0 40px 120px rgba(0,0,0,.98);
+  position: relative; animation: modalIn .24s var(--ease);
+}
+#company-close {
+  position: absolute; top: 1rem; right: 1rem;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  color: var(--text); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .18s, transform .18s; z-index: 2;
+}
+#company-close:hover { background: var(--red); transform: rotate(90deg); }
+.company-hero {
+  width: 100%; height: 200px; border-radius: 12px;
+  background-size: cover; background-position: center;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
+}
+.company-header {
+  display: flex; gap: 1.2rem; align-items: flex-start; margin-bottom: 1.5rem;
+}
+.company-logo { max-height: 80px; max-width: 200px; object-fit: contain; flex-shrink: 0; }
+.company-name {
+  font-family: 'Bebas Neue', Impact, sans-serif; font-size: 1.8rem;
+  letter-spacing: .04em; text-transform: uppercase; margin: 0 0 .3rem;
+}
+.company-parent { font-size: .75rem; color: var(--muted); margin: 0 0 .4rem; }
+.company-desc { font-size: .82rem; color: var(--muted); line-height: 1.6; margin: 0; }
+.company-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .75rem; margin-top: 1rem; }
+.company-grid .card { width: 100%; }
+
+/* ── CYF TEST APIs ────────────────────────────────────────────────── */
+#api-test-results {
+  background: var(--s2); border-radius: 8px; padding: .75rem 1rem;
+  border: 1px solid var(--border); margin-top: .75rem;
+  max-height: 260px; overflow-y: auto; display: none;
+}
+
+/* ── CARD SIZE BOOST for person grid ─────────────────────────────── */
+.person-grid .card-title { font-size: 1rem !important; }
+.person-grid .card-body { padding: .65rem .8rem .75rem !important; }

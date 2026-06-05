@@ -869,6 +869,17 @@
     </div>
   </div>
 
+  <div class="pref-section pref-section-full" style="margin-top:1.5rem">
+    <h3><span class="material-icons-round">api</span>External API Status</h3>
+    <p class="pref-hint">Check which enrichment APIs are configured and working. OMDb, Fanart.tv, and Watchmode need API keys set in <code>src/js/api.js</code>.</p>
+    <div class="pref-actions-row" style="margin-top:.5rem">
+      <button class="data-btn data-btn-primary" id="test-all-apis-btn">
+        <span class="material-icons-round">check_circle</span>Test APIs
+      </button>
+    </div>
+    <div id="api-test-results"></div>
+  </div>
+
   <div style="height:3rem"></div>
 </main>
 
