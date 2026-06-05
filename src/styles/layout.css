@@ -385,8 +385,7 @@
   gap: .65rem;
   overflow-x: auto;
   padding: .4rem 0 2rem;
-  scroll-snap-type: x proximity;
-  scroll-padding-left: 0;
+  scroll-snap-type: none;
   scrollbar-width: none;
   scroll-behavior: smooth;
 }

@@ -9,7 +9,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
   fetchDailymotionTrailer, wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
-  fetchTasteDive } from './api.js';
+  fetchTasteDive, TVAPI_KEY2 } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
@@ -889,7 +889,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   ];
 
   // Hide all pool sections by default; show only the selected ones
-  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes']; // always show these
+  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes', 'row-sequels', 'row-new-to-you']; // always show these
   const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id));
   const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
   let stdSelected = [];
@@ -965,6 +965,50 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     );
     return items.filter(Boolean);
   }, 'tv');
+
+  // Sequels row: first 2 films from popular franchises
+  _scheduleRowLoad('row-sequels', 'sec-sequels', async () => {
+    // Popular franchise TMDB collection IDs
+    const franchises = [10 /* Star Wars */, 131295 /* MCU */, 86311 /* Avengers */,
+      9485 /* Fast & Furious */, 87359 /* Mission Impossible */, 84 /* Indiana Jones */,
+      1241 /* Harry Potter */, 10194 /* Toy Story */, 404609 /* John Wick */,
+      263 /* Dark Knight */, 328 /* Jurassic Park */, 1709 /* Terminator */,
+      33512 /* Transformers */, 422834 /* Deadpool */, 131296 /* Thor */
+    ];
+    // Pick 6 random franchises per session
+    const seed = state._randomPage || 1;
+    const picked = [...franchises].sort(() => Math.sin(seed * 2.1 + franchises.indexOf(_)) - 0.5).slice(0, 7);
+    const results = await Promise.allSettled(
+      picked.map(colId => tmdb(`/collection/${colId}`).then(d => {
+        const parts = (d.parts||[]).sort((a,b)=>(a.release_date||'')>(b.release_date||'')?1:-1);
+        return parts.slice(0, 2).map(m=>({...m,media_type:'movie'}));
+      }).catch(()=>[]))
+    );
+    const flat = results.flatMap(r => r.status==='fulfilled' ? r.value : []);
+    // Interleave: film1_franchise1, film1_franchise2, film2_franchise1, film2_franchise2, ...
+    return flat;
+  }, 'movie');
+
+  // Content New to You — things user hasn't seen/liked/watchlisted
+  _scheduleRowLoad('row-new-to-you', 'sec-new-to-you', async () => {
+    const seenIds = new Set([
+      ...(state.watched||[]).map(x=>x.id),
+      ...(state.liked||[]).map(x=>x.id),
+      ...(state.watchlist||[]).map(x=>x.id),
+      ...(state.disliked||[]).map(x=>x.id),
+    ]);
+    // Fetch a random page of popular content and filter to unseen items
+    const rp = (state._randomPage || 1) + Math.floor(Math.random() * 3);
+    const [movies, tv] = await Promise.allSettled([
+      tmdb('/movie/popular', { page: rp + 2 }).then(d => d.results || []),
+      tmdb('/tv/popular',    { page: rp + 1 }).then(d => d.results || []),
+    ]);
+    const m = movies.status==='fulfilled' ? movies.value.filter(x=>x.id&&!seenIds.has(x.id)).map(x=>({...x,media_type:'movie'})) : [];
+    const t = tv.status==='fulfilled'    ? tv.value.filter(x=>x.id&&!seenIds.has(x.id)).map(x=>({...x,media_type:'tv'}))    : [];
+    const combined = [];
+    for (let i=0; i<Math.max(m.length,t.length); i++) { if(m[i]) combined.push(m[i]); if(t[i]) combined.push(t[i]); }
+    return combined.slice(0, 16);
+  }, null);
 
   // Box Office This Weekend — from tv-api.com + resolved via TMDB for full card data
   _scheduleRowLoad('row-boxoffice', 'sec-boxoffice', async () => {
@@ -4331,19 +4375,34 @@ async function _enrichInfoPage(id, type, details, credits) {
     if (kwSec) kwSec.style.display = '';
   }
 
-  // ── TMDB Collection / Franchise ────────────────────────────────────
-  if (details.belongs_to_collection) {
+  // ── TMDB Collection / Franchise — show actual movies in row ────────
+  if (details.belongs_to_collection && getSetting('showKeywordTags') !== false) {
     const col = details.belongs_to_collection;
-    const collEl  = document.getElementById('info-collection-link');
     const collSec = document.getElementById('info-collection-section');
-    if (collEl) {
-      collEl.innerHTML = `<span class="material-icons-round">collections</span>${esc(col.name)}`;
-      collEl.dataset.collectionId = col.id;
-      collEl.style.display = '';
-      collEl.onclick = null;
-      collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
+    const collEl  = document.getElementById('info-collection-link');
+    if (collSec) {
+      collSec.style.display = '';
+      // Fetch the full collection and show movies in a horizontal row
+      tmdb(`/collection/${col.id}`).then(colData => {
+        const parts = (colData.parts || [])
+          .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1);
+        if (!parts.length) return;
+        // Build a mini row of collection films
+        const collGrid = collSec.querySelector('#info-collection-grid');
+        if (collGrid) {
+          collGrid.innerHTML = parts.map(m => makeCard({...m,media_type:'movie'},'movie')).join('');
+        }
+        if (collEl) {
+          collEl.textContent = col.name;
+          collEl.dataset.collectionId = col.id;
+          collEl.style.display = '';
+          collEl.onclick = null;
+          collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
+        }
+      }).catch(() => {
+        if (collEl) { collEl.innerHTML = `<span class="material-icons-round">collections</span>${esc(col.name)}`; collEl.style.display = ''; }
+      });
     }
-    if (collSec) collSec.style.display = '';
   }
 }
 
@@ -4470,6 +4529,9 @@ function closePersonPage() {
 }
 
 export function closeInfoPage() {
+  // Stop trailer iframe to prevent audio/video playing in background
+  const tf = document.getElementById('info-trailer-frame');
+  if (tf) { tf.removeAttribute('src'); tf.src = ''; }
   const overlay = document.getElementById('info-overlay');
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
@@ -5660,6 +5722,19 @@ async function showNetflixCard(card) {
     _dmTrailerData = await fetchDailymotionTrailer(`${title} ${year}`).catch(() => null);
   }
 
+  // Resolve DM trailer — use if available and strictly matches title
+  const _dmResult = await _dmFetch;
+  if (_dmResult?.embed_url && frame && _hoverActive && _hoverCurrentCard === card) {
+    // Use Dailymotion: stop YouTube if it was loading
+    if (frame.src.includes('youtube')) frame.removeAttribute('src');
+    frame.src = `${_dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+    if (backdrop) backdrop.style.opacity = '0';
+  } else if (!frame.src && trailerKey && trailerKey !== '__none__') {
+    // DM had no match — use YouTube
+    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+  }
+
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
   // Update rich metadata
@@ -5696,17 +5771,9 @@ async function showNetflixCard(card) {
     genresEl.innerHTML = '';
   }
 
-  // Load trailer — try Dailymotion first (more reliable), then YouTube
-  // Step 1: try Dailymotion for an official trailer embed
-  const dmTrailer = (trailerKey === '__none__' && frame)
-    ? await fetchDailymotionTrailer(`${title} ${year}`).catch(() => null)
-    : null;
-  if (dmTrailer?.embed_url && frame) {
-    if (backdrop) { backdrop.style.opacity = '0.3'; }
-    frame.src = `${dmTrailer.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-    frame.style.display = '';
-    if (!_hoverActive || _hoverCurrentCard !== card) return;
-  }
+  // Load trailer: fetch DM and YouTube in parallel, use DM if strict title match
+  const cleanTitle = title.replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
+  const _dmFetch = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
 
   if (frame && trailerKey && trailerKey !== '__none__') {
     // Keep backdrop visible until we confirm playback

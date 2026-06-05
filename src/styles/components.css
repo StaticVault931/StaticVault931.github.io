@@ -2,7 +2,7 @@
 .card {
   flex-shrink: 0;
   width: var(--card-w);
-  scroll-snap-align: start;
+  /* scroll-snap-align removed — caused row drift */
   border-radius: var(--r);
   background: var(--s2);
   cursor: pointer;

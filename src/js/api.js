@@ -8,7 +8,8 @@ export const ANILIST = 'https://graphql.anilist.co';
 export const OMDB_KEY        = '9f3c997';
 export const FANART_KEY      = '61816a03253da18b920d1a3e991a8abb'; // fanart.tv
 export const WATCHMODE_KEY   = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
-export const TVAPI_KEY       = 'pk_v1tw28ohp4yeebfsw';  // tv-api.com (IMDB-API)
+export const TVAPI_KEY       = 'k_ukuha965';   // tv-api.com primary
+export const TVAPI_KEY2      = 'pk_tbfqvjjbljz611let'; // tv-api.com secondary
 export const LOGO_DEV_TOKEN  = 'pk_Ls472ChRSLSBvfBYgW6R7Q'; // logo.dev
 export const TASTEDIVE_KEY   = '1073636-StaticQ-DF044F0C'; // TasteDive recommendations
 
@@ -43,15 +44,17 @@ export const PROVIDER_LOGO_DOMAINS = {
   'AMC Plus':             'amcplus.com',
   'Discovery Plus':       'discoveryplus.com',
   'ESPN Plus':            'espnplus.com',
-  'MGM Plus':             'mgmplus.com',
+  'MGM Plus':             'mgm.com',
+  'MGM+':                 'mgm.com',
   'Kanopy':               'kanopy.com',
   'Plex':                 'plex.tv',
   'Amazon Freevee':       'amazon.com',
   'Freevee':              'amazon.com',
   'Google Play Movies':   'play.google.com',
   'Google Play':          'play.google.com',
-  'Apple TV':             'tv.apple.com',
+  'Apple TV':             'apple.com',
   'Fandango at Home':     'fandango.com',
+  'Fandango':             'fandango.com',
   'Vudu':                 'vudu.com',
   'Microsoft Store':      'microsoft.com',
   'YouTube Free':         'youtube.com',
@@ -61,6 +64,29 @@ export const PROVIDER_LOGO_DOMAINS = {
   'Criterion Channel':    'criterionchannel.com',
   'Mubi Go':              'mubi.com',
   'Sundance Now':         'sundancenow.com',
+  'Roku Channel':         'roku.com',
+  'Roku':                 'roku.com',
+  'Spectrum On Demand':   'spectrum.net',
+  'Spectrum':             'spectrum.net',
+  'Philo':                'philo.com',
+  'DirecTV':              'directv.com',
+  'DirecTV Stream':       'directv.com',
+  'DIRECTV':              'directv.com',
+  'Sling TV':             'sling.com',
+  'Sling':                'sling.com',
+  'Xfinity':              'xfinity.com',
+  'Comcast Xfinity':      'xfinity.com',
+  'Cox':                  'cox.com',
+  'EPIX':                 'mgm.com',
+  'Acorn TV':             'acorn.tv',
+  'Topic':                'topic.com',
+  'Flix Fling':           'flixfling.com',
+  'Hoopla':               'hoopladigital.com',
+  'IndieFlix':            'indieflix.com',
+  'Hallmark Movies Now':  'hallmarkchannel.com',
+  'UP Faith & Family':    'upfaithandfamily.com',
+  'Dove Channel':         'dovechannel.com',
+  'Pure Flix':            'pureflix.com',
 };
 
 export function getProviderLogoUrl(name, size = 32) {
@@ -274,78 +300,77 @@ export async function fetchJikan(malId) {
 // imdbId like "tt1375666". Free: 100 calls/day. Use conservatively.
 const TVAPI_BASE = 'https://tv-api.com/API';
 
+// Build TV-API URL: /API/{action}/{key}/{id?}
+// Docs format: GET /API/Trailer/{apiKey}/{imdbId}
+function _tvApiUrl(action, idOrNull) {
+  // Try primary key first, builds URL with key inserted
+  return idOrNull
+    ? `${TVAPI_BASE}/${action}/${TVAPI_KEY}/${idOrNull}`
+    : `${TVAPI_BASE}/${action}/${TVAPI_KEY}`;
+}
+
+async function _tvApiGet(action, id) {
+  const keys = [TVAPI_KEY, TVAPI_KEY2].filter(Boolean);
+  for (const apiKey of keys) {
+    const url = id ? `${TVAPI_BASE}/${action}/${apiKey}/${id}` : `${TVAPI_BASE}/${action}/${apiKey}`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (!data.errorMessage) return data;
+      // If daily limit exceeded, try next key
+      if (data.errorMessage?.toLowerCase().includes('limit') || data.errorMessage?.toLowerCase().includes('maximum')) continue;
+    } catch {}
+  }
+  return null;
+}
+
 export async function fetchTvApiTrailer(imdbId) {
-  if (!TVAPI_KEY || !imdbId) return null;
+  if (!imdbId) return null;
   const key = cacheKey('tvapi_trailer_' + imdbId, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${TVAPI_BASE}/Trailer/${TVAPI_KEY}/${imdbId}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    if (data.errorMessage) return null;
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _tvApiGet('Trailer', imdbId);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 export async function fetchTvApiYouTubeTrailer(imdbId) {
-  if (!TVAPI_KEY || !imdbId) return null;
+  if (!imdbId) return null;
   const key = cacheKey('tvapi_yt_' + imdbId, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${TVAPI_BASE}/YouTubeTrailer/${TVAPI_KEY}/${imdbId}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    if (data.errorMessage || !data.videoId) return null;
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _tvApiGet('YouTubeTrailer', imdbId);
+  if (data?.videoId) { cacheSet(key, data); return data; }
+  return null;
 }
 
 export async function fetchTvApiAwards(imdbId) {
-  if (!TVAPI_KEY || !imdbId) return null;
+  if (!imdbId) return null;
   const key = cacheKey('tvapi_awards_' + imdbId, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${TVAPI_BASE}/Awards/${TVAPI_KEY}/${imdbId}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    if (data.errorMessage) return null;
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _tvApiGet('Awards', imdbId);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
-// Top lists for better home rows
 export async function fetchTvApiTop250Movies() {
   const key = cacheKey('tvapi_top250movies', {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${TVAPI_BASE}/Top250Movies/${TVAPI_KEY}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    if (data.errorMessage) return null;
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _tvApiGet('Top250Movies', null);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 export async function fetchTvApiBoxOffice() {
   const key = cacheKey('tvapi_boxoffice', {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${TVAPI_BASE}/BoxOffice/${TVAPI_KEY}`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    if (data.errorMessage) return null;
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _tvApiGet('BoxOffice', null);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 /* ── DAILYMOTION — Trailer search (strict: must be official trailer) ─ */
@@ -384,43 +409,43 @@ export async function fetchDailymotionTrailer(titleQuery) {
 /* ── VIDSRC-EMBED.RU — latest feeds (Recently Added rows) ───────── */
 const VIDSRC_BASE = 'https://vidsrc-embed.ru';
 
+async function _vidsrcFetch(url) {
+  try {
+    // Try direct fetch first, then with no-cors mode as fallback
+    const r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return Array.isArray(data) ? data : data?.result || data?.items || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchVidsrcLatestMovies(page = 1) {
   const key = cacheKey('vidsrc_latest_movies_' + page, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${VIDSRC_BASE}/movies/latest/page-${page}.json`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _vidsrcFetch(`${VIDSRC_BASE}/movies/latest/page-${page}.json`);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 export async function fetchVidsrcLatestShows(page = 1) {
   const key = cacheKey('vidsrc_latest_shows_' + page, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${VIDSRC_BASE}/tvshows/latest/page-${page}.json`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _vidsrcFetch(`${VIDSRC_BASE}/tvshows/latest/page-${page}.json`);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 export async function fetchVidsrcLatestEpisodes(page = 1) {
   const key = cacheKey('vidsrc_latest_eps_' + page, {});
   const cached = cacheGet(key);
   if (cached) return cached;
-  try {
-    const r = await fetch(`${VIDSRC_BASE}/episodes/latest/page-${page}.json`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    cacheSet(key, data);
-    return data;
-  } catch { return null; }
+  const data = await _vidsrcFetch(`${VIDSRC_BASE}/episodes/latest/page-${page}.json`);
+  if (data) cacheSet(key, data);
+  return data;
 }
 
 // Build vidsrc-embed URL for a movie or TV episode
@@ -451,17 +476,17 @@ export async function fetchTasteDive(title, type = 'movie') {
   const typeMap = { movie: 'movies', tv: 'shows', anime: 'shows' };
   const q = encodeURIComponent(title);
   const t = typeMap[type] || 'movies';
-  const key = cacheKey('tastedive_' + title, {});
+  const key = cacheKey('tastedive_' + title + '_' + t, {});
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    const r = await fetch(
-      `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&k=${TASTEDIVE_KEY}`
-    );
+    // TasteDive uses JSONP or direct API — try with verbose=1 for descriptions
+    const url = `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&verbose=1&apikey=${TASTEDIVE_KEY}`;
+    const r = await fetch(url);
     if (!r.ok) return null;
     const data = await r.json();
-    cacheSet(key, data);
-    return data;
+    if (data?.Similar) cacheSet(key, data);
+    return data?.Similar ? data : null;
   } catch { return null; }
 }
 

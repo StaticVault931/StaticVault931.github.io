@@ -99,8 +99,8 @@
 @media (max-width: 480px) {
   :root { --card-w: 82vw; }
 
-  .card-row { scroll-snap-type: x mandatory; }
-  .card { scroll-snap-align: start; }
+  /* scroll-snap removed */
+
 
   .search-grid,
   .lib-grid,
@@ -186,8 +186,8 @@
 
 /* ── VERTICAL SCROLL on card rows: no snap on mobile ─────────────── */
 @media (max-width: 480px) {
-  .card-row { scroll-snap-type: x proximity; }
-  .card { scroll-snap-align: start; }
+
+
   /* Show 2 partial cards to hint scrollability */
   :root { --card-w: 68vw; }
 }

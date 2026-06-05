@@ -288,10 +288,13 @@ export function injectOverlays() {
             <div class="info-where-to-watch" id="info-where-to-watch"></div>
           </div>
 
-          <!-- Part of a collection / franchise -->
+          <!-- Part of a collection / franchise — shows actual movies -->
           <div class="info-section" id="info-collection-section" style="display:none">
-            <div class="info-section-label">Part of a Collection</div>
-            <span class="info-collection-link" id="info-collection-link" style="display:none"></span>
+            <div class="info-section-label" style="display:flex;align-items:center;gap:.5rem">
+              <span>Part of a Collection</span>
+              <span class="info-collection-link" id="info-collection-link" style="display:none;font-size:.75rem;cursor:pointer;color:var(--gold);border-bottom:1px dotted var(--gold)"></span>
+            </div>
+            <div class="info-collection-grid" id="info-collection-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;margin-top:.5rem"></div>
           </div>
 
           <!-- Cast -->
