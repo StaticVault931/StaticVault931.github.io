@@ -494,10 +494,8 @@ export async function doSearch(q) {
 async function fetchSearchPage(q, page) {
   let movies = [], shows = [], anime = [];
 
-  // Also search for people (actors, directors) in parallel with content
-  const personSearch = (_sfActive === 'all' || _sfActive === 'movie' || _sfActive === 'tv')
-    ? tmdb('/search/person', { query: q, page }).catch(() => ({ results: [] }))
-    : Promise.resolve({ results: [] });
+  // Person search — only for queries that look like names (2+ words) or when results are sparse
+  const looksLikeName = q.trim().split(/\s+/).length >= 2 && !/[0-9:!?]/.test(q);
 
   if (_sfActive !== 'tv' && _sfActive !== 'anime') {
     const d = await tmdb('/search/movie', { query: q, page });
@@ -513,27 +511,6 @@ async function fetchSearchPage(q, page) {
     anime = (d?.data?.Page?.media || []).map(m => ({ ...normalizeAnime(m), _type: 'anime' }));
   }
 
-  // If person search found results, add their credits to the search
-  if (page === 1) {
-    const personData = await personSearch;
-    const people = (personData.results || []).slice(0, 3).filter(p => p.known_for_department);
-    for (const person of people) {
-      try {
-        const credits = await tmdb(`/person/${person.id}/combined_credits`);
-        const personMovies = (credits.cast || [])
-          .filter(m => m.media_type === 'movie' && m.poster_path)
-          .slice(0, 4)
-          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name }));
-        const personShows = (credits.cast || [])
-          .filter(m => m.media_type === 'tv' && m.poster_path)
-          .slice(0, 4)
-          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name }));
-        movies.push(...personMovies);
-        shows.push(...personShows);
-      } catch {}
-    }
-  }
-
   let all = [...movies, ...shows, ...anime];
   if (_sfActive === 'movie') all = movies;
   else if (_sfActive === 'tv') all = shows;
@@ -546,6 +523,13 @@ async function fetchSearchPage(q, page) {
     });
   }
 
+  // Normalize anime scores for consistent sorting
+  all.forEach(m => {
+    if (m._type === 'anime' && !m.vote_average && m.averageScore) {
+      m.vote_average = m.averageScore / 10;
+      m.popularity = m.popularity || 1; // low priority without explicit popularity
+    }
+  });
   all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
   // Apply language filter
@@ -591,7 +575,7 @@ async function fetchSearchPage(q, page) {
     }
 
     // Company/network search (for "Marvel", "Disney", "HBO" etc)
-    if (all.length < 6) {
+    if (all.length < 12) {
       try {
         const companyRes = await tmdb('/search/company', { query: q });
         const companies = (companyRes.results || []).slice(0, 2);
@@ -628,7 +612,32 @@ async function fetchSearchPage(q, page) {
     }
   }
 
-  return all;
+  // Only do person search if query looks like a name or we need more results
+  let _personResults = [];
+  if ((looksLikeName || all.length < 4) && page === 1 && (_sfActive === 'all' || _sfActive === 'movie' || _sfActive === 'tv')) {
+    try {
+      const personData = await tmdb('/search/person', { query: q });
+      const people = (personData.results || []).slice(0, 2).filter(p => p.known_for_department);
+      for (const person of people) {
+        const credits = await tmdb(`/person/${person.id}/combined_credits`);
+        const existIds = new Set(all.map(x => x.id));
+        const personMovies = (credits.cast || [])
+          .filter(m => m.media_type === 'movie' && m.poster_path && !existIds.has(m.id))
+          .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+          .slice(0, 6)
+          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name }));
+        const personShows = (credits.cast || [])
+          .filter(m => m.media_type === 'tv' && m.poster_path && !existIds.has(m.id))
+          .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+          .slice(0, 6)
+          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name }));
+        _personResults.push(...personMovies, ...personShows);
+      }
+    } catch {}
+  }
+
+  // Return combined — person results come AFTER main results
+  return [...all, ..._personResults];
 }
 
 async function loadMoreSearchResults() {

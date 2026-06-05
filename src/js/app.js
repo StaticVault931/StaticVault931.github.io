@@ -142,22 +142,26 @@ function closeLegal() {
 
 /* ── SETTINGS (must be before init IIFE to avoid TDZ) ───────────── */
 const SV_SETTINGS = [
-  { id: 'showHoverTrailer', label: 'Hover Trailers',       desc: 'Preview trailers when hovering cards for 1s',           default: true,  icon: 'play_circle' },
-  { id: 'defaultInfoMode',     label: 'Info Page by Default', desc: 'Open full info screen instead of player',               default: false, icon: 'info' },
-  { id: 'compactMode',         label: 'Compact Grid Mode',    desc: 'Show content as a grid (no horizontal scroll)',         default: false, icon: 'grid_view' },
-  { id: 'autoNextProvider',    label: 'Auto-Switch Source',   desc: 'Try next source automatically if current one fails',    default: true,  icon: 'swap_horiz' },
-  { id: 'showRatings',         label: 'Show Ratings',         desc: 'Display star ratings on content cards',                 default: true,  icon: 'star' },
-  { id: 'disableAgeFilter',    label: 'Unlock All Content',   desc: 'Show all ratings regardless of age filter',             default: false, icon: 'no_adult_content' },
-  { id: 'showProgressBar',     label: 'Progress Bars',        desc: 'Watch progress on Continue Watching cards',             default: false, icon: 'linear_scale' },
-  { id: 'reducedMotion',       label: 'Reduce Animations',    desc: 'Minimize transitions for performance',                  default: false, icon: 'motion_photos_off' },
-  { id: 'skipRecap',           label: 'Skip Intros',          desc: 'Remember to skip intro/recap (manual reminder)',        default: false, icon: 'skip_next' },
-  { id: 'hdFirst',             label: 'Prefer HD Sources',    desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)', default: true, icon: 'hd' },
-  { id: 'darkPlayer',          label: 'Dark Player BG',       desc: 'Show dark background behind the player iframe',         default: true,  icon: 'dark_mode' },
-  { id: 'wideInfo',            label: 'Wide Info Page',       desc: 'Use full screen width for info page',                   default: true,  icon: 'open_in_full' },
-  { id: 'streamMode',          label: 'Stream Mode',          desc: 'All content in one mixed grid, no titles, no duplicates', default: false, icon: 'stream' },
-  { id: 'repeatContent',       label: 'Repeat Tolerance',     desc: 'How often to re-show content you\'ve already seen',       default: 'medium', icon: 'repeat', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
-  { id: 'personalizeContent',  label: 'Personalized Feed',    desc: 'Tailor rows to your genres, likes, and viewing habits',   default: true,  icon: 'auto_awesome' },
-  { id: 'disableSandbox',      label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.', default: false, icon: 'security' },
+  // Playback
+  { id: 'showHoverTrailer',  label: 'Hover Trailers',         desc: 'Preview trailers when hovering cards for 1s',                default: true,  icon: 'play_circle',      group: 'Playback' },
+  { id: 'autoNextProvider',  label: 'Auto-Switch Source',     desc: 'Try next source automatically if current one fails',          default: true,  icon: 'swap_horiz',       group: 'Playback' },
+  { id: 'disableSandbox',    label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.',   default: false, icon: 'security',         group: 'Playback' },
+  // Display
+  { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: true,  icon: 'star',             group: 'Display' },
+  { id: 'compactMode',       label: 'Compact Grid Mode',      desc: 'Show content as a grid (no horizontal scroll)',               default: false, icon: 'grid_view',        group: 'Display' },
+  { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
+  { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
+  { id: 'darkPlayer',        label: 'Dark Player BG',         desc: 'Show dark background behind the player iframe',               default: true,  icon: 'dark_mode',        group: 'Display' },
+  // Content
+  { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
+  { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
+  { id: 'repeatContent',     label: 'Repeat Tolerance',       desc: 'How often to re-show content you\'ve already seen',           default: 'medium', icon: 'repeat',        group: 'Content', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
+  { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
+  { id: 'defaultInfoMode',   label: 'Info Page by Default',   desc: 'Open full info screen instead of player',                     default: false, icon: 'info',             group: 'Content' },
+  // Performance
+  { id: 'reducedMotion',     label: 'Reduce Animations',      desc: 'Minimize transitions for performance',                        default: false, icon: 'motion_photos_off', group: 'Performance' },
+  { id: 'hdFirst',           label: 'Prefer HD Sources',      desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)',     default: true,  icon: 'hd',               group: 'Performance' },
+  { id: 'skipRecap',         label: 'Skip Intros',            desc: 'Remember to skip intro/recap (manual reminder)',               default: false, icon: 'skip_next',        group: 'Performance' },
 ];
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
@@ -185,14 +189,16 @@ const SHORTCUTS = [
   { key: '← / A',      desc: 'Previous hero slide',          group: 'Navigation' },
   { key: '→ / D',      desc: 'Next hero slide',              group: 'Navigation' },
   // Content
-  { key: 'R',          desc: 'Refresh feed (home) or page content', group: 'Content' },
+  { key: 'R',          desc: 'Refresh current page content', group: 'Content' },
   { key: 'Esc',        desc: 'Close any modal or overlay',   group: 'Content' },
-  { key: 'I',          desc: 'Toggle Info / Player view',    group: 'Content' },
-  { key: 'N',          desc: 'Try next video source',        group: 'Content' },
   // Tips
-  { key: 'Shift+Apply', desc: 'Refresh feed without redirect', group: 'Tips' },
-  { key: 'Shift+Share', desc: 'Copy link directly',           group: 'Tips' },
-  { key: '?',           desc: 'Show this shortcuts screen',   group: 'Tips' },
+  { key: 'I',                 desc: 'Toggle Info / Player view',              group: 'Tips' },
+  { key: 'N',                 desc: 'Try next video source',                  group: 'Tips' },
+  { key: 'Click cast member', desc: 'View their full filmography',            group: 'Tips' },
+  { key: 'Hover card 0.9s',   desc: 'Preview trailer + quick actions',        group: 'Tips' },
+  { key: 'Shift+Apply Feed',  desc: 'Refresh without leaving the page',       group: 'Tips' },
+  { key: 'Shift+Share',       desc: 'Copy link directly to clipboard',        group: 'Tips' },
+  { key: '?',                 desc: 'Show this shortcuts screen',             group: 'Tips' },
 ];
 
 /* ── INIT ────────────────────────────────────────────────────────── */
@@ -1454,7 +1460,16 @@ function applyAllSettings() {
 function buildSettingsUI() {
   const grid = document.getElementById('sv-settings-grid');
   if (!grid) return;
-  grid.innerHTML = SV_SETTINGS.map(s => {
+
+  // Group settings by their group field
+  const groups = {};
+  SV_SETTINGS.forEach(s => {
+    const g = s.group || 'Other';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(s);
+  });
+
+  const renderSetting = s => {
     const val = getSetting(s.id);
 
     // Select-type setting
@@ -1484,7 +1499,14 @@ function buildSettingsUI() {
         <span class="sv-toggle-knob"></span>
       </button>
     </label>`;
-  }).join('');
+  };
+
+  let html = '';
+  for (const [groupName, settings] of Object.entries(groups)) {
+    html += `<div class="settings-group-header">${groupName}</div>`;
+    html += settings.map(renderSetting).join('');
+  }
+  grid.innerHTML = html;
 
   grid.querySelectorAll('.sv-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4122,9 +4144,11 @@ function initHoverTrailer() {
     // Entered the netflix card itself — keep it open
     if (ncCard) return;
 
+    // Don't trigger if hovering over a button or interactive element inside the card
+    if (e.target.closest('button, .card-like-btn, .card-wl-btn, .card-watched-btn, a')) return;
+
     // Left all cards
     if (!card) {
-      // Only clear if not entering netflix card
       if (!e.relatedTarget?.closest?.('#netflix-card')) {
         clearHoverTrailer();
       }
@@ -4141,7 +4165,7 @@ function initHoverTrailer() {
         _hoverActive = true;
         await showNetflixCard(card);
       }
-    }, 900); // 900ms delay
+    }, 1200); // 1200ms delay — long enough to not trigger on normal browsing
   });
 
   document.addEventListener('mouseleave', e => {
