@@ -160,6 +160,8 @@ const SV_SETTINGS = [
   { id: 'disableSandbox',      label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.', default: false, icon: 'security' },
 ];
 
+const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
+
 /* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
 let _streamPage = 1;
 let _streamIds = new Set();
@@ -3515,7 +3517,7 @@ function initShortcutsModal() {
 /* ── TESTING MODE ────────────────────────────────────────────────── */
 // Step 1: Footer logo (bottom bar text) × 5 within 3s
 /* ── PROFILES ──────────────────────────────────────────────────────── */
-const PROFILE_COLORS = ['#e50914','#6366f1','#22c55e','#f59e0b','#06b6d4','#ec4899','#8b5cf6','#f97316'];
+// PROFILE_COLORS declared at top of file (before init IIFE)
 let _editingProfileId = null;
 
 function initProfilesUI() {
