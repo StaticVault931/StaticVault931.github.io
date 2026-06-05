@@ -3581,9 +3581,9 @@ export async function openInfoPage(id, type, hint = {}) {
     }
 
     // Always collapse overview to 4 lines; click to expand
-    const ovEl = document.getElementById('info-overview');
     if (ovEl) {
       ovEl.classList.add('info-overview-collapsible');
+      ovEl.classList.remove('expanded');
       ovEl.title = 'Click to expand';
       if (!ovEl._clickWired) {
         ovEl._clickWired = true;
