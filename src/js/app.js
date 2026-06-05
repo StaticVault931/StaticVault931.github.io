@@ -5,9 +5,11 @@ import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, sav
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
-  getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS,
+  getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS, TASTEDIVE_KEY,
   fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
-  fetchDailymotionTrailer, wikidataSPARQL, getFilmAwards } from './api.js';
+  fetchDailymotionTrailer, wikidataSPARQL, getFilmAwards,
+  fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
+  fetchTasteDive } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
@@ -868,11 +870,26 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     { id:'row-family',    sec:'sec-family',    type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10751', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
     { id:'row-crime-tv',  sec:'sec-crime-tv',  type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'80', sort_by:'vote_average.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
     { id:'row-comedy-tv', sec:'sec-comedy-tv', type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'35', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
+    // Vidsrc-embed "Recently Added" rows — real availability data
+    { id:'row-recently-added', sec:'sec-recently-added', type:'movie', fn: async () => {
+      const f = await fetchVidsrcLatestMovies(1).catch(() => null);
+      if (!f?.length) return [];
+      const items = await Promise.all((f||[]).slice(0,12).map(i => i.tmdb_id ? tmdb(`/movie/${i.tmdb_id}`).then(d=>({...d,media_type:'movie'})).catch(()=>null) : null));
+      return items.filter(Boolean);
+    }},
+    { id:'row-new-episodes', sec:'sec-new-episodes', type:'tv', fn: async () => {
+      const f = await fetchVidsrcLatestEpisodes(1).catch(() => null);
+      if (!f?.length) return [];
+      const seen = new Set();
+      const uniq = (f||[]).filter(i=>{if(!i.tmdb_id||seen.has(i.tmdb_id))return false;seen.add(i.tmdb_id);return true;}).slice(0,12);
+      const items = await Promise.all(uniq.map(i => tmdb(`/tv/${i.tmdb_id}`).then(d=>({...d,media_type:'tv'})).catch(()=>null)));
+      return items.filter(Boolean);
+    }},
     { id:'row-anime-home2',sec:'sec-anime-home2',type:'anime',fn:() => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
   ];
 
   // Hide all pool sections by default; show only the selected ones
-  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice']; // always show these
+  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes']; // always show these
   const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id));
   const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
   let stdSelected = [];
@@ -912,6 +929,42 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Top 10 — daily trending (always shown)
   _scheduleRowLoad('row-top10', 'sec-top10', () =>
     tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10)), null);
+
+  // Recently Added Movies (from vidsrc-embed.ru)
+  _scheduleRowLoad('row-recently-added', 'sec-recently-added', async () => {
+    const feed = await fetchVidsrcLatestMovies(1).catch(() => null);
+    if (!feed?.length) return [];
+    // Feed items have tmdb_id or imdb_id — resolve via TMDB
+    const items = await Promise.all(
+      (feed || []).slice(0, 12).map(item => {
+        if (item.tmdb_id) return tmdb(`/movie/${item.tmdb_id}`).then(d => ({...d, media_type:'movie'})).catch(() => null);
+        if (item.imdb_id) return tmdb(`/find/${item.imdb_id}`, { external_source: 'imdb_id' })
+          .then(d => d.movie_results?.[0] ? {...d.movie_results[0], media_type:'movie'} : null).catch(() => null);
+        return null;
+      })
+    );
+    return items.filter(Boolean);
+  }, 'movie');
+
+  // Recently Added TV Episodes (from vidsrc-embed.ru)
+  _scheduleRowLoad('row-new-episodes', 'sec-new-episodes', async () => {
+    const feed = await fetchVidsrcLatestEpisodes(1).catch(() => null);
+    if (!feed?.length) return [];
+    const seen = new Set();
+    const items = await Promise.all(
+      (feed || []).filter(ep => {
+        if (seen.has(ep.tmdb_id || ep.imdb_id)) return false;
+        seen.add(ep.tmdb_id || ep.imdb_id);
+        return true;
+      }).slice(0, 12).map(item => {
+        if (item.tmdb_id) return tmdb(`/tv/${item.tmdb_id}`).then(d => ({...d, media_type:'tv'})).catch(() => null);
+        if (item.imdb_id) return tmdb(`/find/${item.imdb_id}`, { external_source: 'imdb_id' })
+          .then(d => d.tv_results?.[0] ? {...d.tv_results[0], media_type:'tv'} : null).catch(() => null);
+        return null;
+      })
+    );
+    return items.filter(Boolean);
+  }, 'tv');
 
   // Box Office This Weekend — from tv-api.com + resolved via TMDB for full card data
   _scheduleRowLoad('row-boxoffice', 'sec-boxoffice', async () => {
@@ -1193,36 +1246,51 @@ async function loadSeasonalRow() {
       // Rotate pages each view so content is mostly different each time
       const rPage = Math.floor(Math.random() * 5) + 1;
 
-      // Pride Month: hardcoded VERIFIED LGBTQ films/shows as the primary source
-      // These are confirmed LGBTQ-themed titles — no unreliable keyword guessing
-      // Movies: Brokeback Mountain, Moonlight, Call Me By Your Name, Carol, Love Simon,
-      //         Portrait of Lady on Fire, The Danish Girl, Milk, The Birdcage, Blue Warmest Colour,
-      //         The Kids Are All Right, Beautiful Thing, God's Own Country, Weekend (2011)
-      const prideMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 158852, 38787, 6518, 453405, 61787];
-      // TV: Heartstopper, Pose, Sex Education, Schitt's Creek, OITNB, Queer as Folk, It's a Sin, RuPaul's Drag Race
-      const prideTvIds    = [125988, 80028, 81356, 68004, 62852, 1485, 105005, 4567];
+      // Pride Month: search by exact title — most reliable approach
+      // Using TMDB search guarantees we get the right movie, not a wrong-ID result
+      const prideMovieTitles = [
+        'Brokeback Mountain', 'Moonlight', 'Call Me by Your Name',
+        'Carol', 'Love, Simon', 'Portrait of a Lady on Fire',
+        'The Danish Girl', 'Milk', 'The Birdcage',
+        'Blue Is the Warmest Colour', 'Beautiful Thing', "God's Own Country",
+        'Brokeback Mountain', 'The Kids Are All Right',
+      ];
+      const prideTvTitles = [
+        'Heartstopper', 'Pose', 'Sex Education',
+        "Schitt's Creek", 'Orange Is the New Black',
+        "It's a Sin", 'Queer as Folk', "RuPaul's Drag Race",
+      ];
 
-      // Shuffle using daily seed so content rotates but stays consistent per day
-      const seed = rPage;
-      const shuffleSeeded = (arr) => [...arr].sort((a,b) => ((a*seed*2654435761)>>>0) - ((b*seed*2654435761)>>>0));
+      const searchMovie = (title) => tmdb('/search/movie', { query: title }).then(d => {
+        const r = d.results?.[0];
+        return r ? {...r, media_type:'movie'} : null;
+      }).catch(() => null);
+      const searchTv = (title) => tmdb('/search/tv', { query: title }).then(d => {
+        const r = d.results?.[0];
+        return r ? {...r, media_type:'tv'} : null;
+      }).catch(() => null);
+
+      // Rotate which titles show based on rPage seed (different each view)
+      const mStart = (rPage - 1) * 4 % prideMovieTitles.length;
+      const tStart = (rPage - 1) * 3 % prideTvTitles.length;
+      const mTitles = [...prideMovieTitles.slice(mStart), ...prideMovieTitles.slice(0, mStart)].slice(0, 8);
+      const tTitles = [...prideTvTitles.slice(tStart), ...prideTvTitles.slice(0, tStart)].slice(0, 6);
 
       const [movieResults, tvResults] = await Promise.all([
-        Promise.all(shuffleSeeded(prideMovieIds).slice(0, 9).map(id =>
-          tmdb(`/movie/${id}`).then(r=>({...r,media_type:'movie'})).catch(()=>null)
-        )),
-        Promise.all(shuffleSeeded(prideTvIds).slice(0, 7).map(id =>
-          tmdb(`/tv/${id}`).then(r=>({...r,media_type:'tv'})).catch(()=>null)
-        )),
+        Promise.all(mTitles.map(searchMovie)),
+        Promise.all(tTitles.map(searchTv)),
       ]);
 
       const movies_ok = movieResults.filter(Boolean);
       const tv_ok     = tvResults.filter(Boolean);
 
-      // Interleave
+      // Interleave + deduplicate by id
+      const seenIds = new Set();
       const combined = [];
       for (let i = 0; i < Math.max(movies_ok.length, tv_ok.length); i++) {
-        if (movies_ok[i]) combined.push(movies_ok[i]);
-        if (tv_ok[i])     combined.push(tv_ok[i]);
+        const m = movies_ok[i], t = tv_ok[i];
+        if (m && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
+        if (t && !seenIds.has(t.id)) { seenIds.add(t.id); combined.push(t); }
       }
       return combined.slice(0, 20);
     };
@@ -1572,6 +1640,11 @@ function buildProviderTestUI() {
   });
 
   // Test APIs button
+  // Combined: test providers AND APIs in one click
+  document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', async () => {
+    // Redirect to api test
+    document.getElementById('test-all-apis-btn')?.click();
+  });
   document.getElementById('test-all-apis-btn')?.addEventListener('click', async () => {
     const btn = document.getElementById('test-all-apis-btn');
     const output = document.getElementById('api-test-results');
@@ -1976,6 +2049,10 @@ export async function openMedia(id, type, hint = {}) {
     return openInfoPage(id, type, hint);
   }
 
+  // Close other overlays first
+  document.getElementById('person-overlay')?.classList.remove('open');
+  document.getElementById('info-overlay')?.classList.remove('open');
+  document.getElementById('company-overlay')?.classList.remove('open');
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
 
@@ -3388,6 +3465,9 @@ function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
 }
 
 export async function openInfoPage(id, type, hint = {}) {
+  // Close other overlays first — only one overlay open at a time
+  document.getElementById('person-overlay')?.classList.remove('open');
+  document.getElementById('company-overlay')?.classList.remove('open');
   const overlay = document.getElementById('info-overlay');
   if (!overlay) return;
 
@@ -4268,6 +4348,9 @@ async function _enrichInfoPage(id, type, details, credits) {
 }
 
 export async function openPersonPage(personId) {
+  // Close any other overlays first — only one thing open at a time
+  document.getElementById('info-overlay')?.classList.remove('open');
+  document.getElementById('company-overlay')?.classList.remove('open');
   const ov = document.getElementById('person-overlay');
   if (!ov) return;
   ov.classList.add('open');
@@ -5452,8 +5535,18 @@ function initHoverTrailer() {
   document.getElementById('nc-play')?.addEventListener('click', () => {
     // handled by the parent click — no separate action needed
   });
-  document.getElementById('nc-more')?.addEventListener('click', () => {
-    // handled by the parent click
+  document.getElementById('nc-more')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!_hoverCurrentCard) return;
+    const id = +_hoverCurrentCard.dataset.id;
+    const type = _hoverCurrentCard.dataset.type;
+    if (!id || !type) return;
+    clearHoverTrailer();
+    openInfoPage(id, type, {
+      title: _hoverCurrentCard.dataset.title,
+      poster_path: _hoverCurrentCard.dataset.poster,
+      backdrop_path: _hoverCurrentCard.dataset.backdrop,
+    });
   });
   document.getElementById('nc-wl')?.addEventListener('click', e => {
     e.stopPropagation();
@@ -5561,6 +5654,12 @@ async function showNetflixCard(card) {
     _genreCache.has(id) ? Promise.resolve(_genreCache.get(id)) : fetchRichDetails(id, type),
   ]);
 
+  // If no YouTube trailer, pre-fetch Dailymotion (non-blocking)
+  let _dmTrailerData = null;
+  if (trailerKey === '__none__') {
+    _dmTrailerData = await fetchDailymotionTrailer(`${title} ${year}`).catch(() => null);
+  }
+
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
   // Update rich metadata
@@ -5597,12 +5696,21 @@ async function showNetflixCard(card) {
     genresEl.innerHTML = '';
   }
 
-  // Load trailer — use YouTube iframe API (enablejsapi=1) to detect actual playback
-  // Backdrop stays visible until YouTube confirms the video is actually playing
+  // Load trailer — try Dailymotion first (more reliable), then YouTube
+  // Step 1: try Dailymotion for an official trailer embed
+  const dmTrailer = (trailerKey === '__none__' && frame)
+    ? await fetchDailymotionTrailer(`${title} ${year}`).catch(() => null)
+    : null;
+  if (dmTrailer?.embed_url && frame) {
+    if (backdrop) { backdrop.style.opacity = '0.3'; }
+    frame.src = `${dmTrailer.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+    frame.style.display = '';
+    if (!_hoverActive || _hoverCurrentCard !== card) return;
+  }
+
   if (frame && trailerKey && trailerKey !== '__none__') {
     // Keep backdrop visible until we confirm playback
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .6s'; }
-
     // Use enablejsapi=1 so YouTube sends postMessage events
     frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
@@ -5624,13 +5732,16 @@ async function showNetflixCard(card) {
     };
     window.addEventListener('message', msgHandler);
 
-    // 5s timeout: if YouTube didn't play, keep backdrop as the "trailer"
-    setTimeout(() => {
+    // 5s timeout: if YouTube didn't play, try Dailymotion then backdrop
+    setTimeout(async () => {
       window.removeEventListener('message', msgHandler);
       if (backdrop && backdrop.style.opacity === '1') {
-        // No trailer loaded — show backdrop larger (it IS the preview)
+        if (_dmTrailerData?.embed_url && frame) {
+          // Try Dailymotion as fallback
+          frame.src = `${_dmTrailerData.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+          return;
+        }
         backdrop.style.opacity = '1';
-        // Clear the frame src so no error screen shows
         if (frame) frame.removeAttribute('src');
       }
     }, 5000);

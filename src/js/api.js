@@ -6,10 +6,11 @@ export const ANILIST = 'https://graphql.anilist.co';
 
 // ── THIRD-PARTY API KEYS ─────────────────────────────────────────
 export const OMDB_KEY        = '9f3c997';
-export const FANART_KEY      = 'd665499067a0fb155b3b03c071cfbcba'; // fanart.tv
+export const FANART_KEY      = '61816a03253da18b920d1a3e991a8abb'; // fanart.tv
 export const WATCHMODE_KEY   = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
-export const TVAPI_KEY       = 'k_12345678';  // tv-api.com (IMDB-API)
+export const TVAPI_KEY       = 'pk_v1tw28ohp4yeebfsw';  // tv-api.com (IMDB-API)
 export const LOGO_DEV_TOKEN  = 'pk_Ls472ChRSLSBvfBYgW6R7Q'; // logo.dev
+export const TASTEDIVE_KEY   = '1073636-StaticQ-DF044F0C'; // TasteDive recommendations
 
 // Logo.dev: domain-to-logo mapping for streaming providers
 export const PROVIDER_LOGO_DOMAINS = {
@@ -45,6 +46,21 @@ export const PROVIDER_LOGO_DOMAINS = {
   'MGM Plus':             'mgmplus.com',
   'Kanopy':               'kanopy.com',
   'Plex':                 'plex.tv',
+  'Amazon Freevee':       'amazon.com',
+  'Freevee':              'amazon.com',
+  'Google Play Movies':   'play.google.com',
+  'Google Play':          'play.google.com',
+  'Apple TV':             'tv.apple.com',
+  'Fandango at Home':     'fandango.com',
+  'Vudu':                 'vudu.com',
+  'Microsoft Store':      'microsoft.com',
+  'YouTube Free':         'youtube.com',
+  'Tubi':                 'tubi.tv',
+  'Funimation':           'funimation.com',
+  'HBO':                  'hbo.com',
+  'Criterion Channel':    'criterionchannel.com',
+  'Mubi Go':              'mubi.com',
+  'Sundance Now':         'sundancenow.com',
 };
 
 export function getProviderLogoUrl(name, size = 32) {
@@ -332,26 +348,120 @@ export async function fetchTvApiBoxOffice() {
   } catch { return null; }
 }
 
-/* ── DAILYMOTION — Trailer fallback search ───────────────────────── */
+/* ── DAILYMOTION — Trailer search (strict: must be official trailer) ─ */
 export async function fetchDailymotionTrailer(titleQuery) {
   if (!titleQuery) return null;
-  const key = cacheKey('dm_trailer_' + titleQuery, {});
+  const key = cacheKey('dm_trailer_v2_' + titleQuery, {});
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
+    // Search for "[title] official trailer" — be very specific
     const q = encodeURIComponent(`${titleQuery} official trailer`);
     const r = await fetch(
-      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=3&language=en&channel=shortfilms`
+      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=8&language=en`
     );
     if (!r.ok) return null;
     const data = await r.json();
-    const video = data.list?.find(v =>
-      v.title?.toLowerCase().includes('trailer') ||
-      v.title?.toLowerCase().includes('official')
-    ) || data.list?.[0];
+    const titleLower = titleQuery.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+
+    // STRICT filter: video title must contain the movie/show title AND "trailer"
+    // This prevents totally unrelated videos
+    const video = (data.list || []).find(v => {
+      const vt = (v.title || '').toLowerCase();
+      const titleWords = titleLower.split(' ').filter(w => w.length > 2);
+      const titleMatch = titleWords.some(w => vt.includes(w));
+      const isTrailer = vt.includes('trailer') || vt.includes('official') || vt.includes('teaser');
+      return titleMatch && isTrailer;
+    });
     if (!video) return null;
+    // Use embed with autoplay=0 (let the player control it)
+    if (video.embed_url) video.embed_url = video.embed_url.replace('autoplay=1','autoplay=0');
     cacheSet(key, video);
     return video;
+  } catch { return null; }
+}
+
+/* ── VIDSRC-EMBED.RU — latest feeds (Recently Added rows) ───────── */
+const VIDSRC_BASE = 'https://vidsrc-embed.ru';
+
+export async function fetchVidsrcLatestMovies(page = 1) {
+  const key = cacheKey('vidsrc_latest_movies_' + page, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${VIDSRC_BASE}/movies/latest/page-${page}.json`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+export async function fetchVidsrcLatestShows(page = 1) {
+  const key = cacheKey('vidsrc_latest_shows_' + page, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${VIDSRC_BASE}/tvshows/latest/page-${page}.json`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+export async function fetchVidsrcLatestEpisodes(page = 1) {
+  const key = cacheKey('vidsrc_latest_eps_' + page, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${VIDSRC_BASE}/episodes/latest/page-${page}.json`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+// Build vidsrc-embed URL for a movie or TV episode
+export function getVidsrcEmbedUrl(type, id, { season, episode, imdbId, dsLang, autonext = 0 } = {}) {
+  if (type === 'movie') {
+    const base = imdbId
+      ? `${VIDSRC_BASE}/embed/movie?imdb=${imdbId}`
+      : `${VIDSRC_BASE}/embed/movie?tmdb=${id}`;
+    return dsLang ? `${base}&ds_lang=${dsLang}` : base;
+  }
+  if (type === 'tv' || type === 'anime') {
+    if (season && episode) {
+      const base = imdbId
+        ? `${VIDSRC_BASE}/embed/tv?imdb=${imdbId}&season=${season}&episode=${episode}`
+        : `${VIDSRC_BASE}/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
+      return `${base}&autonext=${autonext}${dsLang ? `&ds_lang=${dsLang}` : ''}`;
+    }
+    return imdbId
+      ? `${VIDSRC_BASE}/embed/tv?imdb=${imdbId}`
+      : `${VIDSRC_BASE}/embed/tv?tmdb=${id}`;
+  }
+  return null;
+}
+
+/* ── TASTEDIVE — "More Like This" recommendations ────────────────── */
+export async function fetchTasteDive(title, type = 'movie') {
+  if (!TASTEDIVE_KEY) return null;
+  const typeMap = { movie: 'movies', tv: 'shows', anime: 'shows' };
+  const q = encodeURIComponent(title);
+  const t = typeMap[type] || 'movies';
+  const key = cacheKey('tastedive_' + title, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(
+      `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&k=${TASTEDIVE_KEY}`
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    cacheSet(key, data);
+    return data;
   } catch { return null; }
 }
 
@@ -607,6 +717,26 @@ export async function testAllAPIs() {
     results.push({ name: 'Wikidata SPARQL', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Awards + franchise chains — working' : 'Failed' });
   } catch {
     results.push({ name: 'Wikidata SPARQL', status: 'error', note: 'Request failed' });
+  }
+
+  // Vidsrc-embed feeds
+  try {
+    const r = await fetch(`${VIDSRC_BASE}/movies/latest/page-1.json`);
+    results.push({ name: 'Vidsrc-embed', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Latest movies/shows feed — working' : 'Failed' });
+  } catch {
+    results.push({ name: 'Vidsrc-embed', status: 'error', note: 'Request failed' });
+  }
+
+  // TasteDive
+  if (!TASTEDIVE_KEY) {
+    results.push({ name: 'TasteDive', status: 'missing', note: 'No key set' });
+  } else {
+    try {
+      const r = await fetch(`https://tastedive.com/api/similar?q=Inception&type=movies&limit=1&k=${TASTEDIVE_KEY}`);
+      results.push({ name: 'TasteDive', status: r.ok ? 'ok' : 'error', note: r.ok ? '"More Like This" recs — working' : 'Key invalid' });
+    } catch {
+      results.push({ name: 'TasteDive', status: 'error', note: 'Request failed' });
+    }
   }
 
   return results;
