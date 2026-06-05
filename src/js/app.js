@@ -597,7 +597,8 @@ function _loadRow(rowId, secId, fetchFn, type) {
   return fetchFn()
     .then(items => {
       if (!items || !items.length) {
-        if (sec) sec.style.display = 'none';
+        console.warn(`[SV Row] "${rowId}" returned 0 items — hiding section`);
+        if (sec) sec.style.display = 'none'; else { const r = document.getElementById(rowId); if(r) r.innerHTML = ''; }
         return;
       }
       // Apply impression filter (hide over-shown content based on setting)
@@ -737,6 +738,21 @@ async function loadHomeRows() {
   } catch (err) {
     console.warn('[SV] loadHomeRows error:', err?.message);
   }
+}
+
+function _shuffleTrendingPosition() {
+  const trendSec = document.getElementById('sec-trending');
+  if (!trendSec) return;
+  const home = document.getElementById('page-home');
+  if (!home) return;
+  // Get all section elements as anchors for trending placement
+  const sections = Array.from(home.querySelectorAll('.section')).filter(s => s.id !== 'sec-trending');
+  if (sections.length < 3) return;
+  // Pick a random position in the first 5 sections
+  const pos = Math.floor(Math.random() * Math.min(4, sections.length));
+  const anchor = sections[pos];
+  // Move trending before this anchor
+  try { home.insertBefore(trendSec, anchor); } catch {}
 }
 
 async function _loadHomeRowsFresh(showSkeletons = false) {
@@ -3046,6 +3062,23 @@ function refreshFeed(randomize = false, stayOnPage = false) {
 }
 
 /* ── INFO PAGE ───────────────────────────────────────────────────── */
+function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
+  if (frameEl) { frameEl.style.display = 'none'; frameEl.removeAttribute('src'); }
+  if (!fallbackEl) return;
+  fallbackEl.style.display = '';
+  const bgStyle = posterImg ? `style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.3);"` : '';
+  fallbackEl.innerHTML = `
+    ${posterImg ? `<img src="${posterImg}" alt="" ${bgStyle}>` : ''}
+    <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;">
+      <span class="material-icons-round" style="font-size:2.2rem;color:rgba(255,255,255,.5)">videocam_off</span>
+      <p style="font-size:.85rem;color:rgba(255,255,255,.75)">Trailer embedding not available</p>
+      ${trailerKey ? `<a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;gap:.35rem;background:rgba(229,9,20,.85);color:#fff;padding:.45rem 1rem;border-radius:4px;font-size:.78rem;font-weight:800;text-decoration:none;transition:opacity .2s">
+        <span class="material-icons-round" style="font-size:.9rem">open_in_new</span> Watch on YouTube
+      </a>` : ''}
+    </div>`;
+}
+
 export async function openInfoPage(id, type, hint = {}) {
   const overlay = document.getElementById('info-overlay');
   if (!overlay) return;
@@ -3227,18 +3260,56 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    // Make info-page trailer section open the trailer overlay instead of embedding
+    // Info page trailer: use postMessage detection for Error 153; fallback to backdrop image
     const trailerWrap = document.getElementById('info-trailer-wrap');
+    const posterImg = details.backdrop_path
+      ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
+      : details.poster_path ? `https://image.tmdb.org/t/p/w780${details.poster_path}` : null;
+
     if (trailerKey && trailerWrap) {
-      trailerWrap.style.cursor = 'pointer';
-      // Show poster as "click to play" teaser
+      trailerWrap.style.cursor = 'default';
       if (trailerFrame) {
-        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+        trailerFrame.style.display = '';
+        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
       }
       if (trailerFallback) trailerFallback.style.display = 'none';
+
+      // Detect Error 153 / failed trailer and show backdrop image instead
+      const infoMsgHandler = (e) => {
+        if (e.origin !== 'https://www.youtube.com') return;
+        try {
+          const d = JSON.parse(e.data);
+          if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+            window.removeEventListener('message', infoMsgHandler);
+            clearTimeout(infoTrailerTimer);
+            _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+          }
+        } catch {}
+      };
+      window.addEventListener('message', infoMsgHandler);
+      const infoTrailerTimer = setTimeout(() => {
+        window.removeEventListener('message', infoMsgHandler);
+        // If no playback confirmed after 7s, show image fallback
+        const loading = trailerFallback;
+        if (loading?.style.display !== '' && trailerFrame?.src) {
+          _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+        }
+      }, 7000);
     } else {
-      if (trailerFrame) trailerFrame.removeAttribute('src');
-      if (trailerFallback) trailerFallback.style.display = '';
+      if (trailerFrame) { trailerFrame.removeAttribute('src'); trailerFrame.style.display = 'none'; }
+      if (trailerFallback) {
+        trailerFallback.style.display = '';
+        // Show nice "No trailer" state with backdrop
+        if (posterImg) {
+          trailerFallback.innerHTML = `
+            <img src="${posterImg}" alt="${esc(title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.4);">
+            <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:.5rem;color:#fff;">
+              <span class="material-icons-round" style="font-size:2rem;opacity:.6">movie</span>
+              <p style="font-size:.84rem;opacity:.7">No trailer available</p>
+              <p style="font-size:.75rem;opacity:.5">${esc(title)} — ${String(details.release_date || details.first_air_date || '').slice(0,4)}</p>
+            </div>`;
+        }
+      }
     }
 
     // Cast
