@@ -3669,10 +3669,17 @@ export async function openPersonPage(personId) {
       photoEl.style.display = person.profile_path ? '' : 'none';
     }
     // SEO: update page title and meta for person pages
+    const personPhoto = person.profile_path
+      ? `https://image.tmdb.org/t/p/w780${person.profile_path}`
+      : 'https://staticvault931.github.io/og-image.jpg';
     document.title = `${person.name} — Films & TV — StaticVault931`;
     document.querySelector('meta[name="description"]')?.setAttribute('content',
       `See all movies and TV shows featuring ${person.name}. ${person.biography?.slice(0,100) || ''}`);
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
+    document.querySelector('meta[property="og:image"]')?.setAttribute('content', personPhoto);
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', `${location.origin}/?person=${personId}`);
+    document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
+    document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', personPhoto);
     document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${location.origin}/?person=${personId}`);
     if (metaEl) {
       const dept = person.known_for_department || '';
@@ -3946,9 +3953,13 @@ function initProfilesUI() {
   // Color picker
   const colorRow = document.getElementById('profile-color-row');
   if (colorRow) {
-    colorRow.innerHTML = PROFILE_COLORS.map(c =>
-      `<button class="profile-color-swatch" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`
-    ).join('');
+    const allColors = [...PROFILE_COLORS, 'transparent'];
+    colorRow.innerHTML = allColors.map(c => {
+      const style = c === 'transparent'
+        ? 'background: conic-gradient(#ccc 25%, #fff 25%, #fff 50%, #ccc 50%, #ccc 75%, #fff 75%) center / 10px 10px; border: 2px dashed var(--border3);'
+        : `background:${c}`;
+      return `<button class="profile-color-swatch" data-color="${c}" style="${style}" aria-label="${c === 'transparent' ? 'Transparent' : c}" title="${c === 'transparent' ? 'Transparent' : ''}"></button>`;
+    }).join('');
     colorRow.addEventListener('click', e => {
       const sw = e.target.closest('[data-color]');
       if (!sw) return;
@@ -4105,41 +4116,46 @@ function openPersonSearchForAvatar() {
           const featuredAvatars = [
             { url: 'favicon.png', name: 'SV931', special: 'sv931' },
             { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
-            // Person avatars loaded dynamically from TMDB — never wrong faces
-            { name: 'Robert Downey Jr.',  personId: 3223    },
-            { name: 'Millie Bobby Brown', personId: 1373737 },
-            { name: 'Tom Cruise',         personId: 2037    },
-            { name: 'Leonardo DiCaprio',  personId: 6193    },
-            { name: 'Zendaya',            personId: 1355642 },
-            { name: 'Ryan Reynolds',      personId: 10859   },
-            { name: 'Scarlett Johansson', personId: 1245    },
-            { name: 'Dwayne Johnson',     personId: 18918   },
+            // Person avatars: searched by exact name via TMDB — always correct face
+            { name: 'Robert Downey Jr.',  searchName: 'Robert Downey Jr.' },
+            { name: 'Millie Bobby Brown', searchName: 'Millie Bobby Brown' },
+            { name: 'Tom Cruise',         searchName: 'Tom Cruise' },
+            { name: 'Leonardo DiCaprio',  searchName: 'Leonardo DiCaprio' },
+            { name: 'Zendaya',            searchName: 'Zendaya' },
+            { name: 'Ryan Reynolds',      searchName: 'Ryan Reynolds' },
+            { name: 'Scarlett Johansson', searchName: 'Scarlett Johansson' },
+            { name: 'Dwayne Johnson',     searchName: 'Dwayne Johnson' },
           ];
           return featuredAvatars.map(a => {
             const imgSrc = a.url || 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A//www.w3.org/2000/svg%22 viewBox%3D%220 0 40 40%22%3E%3Crect width%3D%2240%22 height%3D%2240%22 rx%3D%2220%22 fill%3D%22%23333%22/%3E%3C/svg%3E';
-            return `<div class="avatar-option" data-url="${a.url || ''}"${a.special ? ` data-special="${a.special}"` : ''}${a.personId ? ` data-person-id="${a.personId}"` : ''} style="cursor:pointer;text-align:center;">
+            return `<div class="avatar-option" data-url="${a.url || ''}"${a.special ? ` data-special="${a.special}"` : ''}${a.searchName ? ` data-person-name="${a.searchName}"` : ''} style="cursor:pointer;text-align:center;">
               <img src="${imgSrc}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);background:var(--s2);" alt="${a.name}">
               <div style="font-size:.6rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${a.name}</div>
             </div>`;
           }).join('');
         })()}</div>
-        <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-top:.4rem">Search People</div>
-        <div style="position:relative;">
-          <input id="avatar-search-input" placeholder="Search actor, character…" style="width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:.65rem 1rem;color:var(--text);font-size:.88rem;outline:none;">
+        <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-top:.4rem;margin-bottom:.35rem">Search for an Image</div>
+        <div style="display:flex;gap:.4rem;margin-bottom:.4rem;">
+          <button id="avatar-tab-people" class="avatar-search-tab on" style="flex:1;padding:.35rem .6rem;border-radius:6px;border:1.5px solid var(--red);background:var(--red);color:#fff;font-size:.72rem;font-weight:900;cursor:pointer;">People</button>
+          <button id="avatar-tab-content" class="avatar-search-tab" style="flex:1;padding:.35rem .6rem;border-radius:6px;border:1.5px solid var(--border2);background:var(--s3);color:var(--muted);font-size:.72rem;font-weight:900;cursor:pointer;">Movies &amp; Shows</button>
         </div>
-        <div id="avatar-search-results" style="display:flex;flex-wrap:wrap;gap:.6rem;min-height:80px;"></div>
+        <div style="position:relative;">
+          <input id="avatar-search-input" placeholder="Search actor, director, movie, show…" style="width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:.65rem 1rem;color:var(--text);font-size:.88rem;outline:none;">
+        </div>
+        <div id="avatar-search-results" style="display:flex;flex-wrap:wrap;gap:.6rem;min-height:80px;align-content:flex-start;"></div>
       </div>
     </div>`;
   document.body.appendChild(picker);
 
-  // Load all person avatars live from TMDB — always correct face, no hardcoded paths
-  picker.querySelectorAll('.avatar-option[data-person-id]').forEach(opt => {
-    const pid = opt.dataset.personId;
-    if (!pid) return;
+  // Load person avatars by searching TMDB with the exact display name — always the correct face
+  picker.querySelectorAll('.avatar-option[data-person-name]').forEach(opt => {
+    const name = opt.dataset.personName;
+    if (!name) return;
     const img = opt.querySelector('img');
-    tmdb(`/person/${pid}`).then(d => {
-      if (d.profile_path) {
-        const u = `https://image.tmdb.org/t/p/w185${d.profile_path}`;
+    tmdb('/search/person', { query: name, language: 'en-US' }).then(d => {
+      const person = (d.results || []).find(p => p.profile_path) || d.results?.[0];
+      if (person?.profile_path) {
+        const u = `https://image.tmdb.org/t/p/w185${person.profile_path}`;
         if (img) {
           img.style.opacity = '0';
           img.src = u;
@@ -4168,27 +4184,60 @@ function openPersonSearchForAvatar() {
   });
 
   // Search
-  const searchInput = picker.querySelector('#avatar-search-input');
-  const resultsEl = picker.querySelector('#avatar-search-results');
+  const searchInput  = picker.querySelector('#avatar-search-input');
+  const resultsEl   = picker.querySelector('#avatar-search-results');
+  const tabPeople   = picker.querySelector('#avatar-tab-people');
+  const tabContent  = picker.querySelector('#avatar-tab-content');
+  let searchMode = 'people'; // 'people' | 'content'
   let searchTimer;
+
+  function setSearchTab(mode) {
+    searchMode = mode;
+    tabPeople?.classList.toggle('on', mode === 'people');
+    tabContent?.classList.toggle('on', mode === 'content');
+    const peopleSty = mode === 'people';
+    if (tabPeople) { tabPeople.style.background = peopleSty ? 'var(--red)' : 'var(--s3)'; tabPeople.style.borderColor = peopleSty ? 'var(--red)' : 'var(--border2)'; tabPeople.style.color = peopleSty ? '#fff' : 'var(--muted)'; }
+    if (tabContent) { tabContent.style.background = !peopleSty ? 'var(--red)' : 'var(--s3)'; tabContent.style.borderColor = !peopleSty ? 'var(--red)' : 'var(--border2)'; tabContent.style.color = !peopleSty ? '#fff' : 'var(--muted)'; }
+    searchInput?.setAttribute('placeholder', mode === 'people' ? 'Search actor, director…' : 'Search movie or TV show…');
+    if (searchInput?.value.trim()) searchInput.dispatchEvent(new Event('input'));
+  }
+  tabPeople?.addEventListener('click',  () => setSearchTab('people'));
+  tabContent?.addEventListener('click', () => setSearchTab('content'));
+
   searchInput?.addEventListener('input', function() {
     clearTimeout(searchTimer);
     const q = this.value.trim();
     if (!q) { resultsEl.innerHTML = ''; return; }
-    resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">Searching…</div>';
+    resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;padding:.5rem">Searching…</div>';
     searchTimer = setTimeout(async () => {
       try {
-        const d = await tmdb('/search/person', { query: q });
-        const people = (d.results || []).slice(0, 12).filter(p => p.profile_path);
-        if (!people.length) { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">No photos found</div>'; return; }
-        resultsEl.innerHTML = people.map(p => `
-          <div class="avatar-option" data-url="https://image.tmdb.org/t/p/w185${p.profile_path}" style="cursor:pointer;text-align:center;width:64px;">
-            <img src="https://image.tmdb.org/t/p/w185${p.profile_path}" alt="${esc(p.name)}"
-              style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);display:block;margin:0 auto;">
-            <div style="font-size:.58rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${esc(p.name)}</div>
+        let items = [];
+        if (searchMode === 'content') {
+          // Search movies + TV shows — use poster as avatar image
+          const [movies, tv] = await Promise.allSettled([
+            tmdb('/search/movie', { query: q, language: 'en-US' }),
+            tmdb('/search/tv',    { query: q, language: 'en-US' }),
+          ]);
+          const m = movies.status==='fulfilled' ? (movies.value.results||[]).filter(x=>x.poster_path).slice(0,6).map(x=>({ url:`https://image.tmdb.org/t/p/w185${x.poster_path}`, name: x.title||x.name })) : [];
+          const t = tv.status==='fulfilled'    ? (tv.value.results||[]).filter(x=>x.poster_path).slice(0,6).map(x=>({ url:`https://image.tmdb.org/t/p/w185${x.poster_path}`, name: x.name||x.title })) : [];
+          for (let i = 0; i < Math.max(m.length, t.length); i++) { if (m[i]) items.push(m[i]); if (t[i]) items.push(t[i]); }
+        } else {
+          // Search people
+          const d = await tmdb('/search/person', { query: q, language: 'en-US' });
+          items = (d.results||[]).filter(p=>p.profile_path).slice(0,12).map(p=>({
+            url: `https://image.tmdb.org/t/p/w185${p.profile_path}`,
+            name: p.name,
+          }));
+        }
+        if (!items.length) { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;padding:.5rem">No results found</div>'; return; }
+        resultsEl.innerHTML = items.map(item => `
+          <div class="avatar-option" data-url="${esc(item.url)}" style="cursor:pointer;text-align:center;width:68px;">
+            <img src="${esc(item.url)}" alt="${esc(item.name)}"
+              style="width:58px;height:58px;border-radius:${searchMode==='content'?'8px':'50%'};object-fit:cover;border:2px solid var(--border2);display:block;margin:0 auto;">
+            <div style="font-size:.58rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68px">${esc(item.name)}</div>
           </div>`).join('');
-      } catch { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;">Search failed</div>'; }
-    }, 400);
+      } catch { resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;padding:.5rem">Search failed</div>'; }
+    }, 380);
   });
 }
 

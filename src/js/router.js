@@ -15,17 +15,23 @@ const PAGE_META = {
 function updatePageMeta(p) {
   const m = PAGE_META[p] || PAGE_META.home;
   document.title = m.title;
-  const desc = document.querySelector('meta[name="description"]');
-  if (desc) desc.setAttribute('content', m.desc);
-  const ogTitle = document.querySelector('meta[property="og:title"]');
-  if (ogTitle) ogTitle.setAttribute('content', m.title);
-  const ogDesc = document.querySelector('meta[property="og:description"]');
-  if (ogDesc) ogDesc.setAttribute('content', m.desc);
-  const canonical = document.querySelector('link[rel="canonical"]');
-  if (canonical) {
-    const base = 'https://staticvault931.github.io/';
-    canonical.setAttribute('href', p === 'home' ? base : `${base}?page=${p}`);
-  }
+  const base = 'https://staticvault931.github.io/';
+  const pageUrl = p === 'home' ? base : `${base}?page=${p}`;
+  const siteImg = `${base}favicon.png`;
+
+  document.querySelector('meta[name="description"]')?.setAttribute('content', m.desc);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', m.title);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', m.desc);
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', pageUrl);
+  document.querySelector('meta[property="og:image"]')?.setAttribute('content', siteImg);
+  document.querySelector('meta[property="og:type"]')?.setAttribute('content', 'website');
+  document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', m.title);
+  document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', siteImg);
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', pageUrl);
+
+  // Clear dynamic JSON-LD when returning to a standard page
+  const ldEl = document.getElementById('jsonld-media');
+  if (ldEl) ldEl.textContent = '';
 }
 
 /* ── PAGE LOADERS registry ───────────────────────────────────────── */
