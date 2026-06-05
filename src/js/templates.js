@@ -258,7 +258,9 @@ export function injectOverlays() {
         </div>
       </div>
       <div class="info-content">
+        <!-- ── LEFT / MAIN COLUMN ───────────────────────────── -->
         <div class="info-col-main">
+          <!-- Trailer -->
           <div class="info-trailer-wrap" id="info-trailer-wrap">
             <div class="info-section-label">Trailer</div>
             <div class="info-trailer-inner">
@@ -274,27 +276,47 @@ export function injectOverlays() {
               </div>
             </div>
           </div>
-          <!-- Multi-source ratings: IMDb / RT / Metacritic (filled by OMDb) -->
+
+          <!-- OMDb: IMDb / RT / Metacritic rating pills -->
           <div class="info-multi-ratings" id="info-multi-ratings" style="display:none"></div>
-          <!-- Awards banner (filled by OMDb) -->
+          <!-- Awards banner -->
           <div class="info-awards-banner" id="info-awards-banner" style="display:none"></div>
 
-          <!-- Where to watch (filled by Watchmode) -->
+          <!-- Where to Watch -->
           <div class="info-section" id="info-wtw-section" style="display:none">
             <div class="info-section-label">Where to Watch</div>
             <div class="info-where-to-watch" id="info-where-to-watch"></div>
           </div>
 
-          <!-- Part of a collection (franchise) -->
+          <!-- Part of a collection / franchise -->
           <div class="info-section" id="info-collection-section" style="display:none">
-            <div class="info-section-label">Part of</div>
+            <div class="info-section-label">Part of a Collection</div>
             <span class="info-collection-link" id="info-collection-link" style="display:none"></span>
           </div>
 
+          <!-- Cast -->
           <div class="info-section" id="info-cast-section">
             <div class="info-section-label">Cast</div>
             <div class="info-cast-row" id="info-cast-row"></div>
           </div>
+
+          <!-- Keywords / Anime Tags -->
+          <div class="info-section" id="info-keywords-section" style="display:none">
+            <div class="info-section-label">Tags</div>
+            <div id="info-keywords-tags"></div>
+            <div id="info-ani-tags"></div>
+          </div>
+        </div>
+
+        <!-- ── RIGHT / SIDE COLUMN ────────────────────────── -->
+        <div class="info-col-side">
+          <!-- Score + details panel -->
+          <div class="info-ratings-wrap" id="info-ratings"></div>
+
+          <!-- Actions (Watch / Save / Like) -->
+          <div class="info-actions" id="info-actions"></div>
+
+          <!-- Episodes (TV shows) — lives in side column -->
           <div class="info-section" id="info-eps-section" style="display:none">
             <div class="info-section-label">Episodes</div>
             <div class="info-ep-controls">
@@ -303,23 +325,18 @@ export function injectOverlays() {
             <div class="info-ep-grid" id="info-ep-grid"></div>
           </div>
 
-          <!-- Keywords / Anime Tags -->
-          <div class="info-section" id="info-keywords-section" style="display:none">
-            <div class="info-section-label">Keywords &amp; Tags</div>
-            <div id="info-keywords-tags"></div>
-            <div id="info-ani-tags"></div>
-          </div>
-
+          <!-- More Like This — side column -->
           <div class="info-section" id="info-related-section">
             <div class="info-section-label">More Like This</div>
             <div class="info-related-grid" id="info-related-grid"></div>
           </div>
         </div>
-        <div class="info-col-side">
-          <div class="info-ratings-wrap" id="info-ratings"></div>
-          <div class="info-details" id="info-details"></div>
-          <div class="info-actions" id="info-actions"></div>
-        </div>
+      </div>
+
+      <!-- ── REVIEWS — full width at bottom ─────────────── -->
+      <div class="info-reviews-outer" id="info-reviews-outer" style="display:none">
+        <div class="info-section-label" style="padding:0 3rem .75rem">Reviews</div>
+        <div class="info-reviews" id="info-reviews-list" style="padding:0 3rem 3rem;display:flex;flex-wrap:wrap;gap:.75rem"></div>
       </div>
     </div>
   </div>`;

@@ -2137,3 +2137,24 @@ img[alt]::after {
 /* ── CARD SIZE BOOST for person grid ─────────────────────────────── */
 .person-grid .card-title { font-size: 1rem !important; }
 .person-grid .card-body { padding: .65rem .8rem .75rem !important; }
+
+/* ── TRANSPARENT PROFILE AVATAR CIRCLE FIX ───────────────────────── */
+/* When color is transparent, the avatar circle shows no background —
+   just the image (or the card surface behind it) */
+.profile-card .profile-avatar-circle[style*="transparent"],
+.profile-card .profile-avatar-circle[style="background:transparent"] {
+  background: transparent !important;
+  border: 2px dashed var(--border3);
+}
+/* Profile color swatch — transparent option */
+.profile-color-swatch[data-color="transparent"] {
+  background: conic-gradient(#aaa 25%,#ddd 25%,#ddd 50%,#aaa 50%,#aaa 75%,#ddd 75%) !important;
+  background-size: 10px 10px !important;
+}
+/* WHO'S WATCHING: ensure profile cards on transparent have no bg bleed */
+.profiles-grid .profile-card .profile-avatar-circle {
+  border: 2px solid rgba(255,255,255,.1);
+}
+
+/* ── WTW badge improvements ───────────────────────────────────────── */
+.wtw-badge svg { border-radius: 5px; }

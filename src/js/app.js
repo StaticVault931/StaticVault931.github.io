@@ -168,6 +168,11 @@ const SV_SETTINGS = [
   { id: 'showAccountsOnStart', label: 'Show Profiles on Start', desc: 'Show profile selector every time you open the app',            default: false, icon: 'manage_accounts',  group: 'Account' },
   // Content filtering
   { id: 'hideAnime',  label: 'Hide Anime Everywhere',   desc: 'Remove anime from home feed and search (still available in Anime tab)', default: false, icon: 'block', group: 'Content' },
+  // Info page display
+  { id: 'showOMDbRatings',   label: 'Show IMDb / RT / Metacritic', desc: 'Display external ratings from IMDb, Rotten Tomatoes, and Metacritic', default: true, icon: 'star_rate', group: 'Info Page' },
+  { id: 'showWhereToWatch',  label: 'Show Where to Watch',         desc: 'Show streaming availability on the info page',                          default: true, icon: 'tv',        group: 'Info Page' },
+  { id: 'showKeywordTags',   label: 'Show Keywords / Tags',        desc: 'Display content tags and keywords below the cast section',               default: true, icon: 'tag',       group: 'Info Page' },
+  { id: 'showAwardsBanner',  label: 'Show Awards',                 desc: 'Show awards and nominations banner on the info page',                    default: true, icon: 'emoji_events', group: 'Info Page' },
 ];
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
@@ -3482,28 +3487,43 @@ export async function openInfoPage(id, type, hint = {}) {
       const writers   = type !== 'anime' ? (credits?.crew || []).filter(c => ['Screenplay','Story','Writer'].includes(c.job)).slice(0,3).map(c => c.name) : [];
       const producers = type !== 'anime' ? (credits?.crew || []).filter(c => ['Executive Producer','Producer'].includes(c.job)).slice(0,2).map(c => c.name) : [];
 
+      // Build info side panel — ordered: rating/cert → lang → status → people → financial
+      const langMap = {'en':'English','es':'Spanish','fr':'French','de':'German','ja':'Japanese','ko':'Korean','zh':'Chinese','pt':'Portuguese','it':'Italian','ru':'Russian','hi':'Hindi','ar':'Arabic'};
+      const langDisplay = details.original_language ? (langMap[details.original_language] || details.original_language.toUpperCase()) : null;
       ratingsEl.innerHTML = `
         <div class="info-ratings-inner">
-          <div class="modal-ratings">
-            ${ratingVal ? `<div class="r-chip"><div class="rv ${ratingVal >= 9 ? 'rv-great' : ratingVal >= 7 ? 'rv-gold' : 'rv-ok'}">${ratingVal.toFixed(1)}</div><div class="rs">TMDB Score</div></div>` : ''}
-            ${details.vote_count >= 10 ? `<div class="r-chip"><div class="rv">${details.vote_count >= 1000 ? (details.vote_count/1000).toFixed(1)+'K' : details.vote_count}</div><div class="rs">Votes</div></div>` : ''}
-            ${details.number_of_seasons > 1 ? `<div class="r-chip"><div class="rv">${details.number_of_seasons}</div><div class="rs">Seasons</div></div>` : ''}
-            ${details.number_of_episodes ? `<div class="r-chip"><div class="rv">${details.number_of_episodes}</div><div class="rs">Episodes</div></div>` : ''}
-            ${cert ? `<div class="r-chip"><div class="rv">${cert}</div><div class="rs">Rating</div></div>` : ''}
+          <!-- Highlighted score + cert + language at the very top -->
+          <div class="info-score-row">
+            ${ratingVal ? `<div class="info-score-main">
+              <div class="info-score-num ${ratingVal >= 8 ? 'score-great' : ratingVal >= 7 ? 'score-good' : ratingVal >= 5 ? 'score-ok' : 'score-bad'}">${ratingVal.toFixed(1)}</div>
+              <div class="info-score-meta">
+                <span class="info-score-label">TMDB</span>
+                ${details.vote_count >= 10 ? `<span class="info-score-votes">${details.vote_count >= 1000 ? (details.vote_count/1000).toFixed(1)+'K' : details.vote_count} votes</span>` : ''}
+              </div>
+            </div>` : ''}
+            <div class="info-score-chips">
+              ${cert ? `<span class="info-cert-chip">${esc(cert)}</span>` : ''}
+              ${langDisplay ? `<span class="info-lang-chip">${esc(langDisplay)}</span>` : ''}
+              ${details.status ? `<span class="info-status-chip ${details.status === 'Released' || details.status === 'Ended' ? 'status-done' : 'status-active'}">${esc(details.status)}</span>` : ''}
+            </div>
           </div>
+          <!-- Season/Episode count chips -->
+          ${(details.number_of_seasons || details.number_of_episodes) ? `<div class="info-count-chips">
+            ${details.number_of_seasons > 1 ? `<span class="info-count-chip">${details.number_of_seasons} Seasons</span>` : ''}
+            ${details.number_of_episodes ? `<span class="info-count-chip">${details.number_of_episodes} Episodes</span>` : ''}
+            ${details.runtime ? `<span class="info-count-chip">${Math.floor(details.runtime/60) > 0 ? Math.floor(details.runtime/60)+'h ' : ''}${details.runtime%60}m</span>` : ''}
+          </div>` : (details.runtime ? `<div class="info-count-chips"><span class="info-count-chip">${Math.floor(details.runtime/60) > 0 ? Math.floor(details.runtime/60)+'h ' : ''}${details.runtime%60}m</span></div>` : '')}
+          <!-- Key creative details -->
           <div class="info-extra-details">
-            ${details.status ? `<div class="info-detail-row"><span class="info-detail-key">Status</span><span class="info-detail-val">${esc(details.status)}</span></div>` : ''}
-            ${details.original_language ? `<div class="info-detail-row"><span class="info-detail-key">Language</span><span class="info-detail-val">${esc(details.original_language.toUpperCase())}</span></div>` : ''}
             ${directors.length ? `<div class="info-detail-row"><span class="info-detail-key">Director</span><span class="info-detail-val info-clickable-people">${directors.slice(0,2).map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
-            ${writers.length ? `<div class="info-detail-row"><span class="info-detail-key">Writer</span><span class="info-detail-val info-clickable-people">${writers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
             ${creators ? `<div class="info-detail-row"><span class="info-detail-key">Creator</span><span class="info-detail-val info-clickable-people">${creators.split(', ').map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
+            ${writers.length ? `<div class="info-detail-row"><span class="info-detail-key">Writer</span><span class="info-detail-val info-clickable-people">${writers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
+            ${producers.length ? `<div class="info-detail-row"><span class="info-detail-key">Producer</span><span class="info-detail-val info-clickable-people">${producers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
             ${networks ? `<div class="info-detail-row"><span class="info-detail-key">Network</span><span class="info-detail-val">${(details.networks||[]).slice(0,2).map(n=>`<span class="info-studio-link" data-company-id="${n.id}" data-company-type="network">${esc(n.name)}</span>`).join(', ')}</span></div>` : ''}
             ${prodCos ? `<div class="info-detail-row"><span class="info-detail-key">Studio</span><span class="info-detail-val">${(details.production_companies||[]).slice(0,2).map(c=>`<span class="info-studio-link" data-company-id="${c.id}" data-company-type="company">${esc(c.name)}</span>`).join(', ')}</span></div>` : ''}
             ${budget ? `<div class="info-detail-row"><span class="info-detail-key">Budget</span><span class="info-detail-val">${budget}</span></div>` : ''}
             ${revenue ? `<div class="info-detail-row"><span class="info-detail-key">Revenue</span><span class="info-detail-val">${revenue}</span></div>` : ''}
-            ${producers.length ? `<div class="info-detail-row"><span class="info-detail-key">Producer</span><span class="info-detail-val info-clickable-people">${producers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
           </div>
-          ${keywords.length ? `<div class="info-keywords">${keywords.map(k => `<span class="info-genre">${esc(k)}</span>`).join('')}</div>` : ''}
         </div>`;
     }
 
@@ -3655,26 +3675,23 @@ export async function openInfoPage(id, type, hint = {}) {
       } catch { relGrid.innerHTML = ''; }
     }
 
-    // Reviews
+    // Reviews — now at the bottom of the page in their own full-width section
     try {
       const reviewData = await tmdb(`/${type === 'anime' ? 'tv' : type}/${id}/reviews`);
-      const reviews = (reviewData.results || []).slice(0, 3);
-      const reviewSection = document.getElementById('info-related-section');
-      if (reviews.length && reviewSection) {
-        const reviewDiv = document.createElement('div');
-        reviewDiv.className = 'info-section';
-        reviewDiv.id = 'info-reviews-section';
-        reviewDiv.innerHTML = `
-          <div class="info-section-label">Reviews</div>
-          <div class="info-reviews">${reviews.map(r => `
-            <div class="info-review-card">
-              <div class="info-review-author">${esc(r.author || 'Anonymous')}
-                ${r.author_details?.rating ? `<span class="info-review-rating">★ ${r.author_details.rating}/10</span>` : ''}
-              </div>
-              <div class="info-review-body">${esc((r.content || '').slice(0, 280))}${r.content?.length > 280 ? '…' : ''}</div>
-            </div>`).join('')}
-          </div>`;
-        reviewSection.before(reviewDiv);
+      const reviews = (reviewData.results || []).slice(0, 4);
+      const reviewsOuter = document.getElementById('info-reviews-outer');
+      const reviewsList  = document.getElementById('info-reviews-list');
+      if (reviews.length && reviewsOuter && reviewsList) {
+        reviewsList.innerHTML = reviews.map(r => `
+          <div class="info-review-card" style="flex:1;min-width:280px;max-width:480px">
+            <div class="info-review-author">${esc(r.author || 'Anonymous')}
+              ${r.author_details?.rating ? `<span class="info-review-rating">★ ${r.author_details.rating}/10</span>` : ''}
+            </div>
+            <div class="info-review-body">${esc((r.content || '').slice(0, 320))}${(r.content||'').length > 320 ? '…' : ''}</div>
+          </div>`).join('');
+        reviewsOuter.style.display = '';
+      } else if (reviewsOuter) {
+        reviewsOuter.style.display = 'none';
       }
     } catch {}
 
@@ -3763,6 +3780,82 @@ async function loadInfoEpisodes(showId, season) {
 }
 
 /* ── PERSON FILMOGRAPHY PAGE ─────────────────────────────────────── */
+/* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
+export async function openProviderPage(providerId, providerName) {
+  const ov = document.getElementById('company-overlay');
+  if (!ov) return;
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const nameEl   = ov.querySelector('.company-name');
+  const descEl   = ov.querySelector('#company-desc');
+  const gridEl   = ov.querySelector('#company-grid');
+  const logoEl   = ov.querySelector('#company-logo');
+  const parentEl = ov.querySelector('#company-parent');
+  const heroEl   = ov.querySelector('.company-hero');
+
+  if (!ov._wired) {
+    ov._wired = true;
+    ov.querySelector('#company-close')?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
+    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
+    ov.addEventListener('click', e => {
+      const card = e.target.closest('.card[data-id][data-type]');
+      if (!card || e.target.closest('button')) return;
+      ov.classList.remove('open'); document.body.style.overflow = '';
+      setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
+    });
+  }
+
+  if (nameEl)   nameEl.textContent = providerName;
+  if (parentEl) parentEl.textContent = 'Streaming Provider';
+  if (descEl)   descEl.textContent = `Browse content available on ${providerName}`;
+  if (logoEl)   logoEl.style.display = 'none';
+  if (heroEl)   heroEl.style.display = 'none';
+  if (gridEl)   gridEl.innerHTML = skelCards(8);
+
+  try {
+    const [movies, tv] = await Promise.allSettled([
+      tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
+      tmdb('/discover/tv',    { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
+    ]);
+    const m = movies.status === 'fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+    const t = tv.status    === 'fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
+    // Interleave movies and TV
+    const combined = [];
+    for (let i = 0; i < Math.max(m.length, t.length); i++) { if (m[i]) combined.push(m[i]); if (t[i]) combined.push(t[i]); }
+    if (gridEl && combined.length) {
+      gridEl.innerHTML = combined.slice(0,24).map(x => makeCard(x, x.media_type)).join('');
+    } else if (gridEl) {
+      gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No content found for ${esc(providerName)}.</p>`;
+    }
+  } catch {
+    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load provider content.</p>`;
+  }
+}
+
+/* ── PROVIDER SVG LOGOS ──────────────────────────────────────────── */
+function _getProviderSVG(name) {
+  const logos = {
+    'Netflix': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#141414"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#e50914">N</text></svg>`,
+    'Hulu': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#1ce783"/><text x="20" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="18" fill="#000">hulu</text></svg>`,
+    'Amazon Prime Video': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#00a8e1"/><text x="20" y="27" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="22" fill="#fff">P</text></svg>`,
+    'Disney Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#113ccf"/><text x="20" y="27" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="22" fill="#fff">D+</text></svg>`,
+    'Max': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#002be7"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">MAX</text></svg>`,
+    'HBO Max': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#002be7"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">MAX</text></svg>`,
+    'Apple TV Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#1c1c1e"/><text x="20" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="14" fill="#fff">TV+</text></svg>`,
+    'Peacock': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#ffd700">Pc</text></svg>`,
+    'Peacock Premium': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#ffd700">Pc</text></svg>`,
+    'Paramount Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#0064ff"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="17" fill="#fff">P+</text></svg>`,
+    'Crunchyroll': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#f47521"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">CR</text></svg>`,
+    'Tubi TV': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#fa4a5e"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#fff">tubi</text></svg>`,
+    'Pluto TV': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#fff200"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="14" fill="#000">Pluto</text></svg>`,
+    'Starz': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="15" fill="#fff">STARZ</text></svg>`,
+    'Showtime': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#c8002d"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="13" fill="#fff">SHO</text></svg>`,
+  };
+  // Generic fallback: first 2 chars of name
+  return logos[name] || `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="rgba(255,255,255,.1)"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">${(name||'?').slice(0,2).toUpperCase()}</text></svg>`;
+}
+
 /* ── COMPANY PAGE ────────────────────────────────────────────────── */
 export async function openCompanyPage(companyId, companyName) {
   const ov = document.getElementById('company-overlay');
@@ -3881,6 +3974,12 @@ export async function openCollectionPage(collectionId, collectionName) {
 
 /* ── EXTERNAL API ENRICHMENT FOR INFO PAGE ───────────────────────── */
 async function _enrichInfoPage(id, type, details, credits) {
+  // ── Check display settings ──
+  const showRatings  = getSetting('showOMDbRatings')  !== false;
+  const showWtw      = getSetting('showWhereToWatch') !== false;
+  const showKeywords = getSetting('showKeywordTags')  !== false;
+  const showAwards   = getSetting('showAwardsBanner') !== false;
+
   // ── Reset all enrichment sections first (clean slate between opens) ──
   const resetIds = ['info-multi-ratings','info-wtw-section','info-collection-section',
                     'info-keywords-section','info-ani-tags'];
@@ -3916,8 +4015,9 @@ async function _enrichInfoPage(id, type, details, credits) {
 
   // ── OMDb: IMDb, Rotten Tomatoes, Metacritic, Awards, Box Office ───
   if (imdbId) {
-    fetchOMDb(imdbId).then(omdb => {
+    if (showRatings) fetchOMDb(imdbId).then(omdb => {
       if (!omdb || omdb.Response === 'False') return;
+      // Rotten Tomatoes: make sure it shows (was missing before)
 
       // Rating pills row (IMDb / RT / Metacritic)
       const ratingsEl = document.getElementById('info-multi-ratings');
@@ -3959,6 +4059,10 @@ async function _enrichInfoPage(id, type, details, credits) {
         }
       }
 
+      if (!showAwards) {
+        const ab = document.getElementById('info-awards-banner');
+        if (ab) ab.style.display = 'none';
+      }
       // Box office + extra details in side panel
       const extraEl = document.querySelector('#info-overlay .info-extra-details');
       if (extraEl) {
@@ -3987,7 +4091,7 @@ async function _enrichInfoPage(id, type, details, credits) {
     }).catch(() => {});
 
     // ── Watchmode: Where to Watch ──────────────────────────────────
-    fetchWatchmode(imdbId).then(sources => {
+    if (showWtw) fetchWatchmode(imdbId).then(sources => {
       if (!sources?.length) return;
       const wtwEl  = document.getElementById('info-where-to-watch');
       const wtwSec = document.getElementById('info-wtw-section');
@@ -4004,17 +4108,36 @@ async function _enrichInfoPage(id, type, details, credits) {
       const typeColors = { free: '#22c55e', sub: '#b3b3b3', rent: '#f59e0b', buy: '#f97316' };
       const typeLabels = { free: 'Free', sub: 'Subscription', rent: 'Rent', buy: 'Buy' };
 
+      // Map Watchmode service names to TMDB watch provider IDs for internal provider pages
+      const WM_TO_TMDB = {
+        'Netflix':8,'Amazon Prime Video':9,'Hulu':15,'Disney Plus':337,'Max':384,'HBO Max':384,
+        'Apple TV Plus':350,'Peacock':386,'Peacock Premium':386,'Paramount Plus':531,'Crunchyroll':283,
+        'Tubi TV':73,'Pluto TV':300,'Kanopy':191,'Shudder':99,'Mubi':11,'FuboTV':257,
+        'AMC Plus':526,'Starz':43,'Showtime':37,'BritBox':151,'Acorn TV':196,'Plex':538,
+      };
       wtwEl.innerHTML = unique.map(s => {
         const color = typeColors[s.type] || '#888';
         const label = typeLabels[s.type] || s.type;
-        const initial = (s.name||'?').slice(0,2).toUpperCase();
-        const href = (s.web_url && s.web_url !== 'N/A') ? s.web_url : `https://www.google.com/search?q=watch+on+${encodeURIComponent(s.name)}`;
-        return `<a class="wtw-badge wtw-${s.type||'sub'}" href="${href}" target="_blank" rel="noopener">
-          <span class="wtw-icon" style="background:${color}22;color:${color};border:1px solid ${color}44">${initial}</span>
-          <span>${esc(s.name)}</span>
-          <span style="font-size:.58rem;color:${color};font-weight:700;margin-left:.15rem">${label}</span>
-        </a>`;
+        const svgLogo = _getProviderSVG(s.name);
+        const tmdbProviderId = WM_TO_TMDB[s.name];
+        const externalUrl = (s.web_url && s.web_url !== 'N/A') ? s.web_url : null;
+        return `<div class="wtw-badge wtw-${s.type||'sub'}" data-provider-id="${tmdbProviderId||''}" data-provider-name="${esc(s.name)}" data-external="${esc(externalUrl||'')}" style="cursor:pointer">
+          <span class="wtw-logo">${svgLogo}</span>
+          <span class="wtw-name">${esc(s.name)}</span>
+          <span class="wtw-type" style="color:${color}">${label}</span>
+          ${externalUrl ? `<a class="wtw-ext-link" href="${externalUrl}" target="_blank" rel="noopener" title="Open ${s.name}" onclick="event.stopPropagation()"><span class="material-icons-round" style="font-size:.75rem">open_in_new</span></a>` : ''}
+        </div>`;
       }).join('');
+
+      // Click = open StaticVault provider page
+      wtwEl.querySelectorAll('.wtw-badge[data-provider-id]').forEach(badge => {
+        badge.addEventListener('click', e => {
+          if (e.target.closest('.wtw-ext-link')) return;
+          const pid = badge.dataset.providerId;
+          const name = badge.dataset.providerName;
+          if (pid) openProviderPage(+pid, name);
+        });
+      });
 
       if (unique.length) wtwSec.style.display = '';
     }).catch(() => {});
@@ -4024,7 +4147,7 @@ async function _enrichInfoPage(id, type, details, credits) {
   const kws = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 16);
   const kwEl  = document.getElementById('info-keywords-tags');
   const kwSec = document.getElementById('info-keywords-section');
-  if (kwEl && kws.length) {
+  if (showKeywords && kwEl && kws.length) {
     kwEl.innerHTML = kws.map(k =>
       `<span class="info-keyword-tag" data-kw-name="${esc(k.name)}">${esc(k.name)}</span>`
     ).join('');
@@ -4425,9 +4548,7 @@ function initProfilesUI() {
       colorRow.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s === sw));
       const prev = document.getElementById('profile-avatar-preview');
       const chosenColor = sw.dataset.color;
-      if (prev) prev.style.background = chosenColor === 'transparent'
-        ? 'conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px'
-        : chosenColor;
+      if (prev) prev.style.background = chosenColor && chosenColor !== 'transparent' ? chosenColor : 'transparent';
     });
   }
   document.getElementById('profile-change-avatar-btn')?.addEventListener('click', openPersonSearchForAvatar);
@@ -4464,7 +4585,7 @@ function renderProfilesGrid() {
   const activeId = getActiveProfileId();
   grid.innerHTML = profiles.map(p => `
     <div class="profile-card${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" tabindex="0" role="button">
-      <div class="profile-avatar-circle" style="${p.color === 'transparent' ? 'background: conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px' : 'background:' + (p.color || '#e50914')}">
+      <div class="profile-avatar-circle" style="background:${p.color && p.color !== 'transparent' ? p.color : 'transparent'}">
         ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : `<span class="material-icons-round">person</span>`}
       </div>
       <div class="profile-card-name">${esc(p.name)}</div>
@@ -4528,9 +4649,7 @@ function openProfileEditor(profileId) {
   if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
   const color = profile?.color || '#e50914';
   if (preview) {
-    preview.style.background = color === 'transparent'
-      ? 'conic-gradient(#666 25%,#999 25%,#999 50%,#666 50%,#666 75%,#999 75%) 0/14px 14px'
-      : color;
+    preview.style.background = color && color !== 'transparent' ? color : 'transparent';
     preview.innerHTML = profile?.avatar
       ? `<img src="${esc(profile.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
       : `<span class="material-icons-round">person</span>`;

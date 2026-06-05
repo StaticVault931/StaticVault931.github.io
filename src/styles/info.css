@@ -459,3 +459,100 @@
 /* Where-to-watch badges improvements */
 .wtw-badge { text-decoration: none; }
 .wtw-badge:hover { box-shadow: 0 4px 16px rgba(0,0,0,.5) !important; border-color: rgba(255,255,255,.3) !important; }
+
+/* ── IMPROVED SIDE PANEL SCORE DISPLAY ───────────────────────────── */
+.info-score-row {
+  display: flex; align-items: flex-start; gap: .8rem;
+  padding: .8rem; background: var(--s2); border-radius: 8px;
+  border: 1px solid var(--border); margin-bottom: .75rem;
+}
+.info-score-main { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+.info-score-num {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 2.8rem; line-height: 1; letter-spacing: -.02em;
+}
+.score-great { color: #22c55e; }
+.score-good  { color: #f5c518; }
+.score-ok    { color: #f97316; }
+.score-bad   { color: #f87171; }
+.info-score-meta { display: flex; flex-direction: column; gap: .1rem; }
+.info-score-label { font-size: .6rem; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.info-score-votes { font-size: .65rem; color: var(--dim); }
+.info-score-chips { display: flex; flex-wrap: wrap; gap: .3rem; flex: 1; align-content: flex-start; padding-top: .3rem; }
+.info-cert-chip {
+  padding: .15rem .45rem; border-radius: 4px;
+  background: rgba(229,9,20,.15); border: 1px solid rgba(229,9,20,.3);
+  color: var(--red); font-size: .7rem; font-weight: 900;
+}
+.info-lang-chip {
+  padding: .15rem .45rem; border-radius: 4px;
+  background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.3);
+  color: #a78bfa; font-size: .7rem; font-weight: 700;
+}
+.info-status-chip {
+  padding: .15rem .45rem; border-radius: 4px;
+  font-size: .7rem; font-weight: 700;
+}
+.status-done   { background: rgba(34,197,94,.1);  border: 1px solid rgba(34,197,94,.3);  color: #4ade80; }
+.status-active { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3); color: #fbbf24; }
+.info-count-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .6rem; }
+.info-count-chip {
+  padding: .18rem .55rem; border-radius: 4px;
+  background: var(--s3); border: 1px solid var(--border2);
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+}
+
+/* ── WHERE TO WATCH — bigger logos ───────────────────────────────── */
+.info-where-to-watch { display: flex; flex-wrap: wrap; gap: .5rem; }
+.wtw-badge {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .4rem .75rem .4rem .4rem;
+  border-radius: 8px; font-size: .76rem; font-weight: 800;
+  background: var(--s2); border: 1.5px solid var(--border2);
+  color: var(--text); cursor: pointer;
+  transition: all .18s; white-space: nowrap;
+}
+.wtw-logo { display: flex; align-items: center; flex-shrink: 0; border-radius: 5px; overflow: hidden; }
+.wtw-name { font-weight: 800; }
+.wtw-type { font-size: .6rem; font-weight: 700; margin-left: .2rem; }
+.wtw-ext-link {
+  display: flex; align-items: center; opacity: .5;
+  margin-left: .2rem; padding: .1rem; transition: opacity .15s;
+  color: var(--text); text-decoration: none;
+}
+.wtw-badge:hover { background: var(--s3); border-color: var(--border3); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.wtw-badge:hover .wtw-ext-link { opacity: 1; }
+.wtw-free { border-color: rgba(34,197,94,.4); }
+.wtw-sub  { border-color: rgba(255,255,255,.12); }
+.wtw-rent { border-color: rgba(245,158,11,.4); }
+.wtw-buy  { border-color: rgba(249,115,22,.4); }
+
+/* ── REVIEWS — full width at bottom ──────────────────────────────── */
+.info-reviews-outer {
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem; margin-top: .5rem;
+}
+
+/* ── SIDE COLUMN: episodes should not be too wide ────────────────── */
+.info-col-side .info-ep-grid {
+  grid-template-columns: 1fr !important;
+}
+.info-col-side .info-ep-thumb,
+.info-col-side .info-ep-thumb-ph {
+  width: 90px !important;
+}
+
+/* ── INFO RELATED GRID in side column — 1 col ────────────────────── */
+.info-col-side .info-related-grid {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+}
+
+/* ── INFO PAGE CONTENT COLUMN: allow side col scroll ─────────────── */
+.info-col-side {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.1) transparent;
+  position: sticky;
+  top: 60px;
+}
