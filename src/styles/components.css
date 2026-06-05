@@ -1974,3 +1974,45 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   0% { transform: translateY(0) rotate(0deg); opacity: 1; }
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
+
+/* ── BROKEN IMAGE ALT TEXT ───────────────────────────────────────── */
+/* Show alt text and placeholder when image fails to load */
+img.cast-img[src=""], img.cast-img:not([src]),
+.card-poster img[src=""] { opacity: 0 !important; }
+/* Broken img: show background + alt text via CSS */
+img:-moz-broken,
+img[alt]:not([src]):not([src=""])::after,
+img[alt]::after {
+  content: attr(alt);
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: var(--s3);
+  color: var(--muted);
+  font-size: .65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: .25rem;
+  overflow: hidden;
+}
+
+/* ── INFO PAGE CLICKABLE LINKS ───────────────────────────────────── */
+.info-person-link, .info-studio-link {
+  cursor: pointer; color: var(--text);
+  border-bottom: 1px dotted var(--border3);
+  transition: color .15s, border-color .15s;
+}
+.info-person-link:hover { color: var(--red); border-color: var(--red); }
+.info-studio-link:hover { color: #54b9c5; border-color: #54b9c5; }
+.info-clickable-people { display: flex; flex-wrap: wrap; gap: .2rem; }
+
+/* ── CONTENT RATING DESCRIPTIONS — CLICKABLE ─────────────────────── */
+.rating-desc { cursor: pointer; transition: background .15s, border-color .15s; }
+.rating-desc:hover { background: rgba(255,255,255,.04); }
+.rating-desc.active { border-color: var(--red) !important; }
+
+/* ── AGE RATING BUTTONS — TVY/TVY7 ──────────────────────────────── */
+.age-btn { min-width: 56px; }
+.age-btn-code { font-size: .72rem; }

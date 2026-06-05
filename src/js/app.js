@@ -164,6 +164,8 @@ const SV_SETTINGS = [
   { id: 'skipRecap',         label: 'Skip Intros',            desc: 'Remember to skip intro/recap (manual reminder)',               default: false, icon: 'skip_next',        group: 'Performance' },
   // Account
   { id: 'showAccountsOnStart', label: 'Show Profiles on Start', desc: 'Show profile selector every time you open the app',            default: false, icon: 'manage_accounts',  group: 'Account' },
+  // Content filtering
+  { id: 'hideAnime',  label: 'Hide Anime Everywhere',   desc: 'Remove anime from home feed and search (still available in Anime tab)', default: false, icon: 'block', group: 'Content' },
 ];
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
@@ -635,6 +637,9 @@ function _loadRow(rowId, secId, fetchFn, type) {
       const toRender = deduped.length >= 4 ? deduped : impressionFiltered.filter(m => m.id);
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
+      // Ensure row is at position 0 before rendering — prevents 3px scroll drift
+      const rowEl = document.getElementById(rowId);
+      if (rowEl) rowEl.scrollLeft = 0;
       renderRow(rowId, final, type);
       _saveRowCache(rowId, final);
       // Record impressions for shown content (not searches, only passive browsing)
@@ -869,10 +874,12 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   }
   const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
 
-  // Show/hide sections based on selection
+  const hideAnime = getSetting('hideAnime');
+  // Show/hide sections based on selection; always hide anime rows if hideAnime is on
   STD_ROW_POOL.forEach(r => {
     const sec = document.getElementById(r.sec);
-    if (sec) sec.style.display = stdActive.has(r.id) ? '' : 'none';
+    const shouldShow = stdActive.has(r.id) && !(hideAnime && r.type === 'anime');
+    if (sec) sec.style.display = shouldShow ? '' : 'none';
   });
 
   const rowDefs = STD_ROW_POOL.filter(r => stdActive.has(r.id))
@@ -1008,10 +1015,12 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
   });
   const activeIds = new Set([...alwaysShow, ...selected]);
 
-  // Hide sections not in active set, show ones that are
+  const _hideAnime = getSetting('hideAnime');
+  // Hide sections not in active set; also hide anime catalog rows if hideAnime is on
   ROW_CATALOG.forEach(r => {
     const sec = document.getElementById(r.sec);
-    if (sec) sec.style.display = activeIds.has(r.id) ? '' : 'none';
+    const show = activeIds.has(r.id) && !(_hideAnime && r.type === 'anime');
+    if (sec) sec.style.display = show ? '' : 'none';
   });
 
   // Update labels with alt names
@@ -1566,9 +1575,32 @@ function buildAgeRatingUI() {
       persist('ageRating');
       buildAgeRatingUI(); // re-render
       buildRatingDescriptions();
+      _applyAgeBasedPreferences(btn.dataset.age); // auto-adjust content silently
       window._prefsDirty = true;
     });
   });
+}
+
+// Silently adjust genre preferences when age rating changes
+function _applyAgeBasedPreferences(rating) {
+  const level = AGE_LEVELS[rating] ?? 4;
+  // Clear previous auto-preferences
+  state._autoAgeGenres = state._autoAgeGenres || {};
+  // Genres to encourage for young ratings
+  const friendlyGenres = [10751,16,35,10402]; // Family, Animation, Comedy, Music
+  // Genres to discourage for young ratings
+  const matureGenres   = [28,27,80,53,9648,36]; // Action, Horror, Crime, Thriller, Mystery, History-violence
+
+  if (level <= 2) { // TV-Y / TV-Y7 / G
+    // Remove mature genres from prefGenres if present (silently)
+    state.prefGenres = (state.prefGenres || []).filter(g => !matureGenres.includes(g));
+    persist('prefGenres');
+    // Mark auto-friendly genres so they're boosted in recommendations
+    state._autoAgeGenres = { boost: friendlyGenres, suppress: matureGenres };
+  } else {
+    // Reset — remove age-based genre restrictions
+    state._autoAgeGenres = {};
+  }
 }
 
 /* ── CYF SETTINGS (SV_SETTINGS defined above init IIFE to avoid TDZ) */
@@ -3407,8 +3439,11 @@ export async function openInfoPage(id, type, hint = {}) {
       const revenue = details.revenue > 0 ? `$${(details.revenue / 1e6).toFixed(0)}M` : null;
       const networks = (details.networks || []).slice(0, 2).map(n => n.name).join(', ');
       const prodCos = (details.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
-      const creators = (details.created_by || []).map(c => c.name).join(', ');
-      const keywords = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 8).map(k => k.name);
+      const creators  = (details.created_by || []).map(c => c.name).join(', ');
+      const keywords  = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 8).map(k => k.name);
+      const directors = type !== 'anime' ? (credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name) : [];
+      const writers   = type !== 'anime' ? (credits?.crew || []).filter(c => ['Screenplay','Story','Writer'].includes(c.job)).slice(0,3).map(c => c.name) : [];
+      const producers = type !== 'anime' ? (credits?.crew || []).filter(c => ['Executive Producer','Producer'].includes(c.job)).slice(0,2).map(c => c.name) : [];
 
       ratingsEl.innerHTML = `
         <div class="info-ratings-inner">
@@ -3422,11 +3457,14 @@ export async function openInfoPage(id, type, hint = {}) {
           <div class="info-extra-details">
             ${details.status ? `<div class="info-detail-row"><span class="info-detail-key">Status</span><span class="info-detail-val">${esc(details.status)}</span></div>` : ''}
             ${details.original_language ? `<div class="info-detail-row"><span class="info-detail-key">Language</span><span class="info-detail-val">${esc(details.original_language.toUpperCase())}</span></div>` : ''}
-            ${creators ? `<div class="info-detail-row"><span class="info-detail-key">Creator</span><span class="info-detail-val">${esc(creators)}</span></div>` : ''}
-            ${networks ? `<div class="info-detail-row"><span class="info-detail-key">Network</span><span class="info-detail-val">${esc(networks)}</span></div>` : ''}
-            ${prodCos ? `<div class="info-detail-row"><span class="info-detail-key">Studio</span><span class="info-detail-val">${esc(prodCos)}</span></div>` : ''}
+            ${directors.length ? `<div class="info-detail-row"><span class="info-detail-key">Director</span><span class="info-detail-val info-clickable-people">${directors.slice(0,2).map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
+            ${writers.length ? `<div class="info-detail-row"><span class="info-detail-key">Writer</span><span class="info-detail-val info-clickable-people">${writers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
+            ${creators ? `<div class="info-detail-row"><span class="info-detail-key">Creator</span><span class="info-detail-val info-clickable-people">${creators.split(', ').map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
+            ${networks ? `<div class="info-detail-row"><span class="info-detail-key">Network</span><span class="info-detail-val">${(details.networks||[]).slice(0,2).map(n=>`<span class="info-studio-link" data-company-id="${n.id}" data-company-type="network">${esc(n.name)}</span>`).join(', ')}</span></div>` : ''}
+            ${prodCos ? `<div class="info-detail-row"><span class="info-detail-key">Studio</span><span class="info-detail-val">${(details.production_companies||[]).slice(0,2).map(c=>`<span class="info-studio-link" data-company-id="${c.id}" data-company-type="company">${esc(c.name)}</span>`).join(', ')}</span></div>` : ''}
             ${budget ? `<div class="info-detail-row"><span class="info-detail-key">Budget</span><span class="info-detail-val">${budget}</span></div>` : ''}
             ${revenue ? `<div class="info-detail-row"><span class="info-detail-key">Revenue</span><span class="info-detail-val">${revenue}</span></div>` : ''}
+            ${producers.length ? `<div class="info-detail-row"><span class="info-detail-key">Producer</span><span class="info-detail-val info-clickable-people">${producers.map(n=>`<span class="info-person-link" data-search="${esc(n)}">${esc(n)}</span>`).join(', ')}</span></div>` : ''}
           </div>
           ${keywords.length ? `<div class="info-keywords">${keywords.map(k => `<span class="info-genre">${esc(k)}</span>`).join('')}</div>` : ''}
         </div>`;
@@ -3533,12 +3571,31 @@ export async function openInfoPage(id, type, hint = {}) {
     if (castRow) {
       castRow.innerHTML = cast.map(p => {
         const ph = imgUrl(p.profile_path, 'w185');
-        return `<div class="cast-card" data-person-id="${p.id || ''}" style="cursor:pointer" title="See filmography">
-          ${ph ? `<img class="cast-img" src="${ph}" alt="${esc(p.name || '')}" loading="lazy">` : `<div class="cast-ph"><span class="material-icons-round">person</span></div>`}
+        return `<div class="cast-card" data-person-id="${p.id || ''}" style="cursor:pointer" title="See ${esc(p.name)}'s filmography">
+          ${ph ? `<img class="cast-img" src="${ph}" alt="${esc(p.name || '')}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');">
+          <div class="cast-ph" style="display:none"><span class="material-icons-round">person</span></div>` : `<div class="cast-ph"><span class="material-icons-round">person</span></div>`}
           <div class="cast-name" title="${esc(p.name || '')}">${esc(p.name || '')}</div>
           <div class="cast-char" title="${esc(p.character || '')}">${esc(p.character || '')}</div>
         </div>`;
       }).join('');
+    }
+
+    // Collapse description when there are 6+ cast members (too much content)
+    if (cast.length >= 6) {
+      const ovEl = document.getElementById('info-overview');
+      if (ovEl && ovEl.textContent.length > 200) {
+        ovEl.style.webkitLineClamp = '3';
+        ovEl.style.display = '-webkit-box';
+        ovEl.style.webkitBoxOrient = 'vertical';
+        ovEl.style.overflow = 'hidden';
+        ovEl.title = 'Click to expand';
+        ovEl.style.cursor = 'pointer';
+        ovEl.addEventListener('click', function() {
+          const collapsed = this.style.webkitLineClamp === '3';
+          this.style.webkitLineClamp = collapsed ? 'unset' : '3';
+          this.style.overflow = collapsed ? 'visible' : 'hidden';
+        }, { once: false });
+      }
     }
 
     // TV episodes
@@ -3587,6 +3644,36 @@ export async function openInfoPage(id, type, hint = {}) {
         reviewSection.before(reviewDiv);
       }
     } catch {}
+
+    // Wire clickable studio/person/network links in info page
+    document.querySelectorAll('#info-overlay .info-studio-link').forEach(link => {
+      link.addEventListener('click', () => {
+        const cid = link.dataset.companyId;
+        const ctype = link.dataset.companyType; // 'company' | 'network'
+        if (!cid) return;
+        closeInfoPage();
+        goPage('search');
+        setTimeout(() => {
+          const inp = document.getElementById('search-input');
+          if (inp) {
+            inp.value = link.textContent.trim();
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }, 150);
+      });
+    });
+    document.querySelectorAll('#info-overlay .info-person-link').forEach(link => {
+      link.addEventListener('click', () => {
+        const name = link.dataset.search;
+        if (!name) return;
+        closeInfoPage();
+        goPage('search');
+        setTimeout(() => {
+          const inp = document.getElementById('search-input');
+          if (inp) { inp.value = name; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+        }, 150);
+      });
+    });
 
     // Update URL — info page IS the canonical; watch pages point here
     const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
@@ -3953,10 +4040,10 @@ function initProfilesUI() {
   // Color picker
   const colorRow = document.getElementById('profile-color-row');
   if (colorRow) {
-    const allColors = [...PROFILE_COLORS, 'transparent'];
+    const allColors = ['transparent', ...PROFILE_COLORS];
     colorRow.innerHTML = allColors.map(c => {
       const style = c === 'transparent'
-        ? 'background: conic-gradient(#ccc 25%, #fff 25%, #fff 50%, #ccc 50%, #ccc 75%, #fff 75%) center / 10px 10px; border: 2px dashed var(--border3);'
+        ? 'background: conic-gradient(#999 25%, #ddd 25%, #ddd 50%, #999 50%, #999 75%, #ddd 75%) center / 10px 10px; border: 2px dashed var(--border3);'
         : `background:${c}`;
       return `<button class="profile-color-swatch" data-color="${c}" style="${style}" aria-label="${c === 'transparent' ? 'Transparent' : c}" title="${c === 'transparent' ? 'Transparent' : ''}"></button>`;
     }).join('');
@@ -4198,16 +4285,41 @@ function openPersonSearchForAvatar() {
     const peopleSty = mode === 'people';
     if (tabPeople) { tabPeople.style.background = peopleSty ? 'var(--red)' : 'var(--s3)'; tabPeople.style.borderColor = peopleSty ? 'var(--red)' : 'var(--border2)'; tabPeople.style.color = peopleSty ? '#fff' : 'var(--muted)'; }
     if (tabContent) { tabContent.style.background = !peopleSty ? 'var(--red)' : 'var(--s3)'; tabContent.style.borderColor = !peopleSty ? 'var(--red)' : 'var(--border2)'; tabContent.style.color = !peopleSty ? '#fff' : 'var(--muted)'; }
-    searchInput?.setAttribute('placeholder', mode === 'people' ? 'Search actor, director…' : 'Search movie or TV show…');
+    searchInput?.setAttribute('placeholder', mode === 'people' ? 'Type any actor or director name…' : 'Type a movie or TV show title…');
     if (searchInput?.value.trim()) searchInput.dispatchEvent(new Event('input'));
+    else _showFillerAvatars();
   }
   tabPeople?.addEventListener('click',  () => setSearchTab('people'));
   tabContent?.addEventListener('click', () => setSearchTab('content'));
 
+  // Show popular people as filler when no search is typed
+  const _showFillerAvatars = async () => {
+    if (searchMode === 'people') {
+      resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.72rem;padding:.4rem 0">Popular people</div>';
+      const d = await tmdb('/person/popular', { page: 1 }).catch(() => ({ results: [] }));
+      const people = (d.results || []).filter(p => p.profile_path).slice(0, 10);
+      resultsEl.innerHTML = (people.length ? '' : '') + people.map(p =>
+        `<div class="avatar-option" data-url="https://image.tmdb.org/t/p/w185${p.profile_path}" style="cursor:pointer;text-align:center;width:68px;">
+          <img src="https://image.tmdb.org/t/p/w185${p.profile_path}" alt="${esc(p.name)}" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);display:block;margin:0 auto;">
+          <div style="font-size:.58rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68px">${esc(p.name)}</div>
+        </div>`).join('');
+    } else {
+      resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.72rem;padding:.4rem 0">Trending now</div>';
+      const d = await tmdb('/trending/all/week', { page: 1 }).catch(() => ({ results: [] }));
+      const items = (d.results || []).filter(x => x.poster_path).slice(0, 10);
+      resultsEl.innerHTML = items.map(m =>
+        `<div class="avatar-option" data-url="https://image.tmdb.org/t/p/w185${m.poster_path}" style="cursor:pointer;text-align:center;width:68px;">
+          <img src="https://image.tmdb.org/t/p/w185${m.poster_path}" alt="${esc(m.title||m.name)}" style="width:58px;height:58px;border-radius:8px;object-fit:cover;border:2px solid var(--border2);display:block;margin:0 auto;">
+          <div style="font-size:.58rem;color:var(--muted);margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68px">${esc(m.title||m.name)}</div>
+        </div>`).join('');
+    }
+  };
+  setTimeout(_showFillerAvatars, 100); // show on open
+
   searchInput?.addEventListener('input', function() {
     clearTimeout(searchTimer);
     const q = this.value.trim();
-    if (!q) { resultsEl.innerHTML = ''; return; }
+    if (!q) { _showFillerAvatars(); return; }
     resultsEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem;padding:.5rem">Searching…</div>';
     searchTimer = setTimeout(async () => {
       try {
@@ -4617,17 +4729,30 @@ function buildRatingDescriptions() {
   const el = document.getElementById('pref-rating-descs');
   if (!el) return;
   const descs = [
-    { r: 'G',     label: 'General Audiences',  desc: 'All ages. No offensive content.' },
-    { r: 'PG',    label: 'Parental Guidance',   desc: 'May not suit young children. Mild language or themes.' },
-    { r: 'PG-13', label: 'Parents Strongly Cautioned', desc: 'May be inappropriate for children under 13. Some strong language, violence.' },
-    { r: 'R',     label: 'Restricted',          desc: 'Under 17 requires parent/guardian. Strong language, violence, adult themes.' },
-    { r: 'NC-17', label: 'Adults Only',         desc: 'No one under 17 admitted. Explicit adult content.' },
+    { r: 'TV-Y',   label: 'All Children',         desc: 'Designed for all children. Nothing offensive.' },
+    { r: 'TV-Y7',  label: 'Ages 7 and Up',        desc: 'Suitable for ages 7+. May include mild fantasy violence.' },
+    { r: 'G',      label: 'General Audiences',    desc: 'All ages. No offensive content. (Same as TV-G)' },
+    { r: 'PG',     label: 'Parental Guidance',    desc: 'May not suit young children. Mild language or themes. (Same as TV-PG)' },
+    { r: 'PG-13',  label: 'Ages 13+',             desc: 'May be inappropriate for children under 13. Some strong language, violence. (Same as TV-14)' },
+    { r: 'R',      label: 'Restricted',            desc: 'Under 17 requires parent/guardian. Strong language, violence, adult themes. (Same as TV-MA)' },
+    { r: 'NC-17',  label: 'Adults Only',           desc: 'No one under 17. Explicit adult content.' },
   ];
+  // Make each desc clickable to change rating
   el.innerHTML = descs.map(d => `
-    <div class="rating-desc${state.ageRating === d.r ? ' active' : ''}">
+    <div class="rating-desc${state.ageRating === d.r ? ' active' : ''}" data-age="${d.r}" style="cursor:pointer" title="Set to ${d.r}">
       <span class="rd-badge">${d.r}</span>
       <div><div class="rd-label">${d.label}</div><div class="rd-text">${d.desc}</div></div>
     </div>`).join('');
+  el.querySelectorAll('.rating-desc[data-age]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.ageRating = card.dataset.age;
+      persist('ageRating');
+      buildAgeRatingUI();
+      buildRatingDescriptions();
+      _applyAgeBasedPreferences(card.dataset.age);
+      window._prefsDirty = true;
+    });
+  });
 }
 
 /* (initTestMode defined above in testing mode section) */

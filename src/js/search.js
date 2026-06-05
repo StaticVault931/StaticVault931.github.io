@@ -523,7 +523,12 @@ export async function doSearch(q) {
   _searchState = { query: q, page: 1, results: [], loading: true, done: false };
 
   try {
-    const items = await fetchSearchPage(q, 1);
+    let items = await fetchSearchPage(q, 1);
+    // Filter anime from search results if hideAnime is enabled
+    try {
+      const svSettings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+      if (svSettings.hideAnime) items = items.filter(m => m._type !== 'anime' && m.media_type !== 'anime');
+    } catch {}
     _searchState.results = items;
     _searchState.loading = false;
 
