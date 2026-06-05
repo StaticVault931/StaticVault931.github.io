@@ -4,7 +4,10 @@ import { injectPages } from './pages.js';
 import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
-  fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES } from './api.js';
+  fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
+  getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS,
+  fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
+  fetchDailymotionTrailer, wikidataSPARQL, getFilmAwards } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
@@ -49,6 +52,14 @@ const LEGAL_CONTENT = {
       <h3>3. Third-Party Services</h3>
       <p><strong>The Movie Database (TMDB):</strong> We query the TMDB API for movie, TV show, and metadata. TMDB may log API requests. See <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener">TMDB Privacy Policy</a>.</p>
       <p><strong>AniList:</strong> We query the AniList GraphQL API for anime metadata. See <a href="https://anilist.co/privacy" target="_blank" rel="noopener">AniList Privacy Policy</a>.</p>
+      <p><strong>OMDb API:</strong> Ratings (IMDb, Rotten Tomatoes, Metacritic) from OMDb. See <a href="https://www.omdbapi.com/" target="_blank" rel="noopener">omdbapi.com</a>.</p>
+      <p><strong>Fanart.tv:</strong> Artwork and logos from fanart.tv. See <a href="https://fanart.tv/" target="_blank" rel="noopener">fanart.tv</a>.</p>
+      <p><strong>Watchmode:</strong> Streaming availability data from watchmode. See <a href="https://api.watchmode.com/" target="_blank" rel="noopener">api.watchmode.com</a>.</p>
+      <p><strong>Wikidata / Wikipedia:</strong> Biographical and encyclopedic data from Wikidata (wikidata.org) and Wikipedia (wikipedia.org), both published under open licenses.</p>
+      <p><strong>Jikan (MyAnimeList):</strong> Anime metadata via the unofficial MyAnimeList API at jikan.moe.</p>
+      <p><strong>TV-API.com:</strong> Trailers and awards data from tv-api.com (IMDB-API). See <a href="https://tv-api.com/" target="_blank" rel="noopener">tv-api.com</a>.</p>
+      <p><strong>Dailymotion:</strong> Trailer fallback videos from Dailymotion. See <a href="https://www.dailymotion.com/legal" target="_blank" rel="noopener">Dailymotion Privacy</a>.</p>
+      <p><strong>Logo.dev:</strong> Brand logos from logo.dev. See <a href="https://logo.dev/" target="_blank" rel="noopener">logo.dev</a>.</p>
       <p><strong>Video Embed Providers:</strong> VidSrc, Cineby, VidLink, 2Embed, SuperEmbed, VidSrc Pro, AutoEmbed, and Videasy operate independently. When you load a video, their servers receive your IP address and browser information as part of standard HTTP requests. StaticVault931 has no control over their data practices.</p>
       <h3>4. Cookies & Tracking</h3>
       <p>StaticVault931 itself sets no cookies and uses no tracking technologies. Embed providers may set their own cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers from running on the page.</p>
@@ -861,7 +872,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   ];
 
   // Hide all pool sections by default; show only the selected ones
-  const STD_ALWAYS = ['row-new', 'row-home-anime']; // always show these
+  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice']; // always show these
   const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id));
   const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
   let stdSelected = [];
@@ -901,6 +912,24 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   // Top 10 — daily trending (always shown)
   _scheduleRowLoad('row-top10', 'sec-top10', () =>
     tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10)), null);
+
+  // Box Office This Weekend — from tv-api.com + resolved via TMDB for full card data
+  _scheduleRowLoad('row-boxoffice', 'sec-boxoffice', async () => {
+    const boxData = await fetchTvApiBoxOffice().catch(() => null);
+    if (!boxData?.items?.length) return [];
+    // Resolve TMDB IDs from IMDB IDs
+    const results = await Promise.all(
+      boxData.items.slice(0, 10).map(item => {
+        if (!item.id) return null;
+        return tmdb('/find/' + item.id, { external_source: 'imdb_id' })
+          .then(d => {
+            const match = d.movie_results?.[0];
+            return match ? { ...match, media_type: 'movie' } : null;
+          }).catch(() => null);
+      })
+    );
+    return results.filter(Boolean);
+  }, 'movie');
 
   // Load curated rows (random selection, alt names, personalization-aware)
   loadCuratedRows(prefG, prefGenreStr, pRng);
@@ -1164,57 +1193,38 @@ async function loadSeasonalRow() {
       // Rotate pages each view so content is mostly different each time
       const rPage = Math.floor(Math.random() * 5) + 1;
 
-      // Step 1: use verified TMDB LGBTQ keyword IDs + discover more dynamically
-      // Verified working: 158718=gay, 3799=homosexuality, 18242=same-sex,
-      // 155310=bisexuality, 209726=coming out, 180819=gay relationship, 193554=lgbtq
-      let kwIds = '158718,3799,18242,155310,209726,180819,193554';
-      try {
-        const [kw1, kw2, kw3, kw4] = await Promise.all([
-          tmdb('/search/keyword', { query: 'lgbtq'   }).catch(() => ({ results: [] })),
-          tmdb('/search/keyword', { query: 'gay'     }).catch(() => ({ results: [] })),
-          tmdb('/search/keyword', { query: 'lesbian' }).catch(() => ({ results: [] })),
-          tmdb('/search/keyword', { query: 'queer'   }).catch(() => ({ results: [] })),
-        ]);
-        const found = [
-          ...(kw1.results||[]), ...(kw2.results||[]),
-          ...(kw3.results||[]), ...(kw4.results||[]),
-        ].map(k => k.id).filter(Boolean);
-        if (found.length) kwIds = [...new Set([...found, 158718, 3799, 18242, 155310, 209726])].slice(0,10).join(',');
-      } catch {}
+      // Pride Month: hardcoded VERIFIED LGBTQ films/shows as the primary source
+      // These are confirmed LGBTQ-themed titles — no unreliable keyword guessing
+      // Movies: Brokeback Mountain, Moonlight, Call Me By Your Name, Carol, Love Simon,
+      //         Portrait of Lady on Fire, The Danish Girl, Milk, The Birdcage, Blue Warmest Colour,
+      //         The Kids Are All Right, Beautiful Thing, God's Own Country, Weekend (2011)
+      const prideMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 158852, 38787, 6518, 453405, 61787];
+      // TV: Heartstopper, Pose, Sex Education, Schitt's Creek, OITNB, Queer as Folk, It's a Sin, RuPaul's Drag Race
+      const prideTvIds    = [125988, 80028, 81356, 68004, 62852, 1485, 105005, 4567];
 
-      // Step 2: discover movies + TV, random page for variety each view
-      const [movies, tv, top] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_keywords: kwIds, sort_by: 'popularity.desc',   'vote_count.gte': 20, page: rPage }),
-        tmdb('/discover/tv',    { with_keywords: kwIds, sort_by: 'popularity.desc',   page: rPage }),
-        tmdb('/discover/movie', { with_keywords: kwIds, sort_by: 'vote_average.desc', 'vote_count.gte': 50, page: 1 }),
+      // Shuffle using daily seed so content rotates but stays consistent per day
+      const seed = rPage;
+      const shuffleSeeded = (arr) => [...arr].sort((a,b) => ((a*seed*2654435761)>>>0) - ((b*seed*2654435761)>>>0));
+
+      const [movieResults, tvResults] = await Promise.all([
+        Promise.all(shuffleSeeded(prideMovieIds).slice(0, 9).map(id =>
+          tmdb(`/movie/${id}`).then(r=>({...r,media_type:'movie'})).catch(()=>null)
+        )),
+        Promise.all(shuffleSeeded(prideTvIds).slice(0, 7).map(id =>
+          tmdb(`/tv/${id}`).then(r=>({...r,media_type:'tv'})).catch(()=>null)
+        )),
       ]);
-      const m  = movies.status === 'fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
-      const t  = tv.status    === 'fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
-      const m2 = top.status   === 'fulfilled' ? (top.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
 
-      // Interleave movies + TV for mixed feed
+      const movies_ok = movieResults.filter(Boolean);
+      const tv_ok     = tvResults.filter(Boolean);
+
+      // Interleave
       const combined = [];
-      for (let i = 0; i < Math.max(m.length, t.length); i++) {
-        if (m[i]) combined.push(m[i]);
-        if (t[i]) combined.push(t[i]);
+      for (let i = 0; i < Math.max(movies_ok.length, tv_ok.length); i++) {
+        if (movies_ok[i]) combined.push(movies_ok[i]);
+        if (tv_ok[i])     combined.push(tv_ok[i]);
       }
-      // Add top-rated not already present
-      const combinedIds = new Set(combined.map(x => x.id));
-      m2.forEach(x => { if (!combinedIds.has(x.id)) combined.push(x); });
-
-      if (combined.length >= 8) return combined.slice(0, 20);
-
-      // Step 3: hardcoded backup — verified LGBTQ films/shows
-      // Brokeback Mtn, Moonlight, Call Me By Your Name, Carol, Love Simon,
-      // Portrait of Lady on Fire, Danish Girl, Milk, Birdcage, Kids Are All Right
-      const backupMovieIds = [507, 376867, 407806, 263115, 464373, 601666, 289098, 12361, 11540, 38787];
-      // Heartstopper, Pose, Sex Education, Schitt's Creek, OITNB
-      const backupTvIds    = [125988, 80028, 81356, 68004, 62852];
-      const backupResults  = await Promise.all([
-        ...backupMovieIds.map(id => tmdb(`/movie/${id}`).then(r=>({...r,media_type:'movie'})).catch(()=>null)),
-        ...backupTvIds.map(id    => tmdb(`/tv/${id}`).then(r=>({...r,media_type:'tv'})).catch(()=>null)),
-      ]);
-      return [...combined, ...backupResults.filter(Boolean)].slice(0, 20);
+      return combined.slice(0, 20);
     };
     _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
     return;
@@ -1567,25 +1577,35 @@ function buildProviderTestUI() {
     const output = document.getElementById('api-test-results');
     if (!btn || !output) return;
     btn.disabled = true;
-    btn.textContent = 'Testing…';
+    btn.innerHTML = '<span class="material-icons-round" style="font-size:.8rem;animation:spin 1s linear infinite">refresh</span> Testing all…';
     output.style.display = 'block';
-    output.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Running tests…</div>';
+    output.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:.5rem">Running all API and provider checks…</div>';
     try {
-      const results = await testAllAPIs();
-      output.innerHTML = results.map(r => {
-        const icon = r.status === 'ok' ? '✅' : r.status === 'missing' ? '⚠️' : '❌';
-        const color = r.status === 'ok' ? '#22c55e' : r.status === 'missing' ? '#f59e0b' : '#f87171';
-        return `<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem 0;border-bottom:1px solid var(--border);font-size:.78rem;">
-          <span>${icon}</span>
-          <span style="font-weight:800;min-width:110px">${r.name}</span>
-          <span style="color:${color}">${r.note}</span>
-        </div>`;
-      }).join('');
+      const apiResults = await testAllAPIs();
+      const okCount = apiResults.filter(r => r.status === 'ok').length;
+      const errCount = apiResults.filter(r => r.status === 'error').length;
+      const missCount = apiResults.filter(r => r.status === 'missing').length;
+
+      output.innerHTML = `
+        <div style="display:flex;gap:.75rem;align-items:center;padding:.5rem 0 .75rem;border-bottom:1px solid var(--border);margin-bottom:.5rem">
+          <span style="color:#22c55e;font-weight:800;font-size:.82rem">✅ ${okCount} working</span>
+          ${errCount ? `<span style="color:#f87171;font-weight:800;font-size:.82rem">❌ ${errCount} failed</span>` : ''}
+          ${missCount ? `<span style="color:#f59e0b;font-weight:800;font-size:.82rem">⚠️ ${missCount} no key</span>` : ''}
+        </div>
+        ${apiResults.map(r => {
+          const icon = r.status === 'ok' ? '✅' : r.status === 'missing' ? '⚠️' : '❌';
+          const color = r.status === 'ok' ? '#22c55e' : r.status === 'missing' ? '#f59e0b' : '#f87171';
+          return `<div style="display:flex;align-items:center;gap:.5rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem;">
+            <span style="width:18px">${icon}</span>
+            <span style="font-weight:800;min-width:120px;color:var(--text)">${r.name}</span>
+            <span style="color:${color}">${r.note}</span>
+          </div>`;
+        }).join('')}`;
     } catch (e) {
-      output.innerHTML = `<div style="color:#f87171">Test failed: ${e.message}</div>`;
+      output.innerHTML = `<div style="color:#f87171;padding:.5rem">Test failed: ${e.message}</div>`;
     }
     btn.disabled = false;
-    btn.textContent = 'Test APIs';
+    btn.innerHTML = '<span class="material-icons-round">check_circle</span> Test APIs';
   });
 
   document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', () => {
@@ -1950,7 +1970,9 @@ function setupAC(inputId, dropId, onSelect) {
 /* ── OPEN MEDIA / MODAL ──────────────────────────────────────────── */
 export async function openMedia(id, type, hint = {}) {
   // Redirect to info page if that's the user's default preference
-  if (getSetting('defaultInfoMode') && !hint._forcePlayer) {
+  // On mobile (≤720px), info page is the default to prevent accidental playback
+  const isMobile = window.innerWidth <= 720;
+  if ((getSetting('defaultInfoMode') || isMobile) && !hint._forcePlayer) {
     return openInfoPage(id, type, hint);
   }
 
@@ -3570,7 +3592,7 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    // Info page trailer: use postMessage detection for Error 153; fallback to backdrop image
+    // Info page trailer: TMDB → tv-api.com YouTubeTrailer → Dailymotion → backdrop image
     const trailerWrap = document.getElementById('info-trailer-wrap');
     const posterImg = details.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
@@ -3597,11 +3619,27 @@ export async function openInfoPage(id, type, hint = {}) {
         } catch {}
       };
       window.addEventListener('message', infoMsgHandler);
-      const infoTrailerTimer = setTimeout(() => {
+      const infoTrailerTimer = setTimeout(async () => {
         window.removeEventListener('message', infoMsgHandler);
-        // If no playback confirmed after 7s, show image fallback
-        const loading = trailerFallback;
-        if (loading?.style.display !== '' && trailerFrame?.src) {
+        if (trailerFallback?.style.display !== '' && trailerFrame?.src) {
+          // TMDB trailer failed — try tv-api.com as backup
+          const imdbIdForTrailer = details.imdb_id ||
+            (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
+          if (imdbIdForTrailer) {
+            const ytData = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
+            if (ytData?.videoId) {
+              if (trailerFrame) {
+                trailerFrame.src = `https://www.youtube.com/embed/${ytData.videoId}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+                return; // give it a chance
+              }
+            }
+            // tv-api didn't have it — try Dailymotion
+            const dmVideo = await fetchDailymotionTrailer(`${title} ${String(details.release_date||'').slice(0,4)}`).catch(() => null);
+            if (dmVideo?.embed_url && trailerFrame) {
+              trailerFrame.src = dmVideo.embed_url;
+              return;
+            }
+          }
           _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
         }
       }, 7000);
@@ -3806,169 +3844,212 @@ export async function openProviderPage(providerId, providerName) {
     });
   }
 
-  if (nameEl)   nameEl.textContent = providerName;
-  if (parentEl) parentEl.textContent = 'Streaming Provider';
-  if (descEl)   descEl.textContent = `Browse content available on ${providerName}`;
-  if (logoEl)   logoEl.style.display = 'none';
-  if (heroEl)   heroEl.style.display = 'none';
-  if (gridEl)   gridEl.innerHTML = skelCards(8);
-
-  try {
-    const [movies, tv] = await Promise.allSettled([
-      tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
-      tmdb('/discover/tv',    { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
-    ]);
-    const m = movies.status === 'fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
-    const t = tv.status    === 'fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
-    // Interleave movies and TV
-    const combined = [];
-    for (let i = 0; i < Math.max(m.length, t.length); i++) { if (m[i]) combined.push(m[i]); if (t[i]) combined.push(t[i]); }
-    if (gridEl && combined.length) {
-      gridEl.innerHTML = combined.slice(0,24).map(x => makeCard(x, x.media_type)).join('');
-    } else if (gridEl) {
-      gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No content found for ${esc(providerName)}.</p>`;
-    }
-  } catch {
-    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load provider content.</p>`;
-  }
+  _openCompanyOverlay({
+    name: providerName,
+    subtitle: 'Streaming Provider',
+    logoUrl: getProviderLogoUrl(providerName, 64),
+    fetchFn: async () => {
+      const [movies, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
+        tmdb('/discover/tv',    { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
+      ]);
+      const m = movies.status==='fulfilled' ? (movies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+      const t = tv.status==='fulfilled'    ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'}))    : [];
+      return { movies: m, tv: t };
+    },
+  });
 }
 
 /* ── PROVIDER SVG LOGOS ──────────────────────────────────────────── */
 function _getProviderSVG(name) {
-  const logos = {
-    'Netflix': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#141414"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#e50914">N</text></svg>`,
-    'Hulu': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#1ce783"/><text x="20" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="18" fill="#000">hulu</text></svg>`,
-    'Amazon Prime Video': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#00a8e1"/><text x="20" y="27" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="22" fill="#fff">P</text></svg>`,
-    'Disney Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#113ccf"/><text x="20" y="27" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="22" fill="#fff">D+</text></svg>`,
-    'Max': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#002be7"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">MAX</text></svg>`,
-    'HBO Max': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#002be7"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">MAX</text></svg>`,
-    'Apple TV Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#1c1c1e"/><text x="20" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="14" fill="#fff">TV+</text></svg>`,
-    'Peacock': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#ffd700">Pc</text></svg>`,
-    'Peacock Premium': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#ffd700">Pc</text></svg>`,
-    'Paramount Plus': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#0064ff"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="17" fill="#fff">P+</text></svg>`,
-    'Crunchyroll': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#f47521"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">CR</text></svg>`,
-    'Tubi TV': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#fa4a5e"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="18" fill="#fff">tubi</text></svg>`,
-    'Pluto TV': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#fff200"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="14" fill="#000">Pluto</text></svg>`,
-    'Starz': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#000"/><text x="20" y="28" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="15" fill="#fff">STARZ</text></svg>`,
-    'Showtime': `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="#c8002d"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="13" fill="#fff">SHO</text></svg>`,
-  };
-  // Generic fallback: first 2 chars of name
-  return logos[name] || `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="40" height="40" rx="6" fill="rgba(255,255,255,.1)"/><text x="20" y="27" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="16" fill="#fff">${(name||'?').slice(0,2).toUpperCase()}</text></svg>`;
+  // Use logo.dev for real brand logos, fall back to text badge
+  const logoUrl = getProviderLogoUrl(name, 32);
+  if (logoUrl) {
+    return `<img src="${logoUrl}" width="28" height="28" style="border-radius:5px;object-fit:contain;background:rgba(255,255,255,.05)" alt="${name}" onerror="this.style.display='none';this.nextSibling.style.display='flex'">` +
+      `<span style="display:none;width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.1);align-items:center;justify-content:center;font-size:.6rem;font-weight:900">${(name||'?').slice(0,2).toUpperCase()}</span>`;
+  }
+  // Generic badge for unknown providers
+  return `<span style="display:inline-flex;width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.1);align-items:center;justify-content:center;font-size:.6rem;font-weight:900">${(name||'?').slice(0,2).toUpperCase()}</span>`;
 }
 
 /* ── COMPANY PAGE ────────────────────────────────────────────────── */
 export async function openCompanyPage(companyId, companyName) {
+  _openCompanyOverlay({
+    name: companyName,
+    subtitle: 'Production Company',
+    fetchFn: async () => {
+      const [company, moviePage, tvPage] = await Promise.allSettled([
+        tmdb(`/company/${companyId}`),
+        tmdb('/discover/movie', { with_companies: companyId, sort_by: 'popularity.desc', page: 1 }),
+        tmdb('/discover/tv',    { with_companies: companyId, sort_by: 'popularity.desc', page: 1 }),
+      ]);
+      const co = company.status === 'fulfilled' ? company.value : {};
+      // Try TMDB logo first, then Fanart for company logo
+      let logoUrl = co.logo_path ? imgUrl(co.logo_path, 'w300') : null;
+      const desc = co.description ||
+        (co.headquarters ? `Based in ${co.headquarters}` : '') +
+        (co.origin_country ? ` · ${co.origin_country}` : '');
+      const parent = co.parent_company?.name ? `Part of ${co.parent_company.name}` : '';
+      // Wikipedia desc supplement
+      if (co.name) fetchWikipediaSummary(co.name).then(wiki => {
+        if (wiki?.extract) {
+          const d = document.getElementById('company-desc');
+          if (d) d.textContent = wiki.extract.slice(0, 500) + '…';
+        }
+      }).catch(() => {});
+      return {
+        name: co.name || companyName, logoUrl, desc, parent,
+        movies: (moviePage.status==='fulfilled' ? moviePage.value.results||[] : []).map(x=>({...x,media_type:'movie'})),
+        tv:     (tvPage.status==='fulfilled'    ? tvPage.value.results||[]    : []).map(x=>({...x,media_type:'tv'})),
+      };
+    },
+  });
+}
+
+/* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
+export async function openCollectionPage(collectionId, collectionName) {
+  _openCompanyOverlay({
+    name: collectionName,
+    subtitle: 'Film Collection',
+    fetchFn: async () => {
+      const col = await tmdb(`/collection/${collectionId}`);
+      const movies = (col.parts || [])
+        .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1)
+        .map(m => ({...m, media_type:'movie'}));
+      return {
+        name: col.name || collectionName,
+        desc: col.overview || '',
+        backdropUrl: col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280') : null,
+        movies,
+        tv: [],
+      };
+    },
+  });
+}
+
+/* ── UNIFIED COMPANY / PROVIDER / COLLECTION OVERLAY ─────────────── */
+async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
   const ov = document.getElementById('company-overlay');
   if (!ov) return;
   ov.classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  const nameEl = ov.querySelector('.company-name');
-  const logoEl = ov.querySelector('#company-logo');
-  const descEl = ov.querySelector('#company-desc');
-  const gridEl = ov.querySelector('#company-grid');
-  const closeBtn = ov.querySelector('#company-close');
-
+  // Wire once
   if (!ov._wired) {
     ov._wired = true;
-    closeBtn?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
-    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
-    // Card clicks in company grid
+    ov.querySelector('#company-close')?.addEventListener('click', () => {
+      ov.classList.remove('open'); document.body.style.overflow = '';
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && ov.classList.contains('open')) { ov.classList.remove('open'); document.body.style.overflow = ''; }
+    });
+    // Card clicks → close overlay first
     ov.addEventListener('click', e => {
       const card = e.target.closest('.card[data-id][data-type]');
-      if (!card || e.target.closest('button')) return;
+      if (!card || e.target.closest('button, a')) return;
       ov.classList.remove('open'); document.body.style.overflow = '';
       setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
     });
+    // View toggle: Row / Compact
+    ov.querySelector('#cv-btn-row')?.addEventListener('click', () => {
+      ov.querySelector('#company-row-view').style.display = '';
+      ov.querySelector('#company-compact-view').style.display = 'none';
+      ov.querySelector('#cv-btn-row')?.classList.add('on');
+      ov.querySelector('#cv-btn-compact')?.classList.remove('on');
+    });
+    ov.querySelector('#cv-btn-compact')?.addEventListener('click', () => {
+      ov.querySelector('#company-row-view').style.display = 'none';
+      ov.querySelector('#company-compact-view').style.display = '';
+      ov.querySelector('#cv-btn-compact')?.classList.add('on');
+      ov.querySelector('#cv-btn-row')?.classList.remove('on');
+    });
+    // Scroll arrows for company rows
+    ov.addEventListener('click', e => {
+      const btn = e.target.closest('[data-scroll-row]');
+      if (!btn) return;
+      const dir = +btn.dataset.scrollDir;
+      const row = document.getElementById(btn.dataset.scrollRow);
+      if (row) row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' });
+    });
   }
 
-  if (nameEl) nameEl.textContent = companyName || 'Loading…';
-  if (logoEl) { logoEl.src = ''; logoEl.style.display = 'none'; }
-  if (descEl) descEl.textContent = '';
-  if (gridEl) gridEl.innerHTML = skelCards(8);
+  // Default to row view
+  const rowView     = ov.querySelector('#company-row-view');
+  const compactView = ov.querySelector('#company-compact-view');
+  if (rowView)     rowView.style.display = '';
+  if (compactView) compactView.style.display = 'none';
+  ov.querySelector('#cv-btn-row')?.classList.add('on');
+  ov.querySelector('#cv-btn-compact')?.classList.remove('on');
+
+  // Set loading state
+  const moviesRow = document.getElementById('company-movies-row');
+  const tvRow     = document.getElementById('company-tv-row');
+  const grid      = document.getElementById('company-grid');
+  const moviesSec = document.getElementById('company-movies-sec');
+  const tvSec     = document.getElementById('company-tv-sec');
+  const heroEl    = document.getElementById('company-hero');
+  const heroImg   = document.getElementById('company-hero-img');
+  const logoBig   = document.getElementById('company-logo-big');
+  const logoSm    = document.getElementById('company-logo-sm');
+  const descEl    = document.getElementById('company-desc');
+  const parentEl  = document.getElementById('company-parent');
+
+  ov.querySelectorAll('.company-name, .company-name-big').forEach(el => el.textContent = name || 'Loading…');
+  if (parentEl) parentEl.textContent = subtitle || '';
+  if (descEl)   descEl.textContent = '';
+  if (heroImg)  { heroImg.src = ''; heroImg.style.display = 'none'; }
+  if (logoBig)  { logoBig.src = ''; logoBig.style.display = 'none'; }
+  if (logoSm)   { logoSm.src = ''; logoSm.style.display = 'none'; }
+  if (moviesRow) moviesRow.innerHTML = skelCards(6);
+  if (tvRow)     tvRow.innerHTML     = '';
+  if (grid)      grid.innerHTML      = skelCards(12);
+  if (moviesSec) moviesSec.style.display = '';
+  if (tvSec)     tvSec.style.display = 'none';
+
+  // Initial logo from caller
+  if (logoUrl && logoBig) { logoBig.src = logoUrl; logoBig.style.display = ''; }
+  if (logoUrl && logoSm)  { logoSm.src = logoUrl;  logoSm.style.display = ''; }
 
   try {
-    const [company, moviePage1] = await Promise.all([
-      tmdb(`/company/${companyId}`),
-      tmdb('/discover/movie', { with_companies: companyId, sort_by: 'popularity.desc', page: 1 }),
-    ]);
+    const data = await fetchFn();
 
-    if (nameEl) nameEl.textContent = company.name || companyName;
-    if (logoEl && company.logo_path) {
-      logoEl.src = imgUrl(company.logo_path, 'w300');
-      logoEl.style.display = '';
+    // Update name, desc, logo, backdrop
+    if (data.name)  ov.querySelectorAll('.company-name, .company-name-big').forEach(el => el.textContent = data.name);
+    if (data.desc && descEl) descEl.textContent = data.desc;
+    if (data.parent && parentEl) parentEl.textContent = data.parent;
+    if (data.logoUrl) {
+      if (logoBig) { logoBig.src = data.logoUrl; logoBig.style.display = ''; }
+      if (logoSm)  { logoSm.src  = data.logoUrl; logoSm.style.display  = ''; }
     }
-    if (descEl) {
-      descEl.textContent = company.description ||
-        (company.headquarters ? `Based in ${company.headquarters}` : '') +
-        (company.origin_country ? ` · ${company.origin_country}` : '');
+    if (data.backdropUrl && heroImg) {
+      heroImg.src = data.backdropUrl; heroImg.style.display = '';
     }
-    // Parent company
-    const parentEl = ov.querySelector('#company-parent');
-    if (parentEl) parentEl.textContent = company.parent_company?.name ? `Part of ${company.parent_company.name}` : '';
 
-    // Also try wikipedia for rich description
-    fetchWikipediaSummary(company.name).then(wiki => {
-      if (wiki?.extract && descEl) descEl.textContent = wiki.extract.slice(0, 400) + (wiki.extract.length > 400 ? '…' : '');
-    }).catch(() => {});
+    const movies = data.movies || [];
+    const tv     = data.tv     || [];
+    const all    = [...movies, ...tv];
 
-    const movies = (moviePage1.results || []).slice(0, 20);
-    if (gridEl) {
-      if (movies.length) gridEl.innerHTML = movies.map(m => makeCard(m, 'movie')).join('');
-      else gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No content found.</p>`;
+    // Row view
+    if (moviesRow) {
+      moviesRow.innerHTML = movies.length ? movies.slice(0,20).map(m => makeCard(m, m.media_type||'movie')).join('') : '<p style="padding:1rem;color:var(--muted)">No movies found</p>';
+      moviesRow.scrollLeft = 0;
+    }
+    if (moviesSec) moviesSec.style.display = movies.length ? '' : 'none';
+    if (tvRow && tv.length) {
+      tvRow.innerHTML = tv.slice(0,20).map(t => makeCard(t, t.media_type||'tv')).join('');
+      tvRow.scrollLeft = 0;
+      if (tvSec) tvSec.style.display = '';
+    }
+
+    // Compact view
+    if (grid) {
+      grid.innerHTML = all.length
+        ? all.slice(0,40).map(m => makeCard(m, m.media_type||'movie')).join('')
+        : '<p style="padding:1rem;color:var(--muted)">No content found</p>';
     }
   } catch (e) {
-    if (nameEl) nameEl.textContent = companyName;
-    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load company info.</p>`;
-  }
-}
-
-/* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
-export async function openCollectionPage(collectionId, collectionName) {
-  const ov = document.getElementById('company-overlay'); // reuse company overlay layout
-  if (!ov) return;
-  ov.classList.add('open');
-  document.body.style.overflow = 'hidden';
-
-  const nameEl  = ov.querySelector('.company-name');
-  const descEl  = ov.querySelector('#company-desc');
-  const gridEl  = ov.querySelector('#company-grid');
-  const logoEl  = ov.querySelector('#company-logo');
-  const parentEl = ov.querySelector('#company-parent');
-
-  if (!ov._wired) {
-    ov._wired = true;
-    ov.querySelector('#company-close')?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
-    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
-    ov.addEventListener('click', e => {
-      const card = e.target.closest('.card[data-id][data-type]');
-      if (!card || e.target.closest('button')) return;
-      ov.classList.remove('open'); document.body.style.overflow = '';
-      setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
-    });
-  }
-
-  if (nameEl) nameEl.textContent = collectionName || 'Loading…';
-  if (logoEl) { logoEl.style.display = 'none'; }
-  if (parentEl) parentEl.textContent = 'Film Collection';
-  if (gridEl) gridEl.innerHTML = skelCards(6);
-
-  try {
-    const col = await tmdb(`/collection/${collectionId}`);
-    if (nameEl) nameEl.textContent = col.name || collectionName;
-    if (descEl) descEl.textContent = col.overview || '';
-    if (col.backdrop_path && logoEl) {
-      // Show backdrop as header image
-      const heroEl = ov.querySelector('.company-hero');
-      if (heroEl) { heroEl.style.backgroundImage = `url(${imgUrl(col.backdrop_path, 'w780')})`; heroEl.style.display = ''; }
-    }
-    const movies = (col.parts || []).sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1);
-    if (gridEl) {
-      if (movies.length) gridEl.innerHTML = movies.map(m => makeCard({...m, media_type:'movie'}, 'movie')).join('');
-      else gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">No movies found.</p>`;
-    }
-  } catch {
-    if (gridEl) gridEl.innerHTML = `<p style="color:var(--muted);padding:1rem">Could not load collection.</p>`;
+    console.warn('[SV] Company overlay error:', e?.message);
+    if (moviesRow) moviesRow.innerHTML = '<p style="padding:1rem;color:var(--muted)">Could not load content.</p>';
   }
 }
 
@@ -4022,27 +4103,33 @@ async function _enrichInfoPage(id, type, details, credits) {
       // Rating pills row (IMDb / RT / Metacritic)
       const ratingsEl = document.getElementById('info-multi-ratings');
       if (ratingsEl) {
-        const imdbR = (omdb.imdbRating !== 'N/A') ? omdb.imdbRating : null;
+        const imdbR = (omdb.imdbRating && omdb.imdbRating !== 'N/A') ? omdb.imdbRating : null;
         const rtVal  = omdb.Ratings?.find(r => r.Source === 'Rotten Tomatoes')?.Value;
         const mcVal  = omdb.Ratings?.find(r => r.Source === 'Metacritic')?.Value;
-        const rt = (rtVal && rtVal !== 'N/A') ? rtVal : null;
-        const mc = (mcVal && mcVal !== 'N/A') ? mcVal.replace('/100','') : null;
-        const rtPct = rt ? parseInt(rt) : -1;
+        const rt  = (rtVal  && rtVal  !== 'N/A') ? rtVal  : null;
+        const mc  = (mcVal  && mcVal  !== 'N/A') ? mcVal.replace('/100','') : null;
+        const rtPct = rt ? parseInt(rt, 10) : -1;
+        const mcNum = mc ? parseInt(mc, 10) : -1;
+        const mcColor = mcNum >= 61 ? '#6c3' : mcNum >= 40 ? '#fc3' : '#f00';
 
+        // IMDb: official yellow badge
+        // RT: tomato emoji fresh/rotten
+        // Metacritic: color-coded square (green/yellow/red)
         const pills = [
-          imdbR ? `<div class="rating-pill imdb" title="IMDb rating">
-            <svg width="14" height="14" viewBox="0 0 100 100" style="flex-shrink:0"><rect width="100" height="100" rx="8" fill="#f5c518"/><text x="50" y="68" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="54" fill="#000">IMDb</text></svg>
-            ${imdbR}<span style="font-size:.65em;opacity:.7">/10</span>
+          imdbR ? `<div class="rating-pill imdb" title="IMDb: ${imdbR}/10">
+            <span style="background:#F5C518;color:#000;font-family:Arial Black,sans-serif;font-weight:900;font-size:.7em;padding:.1rem .3rem;border-radius:3px;flex-shrink:0">IMDb</span>
+            <strong>${imdbR}</strong><span style="font-size:.68em;color:var(--muted)">/10</span>
           </div>` : '',
 
-          rt ? `<div class="rating-pill ${rtPct >= 60 ? 'rt-fresh' : 'rt-rotten'}" title="Rotten Tomatoes">
-            <svg width="14" height="14" viewBox="0 0 100 100" style="flex-shrink:0"><circle cx="50" cy="50" r="50" fill="${rtPct>=60?'#fa320a':'#6e9b1f'}"/><text x="50" y="66" text-anchor="middle" font-family="serif" font-size="60" fill="#fff">${rtPct>=60?'🍅':'🦠'}</text></svg>
-            ${rt}
+          rt !== null ? `<div class="rating-pill ${rtPct >= 60 ? 'rt-fresh' : 'rt-rotten'}" title="Rotten Tomatoes: ${rt}">
+            <span style="font-size:1rem;line-height:1;flex-shrink:0">${rtPct >= 60 ? '🍅' : '🤢'}</span>
+            <strong>${rt}</strong>
+            ${rtPct >= 75 ? '<span style="font-size:.6em;color:#f97316;font-weight:700">Certified</span>' : ''}
           </div>` : '',
 
-          mc ? `<div class="rating-pill metacritic" title="Metacritic score">
-            <span style="background:#6c3;color:#fff;font-weight:900;padding:.08rem .28rem;border-radius:3px;font-size:.72em">M</span>
-            ${mc}<span style="font-size:.65em;opacity:.7">/100</span>
+          mc !== null ? `<div class="rating-pill metacritic" title="Metacritic: ${mc}/100" style="border-color:${mcColor}44;background:${mcColor}11">
+            <span style="background:${mcColor};color:#000;font-weight:900;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;font-size:.72em;flex-shrink:0">${mc}</span>
+            <span style="color:var(--muted);font-size:.68em">/ 100</span>
           </div>` : '',
         ].filter(Boolean).join('');
 
@@ -4490,9 +4577,13 @@ function initShortcutsModal() {
     grid.innerHTML = `
       <div class="sc-col">${leftGroups.map(renderGroup).join('')}</div>
       <div class="sc-col">${rightGroups.map(renderGroup).join('')}</div>
-      <p style="grid-column:1/-1;font-size:.65rem;color:var(--dim);text-align:center;margin-top:.5rem">Click any shortcut to toggle it on/off</p>`;
+      <div style="grid-column:1/-1;margin-top:.7rem;padding:.55rem .8rem;background:rgba(255,255,255,.04);border-radius:8px;font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <span class="material-icons-round" style="font-size:.9rem;flex-shrink:0;color:var(--red)">touch_app</span>
+        <span>Click any shortcut to <strong style="color:var(--text)">disable</strong> it. It shows grayed out. Click again to re-enable.</span>
+        ${Object.keys(disabled).length > 0 ? `<button id="reset-shortcuts-btn" style="margin-left:auto;background:rgba(229,9,20,.15);border:1px solid rgba(229,9,20,.3);color:var(--red);font-size:.68rem;font-weight:800;padding:.2rem .55rem;border-radius:4px;cursor:pointer">Reset all</button>` : ''}
+      </div>`;
 
-    // Click to toggle shortcut
+    // Click to toggle shortcut on/off
     grid.querySelectorAll('.shortcut-row').forEach(row => {
       row.addEventListener('click', () => {
         const kid = row.dataset.shortcutId;
@@ -4501,8 +4592,15 @@ function initShortcutsModal() {
         state.disabledShortcuts[kid] = !state.disabledShortcuts[kid];
         if (!state.disabledShortcuts[kid]) delete state.disabledShortcuts[kid];
         persist('disabledShortcuts');
-        renderShortcutsGrid(); // re-render with updated state
+        renderShortcutsGrid();
       });
+    });
+    // Reset all shortcuts button
+    document.getElementById('reset-shortcuts-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      state.disabledShortcuts = {};
+      persist('disabledShortcuts');
+      renderShortcutsGrid();
     });
   }
 
@@ -5773,8 +5871,8 @@ function initKeyboard() {
       goPage('movies');
     } else if (e.key === 'v' || e.key === 'V') {
       goPage('tv');
-    } else if (e.key === 'c' || e.key === 'C') {
-      goPage('prefs');
+    } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey) {
+      goPage('prefs'); // bare C = Customize Feed; Ctrl+C = normal copy
     } else if (e.key === 'l' || e.key === 'L') {
       goPage('library');
     } else if (e.key === 's' || e.key === 'S') {

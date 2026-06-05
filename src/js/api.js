@@ -5,9 +5,53 @@ export const IMG = 'https://image.tmdb.org/t/p/';
 export const ANILIST = 'https://graphql.anilist.co';
 
 // ── THIRD-PARTY API KEYS ─────────────────────────────────────────
-export const OMDB_KEY      = '9f3c997';
-export const FANART_KEY    = 'd665499067a0fb155b3b03c071cfbcba';
-export const WATCHMODE_KEY = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
+export const OMDB_KEY        = '9f3c997';
+export const FANART_KEY      = 'd665499067a0fb155b3b03c071cfbcba'; // fanart.tv
+export const WATCHMODE_KEY   = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
+export const TVAPI_KEY       = 'k_12345678';  // tv-api.com (IMDB-API)
+export const LOGO_DEV_TOKEN  = 'pk_Ls472ChRSLSBvfBYgW6R7Q'; // logo.dev
+
+// Logo.dev: domain-to-logo mapping for streaming providers
+export const PROVIDER_LOGO_DOMAINS = {
+  'Netflix':              'netflix.com',
+  'Hulu':                 'hulu.com',
+  'Amazon Prime Video':   'primevideo.com',
+  'Prime Video':          'primevideo.com',
+  'Disney Plus':          'disneyplus.com',
+  'Disney+':              'disneyplus.com',
+  'Max':                  'max.com',
+  'HBO Max':              'max.com',
+  'Apple TV Plus':        'tv.apple.com',
+  'Apple TV+':            'tv.apple.com',
+  'Paramount Plus':       'paramountplus.com',
+  'Paramount+':           'paramountplus.com',
+  'Peacock':              'peacocktv.com',
+  'Peacock Premium':      'peacocktv.com',
+  'Crunchyroll':          'crunchyroll.com',
+  'YouTube':              'youtube.com',
+  'YouTube Premium':      'youtube.com',
+  'Tubi TV':              'tubi.tv',
+  'Tubi':                 'tubi.tv',
+  'Pluto TV':             'pluto.tv',
+  'Starz':                'starz.com',
+  'Showtime':             'showtime.com',
+  'BritBox':              'britbox.com',
+  'Shudder':              'shudder.com',
+  'Mubi':                 'mubi.com',
+  'FuboTV':               'fubo.tv',
+  'AMC Plus':             'amcplus.com',
+  'Discovery Plus':       'discoveryplus.com',
+  'ESPN Plus':            'espnplus.com',
+  'MGM Plus':             'mgmplus.com',
+  'Kanopy':               'kanopy.com',
+  'Plex':                 'plex.tv',
+};
+
+export function getProviderLogoUrl(name, size = 32) {
+  const domain = PROVIDER_LOGO_DOMAINS[name];
+  if (!domain) return null;
+  return `https://img.logo.dev/${domain}?token=${LOGO_DEV_TOKEN}&size=${size}&format=png`;
+}
 
 export const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -210,6 +254,139 @@ export async function fetchJikan(malId) {
   } catch { return null; }
 }
 
+/* ── TV-API.COM (IMDB-API) — trailers, awards, ratings ──────────── */
+// imdbId like "tt1375666". Free: 100 calls/day. Use conservatively.
+const TVAPI_BASE = 'https://tv-api.com/API';
+
+export async function fetchTvApiTrailer(imdbId) {
+  if (!TVAPI_KEY || !imdbId) return null;
+  const key = cacheKey('tvapi_trailer_' + imdbId, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${TVAPI_BASE}/Trailer/${TVAPI_KEY}/${imdbId}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.errorMessage) return null;
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+export async function fetchTvApiYouTubeTrailer(imdbId) {
+  if (!TVAPI_KEY || !imdbId) return null;
+  const key = cacheKey('tvapi_yt_' + imdbId, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${TVAPI_BASE}/YouTubeTrailer/${TVAPI_KEY}/${imdbId}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.errorMessage || !data.videoId) return null;
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+export async function fetchTvApiAwards(imdbId) {
+  if (!TVAPI_KEY || !imdbId) return null;
+  const key = cacheKey('tvapi_awards_' + imdbId, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${TVAPI_BASE}/Awards/${TVAPI_KEY}/${imdbId}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.errorMessage) return null;
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+// Top lists for better home rows
+export async function fetchTvApiTop250Movies() {
+  const key = cacheKey('tvapi_top250movies', {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${TVAPI_BASE}/Top250Movies/${TVAPI_KEY}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.errorMessage) return null;
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+export async function fetchTvApiBoxOffice() {
+  const key = cacheKey('tvapi_boxoffice', {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`${TVAPI_BASE}/BoxOffice/${TVAPI_KEY}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.errorMessage) return null;
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+/* ── DAILYMOTION — Trailer fallback search ───────────────────────── */
+export async function fetchDailymotionTrailer(titleQuery) {
+  if (!titleQuery) return null;
+  const key = cacheKey('dm_trailer_' + titleQuery, {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const q = encodeURIComponent(`${titleQuery} official trailer`);
+    const r = await fetch(
+      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=3&language=en&channel=shortfilms`
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    const video = data.list?.find(v =>
+      v.title?.toLowerCase().includes('trailer') ||
+      v.title?.toLowerCase().includes('official')
+    ) || data.list?.[0];
+    if (!video) return null;
+    cacheSet(key, video);
+    return video;
+  } catch { return null; }
+}
+
+/* ── WIKIDATA SPARQL (franchise chains, studio ownership, awards) ── */
+export async function wikidataSPARQL(query) {
+  const key = cacheKey('sparql_' + query.slice(0, 60), {});
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  try {
+    const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(query);
+    const r = await fetch(url, { headers: { Accept: 'application/sparql-results+json' } });
+    if (!r.ok) return null;
+    const data = await r.json();
+    cacheSet(key, data);
+    return data;
+  } catch { return null; }
+}
+
+// Get Oscar/Emmy/BAFTA wins for a film by IMDb ID via Wikidata
+export async function getFilmAwards(imdbId) {
+  if (!imdbId) return null;
+  const q = `
+    SELECT ?awardLabel WHERE {
+      ?film wdt:P345 "${imdbId}" .
+      ?film p:P166 ?awardStatement .
+      ?awardStatement ps:P166 ?award .
+      ?award rdfs:label ?awardLabel .
+      FILTER(LANG(?awardLabel) = "en")
+    } LIMIT 8`;
+  try {
+    const data = await wikidataSPARQL(q);
+    return (data?.results?.bindings || []).map(b => b.awardLabel?.value).filter(Boolean);
+  } catch { return []; }
+}
+
 /* ── CACHE PATTERN CLEAR ─────────────────────────────────────────── */
 export function clearCachePattern(pattern) {
   const prefix = 'svc_';
@@ -396,6 +573,40 @@ export async function testAllAPIs() {
     results.push({ name: 'Jikan (MAL)', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Anime rich data — working' : 'Failed' });
   } catch {
     results.push({ name: 'Jikan (MAL)', status: 'error', note: 'Request failed' });
+  }
+
+  // TV-API.com (IMDB-API)
+  try {
+    const r = await fetch(`${TVAPI_BASE}/Trailer/${TVAPI_KEY}/tt0137523`);
+    const d = r.ok ? await r.json() : null;
+    results.push({ name: 'TV-API (IMDB)', status: (r.ok && !d?.errorMessage) ? 'ok' : 'error', note: (r.ok && !d?.errorMessage) ? 'Trailers + Awards — working' : (d?.errorMessage || 'Failed') });
+  } catch {
+    results.push({ name: 'TV-API (IMDB)', status: 'error', note: 'Request failed' });
+  }
+
+  // Dailymotion
+  try {
+    const r = await fetch('https://api.dailymotion.com/videos?fields=id&limit=1');
+    results.push({ name: 'Dailymotion', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Trailer fallback — working' : 'Failed' });
+  } catch {
+    results.push({ name: 'Dailymotion', status: 'error', note: 'Request failed' });
+  }
+
+  // Logo.dev
+  try {
+    const r = await fetch(`https://img.logo.dev/netflix.com?token=${LOGO_DEV_TOKEN}&size=32&format=png`);
+    results.push({ name: 'Logo.dev', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Provider logos — working' : 'Token invalid' });
+  } catch {
+    results.push({ name: 'Logo.dev', status: 'error', note: 'Request failed' });
+  }
+
+  // Wikidata SPARQL
+  try {
+    const r = await fetch('https://query.wikidata.org/sparql?format=json&query=SELECT%20?x%20WHERE%20{%20?x%20a%20wd:Q5%20}%20LIMIT%201',
+      { headers: { Accept: 'application/sparql-results+json' } });
+    results.push({ name: 'Wikidata SPARQL', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Awards + franchise chains — working' : 'Failed' });
+  } catch {
+    results.push({ name: 'Wikidata SPARQL', status: 'error', note: 'Request failed' });
   }
 
   return results;

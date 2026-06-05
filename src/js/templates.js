@@ -368,23 +368,66 @@ export function injectOverlays() {
 </div>`;
   frag.appendChild(person);
 
-  // ── COMPANY / COLLECTION PAGE OVERLAY ────────────────────────────
+  // ── COMPANY / COLLECTION / PROVIDER PAGE OVERLAY ─────────────────
   const company = document.createElement('div');
   company.id = 'company-overlay';
   company.setAttribute('role', 'dialog');
   company.innerHTML = `
 <div id="company-panel">
-  <button id="company-close" aria-label="Close"><span class="material-icons-round">close</span></button>
-  <div class="company-hero" id="company-hero" style="display:none"></div>
-  <div class="company-header">
-    <img id="company-logo" class="company-logo" src="" alt="" style="display:none">
-    <div class="company-header-info">
-      <h2 class="company-name"></h2>
-      <p id="company-parent" class="company-parent"></p>
-      <p id="company-desc" class="company-desc"></p>
+  <!-- Sticky toolbar -->
+  <div class="company-toolbar">
+    <button id="company-close" aria-label="Close">
+      <span class="material-icons-round">arrow_back</span>
+    </button>
+    <div class="company-toolbar-info">
+      <img id="company-logo" class="company-logo-sm" src="" alt="" style="display:none">
+      <span class="company-name"></span>
+    </div>
+    <!-- View mode toggle -->
+    <div class="company-view-btns">
+      <button class="company-view-btn on" id="cv-btn-row" title="Row view">
+        <span class="material-icons-round">view_agenda</span>
+      </button>
+      <button class="company-view-btn" id="cv-btn-compact" title="Compact grid">
+        <span class="material-icons-round">grid_view</span>
+      </button>
     </div>
   </div>
-  <div class="search-grid company-grid" id="company-grid"></div>
+  <!-- Hero with backdrop or brand color -->
+  <div class="company-hero" id="company-hero">
+    <div class="company-hero-gradient"></div>
+    <img id="company-hero-img" class="company-hero-img" src="" alt="" style="display:none">
+    <div class="company-hero-content">
+      <img id="company-logo-big" class="company-logo-big" src="" alt="" style="display:none">
+      <div>
+        <h1 class="company-name-big"></h1>
+        <p id="company-parent" class="company-parent"></p>
+        <p id="company-desc" class="company-desc"></p>
+      </div>
+    </div>
+  </div>
+  <!-- Content area: row view or grid view -->
+  <div id="company-content-area">
+    <!-- Row view: home-style rows (movies row + TV row) -->
+    <div id="company-row-view">
+      <div class="section" id="company-movies-sec" style="display:none">
+        <div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">movie</span>Movies</div></div>
+        <div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="company-movies-row" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+        <div class="card-row" id="company-movies-row"></div>
+        <div class="row-arrow row-arrow-r"><button data-scroll-row="company-movies-row" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div>
+      </div>
+      <div class="section" id="company-tv-sec" style="display:none">
+        <div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">tv</span>TV Shows</div></div>
+        <div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="company-tv-row" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
+        <div class="card-row" id="company-tv-row"></div>
+        <div class="row-arrow row-arrow-r"><button data-scroll-row="company-tv-row" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div>
+      </div>
+    </div>
+    <!-- Compact view: dense grid, no labels -->
+    <div id="company-compact-view" style="display:none">
+      <div class="company-grid" id="company-grid"></div>
+    </div>
+  </div>
 </div>`;
   frag.appendChild(company);
 

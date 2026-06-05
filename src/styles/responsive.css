@@ -132,3 +132,62 @@
   }
   #hero-bg { animation: none !important; }
 }
+
+/* ── MOBILE: Info page auto-default on small screens ─────────────── */
+@media (max-width: 720px) {
+  /* Info page: single column */
+  .info-content { grid-template-columns: 1fr !important; padding: 1rem 1.2rem 3rem !important; }
+  .info-col-side { position: static; max-height: none; overflow-y: visible; }
+  .info-poster { width: 100px !important; }
+  .info-hero { height: clamp(200px, 38vh, 360px); }
+  .info-hero-content { padding: 1rem 1.2rem; gap: .9rem; }
+  .info-title { font-size: clamp(1.4rem, 5vw, 2rem) !important; }
+  .info-overview { max-height: 75px; }
+  .info-col-side .info-ep-grid { grid-template-columns: 1fr !important; }
+  .info-col-side .info-related-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  #info-trailer-wrap { display: block; }
+
+  /* On mobile: hide row arrows (can scroll) */
+  .row-arrow { display: none !important; }
+
+  /* Cards: 2 visible at once on portrait */
+  :root { --card-w: 46vw; }
+
+  /* Company overlay hero smaller */
+  .company-hero { height: 180px; }
+  .company-name-big { font-size: 1.6rem; }
+  .company-grid { grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); padding: .75rem 1rem; }
+  #company-row-view .section { padding: 0 1rem; }
+}
+
+/* ── MOBILE: Landscape mode ────────────────────────────────────────── */
+@media (max-width: 768px) and (orientation: landscape) {
+  #hero { height: 55vw; min-height: 240px; max-height: 360px; }
+  .info-content { grid-template-columns: 1fr 260px !important; }
+  .info-col-side { max-height: 85vh; }
+}
+
+/* ── MOBILE: Player — full screen, no side panel ─────────────────── */
+@media (max-width: 720px) {
+  /* Player modal goes full screen */
+  #modal-overlay { padding: 0 !important; }
+  #modal { border-radius: 0 !important; min-height: 100dvh !important; width: 100% !important; }
+  .modal-left-panel { display: none !important; }
+  .modal-right-panel { width: 100% !important; max-height: 40vh !important; }
+  #player-frame { min-height: 240px; }
+
+  /* Person overlay goes full width */
+  #person-panel { margin: 0 !important; border-radius: 0 !important; min-height: 100dvh; }
+  .person-layout { grid-template-columns: 1fr !important; }
+  .person-sidebar { position: static !important; flex-direction: row; align-items: flex-start; gap: 1rem; }
+  .person-photo { width: 90px !important; aspect-ratio: 2/3; }
+  .person-name { font-size: 1.3rem !important; }
+}
+
+/* ── VERTICAL SCROLL on card rows: no snap on mobile ─────────────── */
+@media (max-width: 480px) {
+  .card-row { scroll-snap-type: x proximity; }
+  .card { scroll-snap-align: start; }
+  /* Show 2 partial cards to hint scrollability */
+  :root { --card-w: 68vw; }
+}
