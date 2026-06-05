@@ -2159,14 +2159,15 @@ img[alt]::after {
 /* ── WTW badge improvements ───────────────────────────────────────── */
 .wtw-badge svg { border-radius: 5px; }
 
-/* ── COMPANY / PROVIDER / COLLECTION OVERLAY — FULL OVERHAUL ─────── */
+/* ── COMPANY / PROVIDER / COLLECTION OVERLAY — FULL SCREEN ──────── */
 #company-overlay {
   position: fixed; inset: 0; z-index: 9050;
   background: var(--bg);
   display: none; overflow-y: auto;
+  overscroll-behavior: contain;
 }
 #company-overlay.open { display: block; }
-#company-panel { min-height: 100%; }
+#company-panel { min-height: 100vh; padding-bottom: 3rem; }
 
 /* Sticky toolbar */
 .company-toolbar {

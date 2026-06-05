@@ -4043,43 +4043,43 @@ export async function openProviderPage(providerId, providerName) {
   }
 
   clearHoverTrailer();
-  // Provider network IDs for "Only on" rows (originals)
+  // TMDB network IDs for provider originals/exclusives
   const PROVIDER_NETWORK_IDS = {
-    8:   213,  // Netflix
-    337: 2739, // Disney+
-    15:  453,  // Hulu
-    384: 49,   // Max / HBO
-    9:   1024, // Prime Video / Amazon
-    350: 2552, // Apple TV+
-    531: 4330, // Paramount+
-    386: 3353, // Peacock
-    283: 1655, // Crunchyroll
+    8: 213, 337: 2739, 15: 453, 384: 49, 9: 1024,
+    350: 2552, 531: 4330, 386: 3353, 283: 1655, 526: 174,
   };
   const networkId = PROVIDER_NETWORK_IDS[providerId];
-  const logoUrl = getProviderLogoUrl(providerName, 64);
+  const logoUrl   = getProviderLogoUrl(providerName, 64);
+  const base      = { with_watch_providers: providerId, watch_region: 'US' };
 
   _openCompanyOverlay({
     name: providerName,
     subtitle: 'Streaming Provider',
     logoUrl,
     fetchFn: async () => {
-      // Fetch: popular movies, popular TV, top-rated, and originals in parallel
-      const [popMovies, popTv, topMovies, origMovies, origTv] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
-        tmdb('/discover/tv',    { with_watch_providers: providerId, watch_region: 'US', sort_by: 'popularity.desc', page: 1 }),
-        tmdb('/discover/movie', { with_watch_providers: providerId, watch_region: 'US', sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: 1 }),
-        networkId ? tmdb('/discover/movie', { with_networks: networkId, sort_by: 'popularity.desc', page: 1 }) : Promise.resolve({ results: [] }),
-        networkId ? tmdb('/discover/tv',    { with_networks: networkId, sort_by: 'popularity.desc', page: 1 }) : Promise.resolve({ results: [] }),
+      // Fetch 8 data sets in parallel — maximum variety
+      const fetches = await Promise.allSettled([
+        tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),             // 0: popular movies
+        tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),             // 1: popular TV
+        tmdb('/discover/movie', { ...base, sort_by:'vote_average.desc', 'vote_count.gte':100, page:1 }), // 2: top rated movies
+        tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }), // 3: top rated TV
+        tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),             // 4: more movies
+        tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),             // 5: more TV
+        networkId ? tmdb('/discover/movie', { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}), // 6: originals movies
+        networkId ? tmdb('/discover/tv',    { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}), // 7: originals TV
       ]);
 
-      const m  = popMovies.status==='fulfilled'  ? (popMovies.value.results||[]).map(x=>({...x,media_type:'movie'}))  : [];
-      const t  = popTv.status==='fulfilled'      ? (popTv.value.results||[]).map(x=>({...x,media_type:'tv'}))        : [];
-      const tr = topMovies.status==='fulfilled'  ? (topMovies.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
-      const om = origMovies.status==='fulfilled' ? (origMovies.value.results||[]).map(x=>({...x,media_type:'movie'})): [];
-      const ot = origTv.status==='fulfilled'     ? (origTv.value.results||[]).map(x=>({...x,media_type:'tv'}))      : [];
-      const originals = [...om, ...ot].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+      const get = (i, mt) => fetches[i].status==='fulfilled' ? (fetches[i].value.results||[]).map(x=>({...x,media_type:mt})) : [];
 
-      return { movies: m, tv: t, topRated: tr, originals };
+      return {
+        movies:    get(0,'movie'),
+        tv:        get(1,'tv'),
+        topMovies: get(2,'movie'),
+        topTv:     get(3,'tv'),
+        moreMovies:get(4,'movie'),
+        moreTv:    get(5,'tv'),
+        originals: [...get(6,'movie'), ...get(7,'tv')].sort((a,b)=>(b.popularity||0)-(a.popularity||0)),
+      };
     },
   });
 }
@@ -4251,50 +4251,82 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
       heroImg.src = data.backdropUrl; heroImg.style.display = '';
     }
 
-    const movies    = data.movies    || [];
-    const tv        = data.tv        || [];
-    const topRated  = data.topRated  || [];
-    const originals = data.originals || [];
-    const all       = [...movies, ...tv];
+    const movies     = data.movies     || [];
+    const tv         = data.tv         || [];
+    const topMovies  = data.topMovies  || [];
+    const topTv      = data.topTv      || [];
+    const moreMovies = data.moreMovies || [];
+    const moreTv     = data.moreTv     || [];
+    const originals  = data.originals  || [];
+    const topRated   = data.topRated   || data.topMovies || [];
+    const all        = [...movies, ...tv];
 
-    // ── ROW VIEW: Multiple rows like home page ──────────────────────
+    // ── ROW VIEW: Full home-page style rows ───────────────────────
     const rowView = ov.querySelector('#company-row-view');
     if (rowView) {
-      rowView.innerHTML = ''; // clear and rebuild with all rows
+      rowView.innerHTML = '';
 
-      const makeRow = (rowId, secTitle, items, type) => {
+      const makeRow = (rowId, icon, secTitle, items, type) => {
         if (!items.length) return '';
+        const cards = items.slice(0,20).map(m => makeCard(m, m.media_type || type)).join('');
         return `<div class="section">
-          <div class="sec-header"><div class="sec-title" style="font-size:1rem;font-weight:900">${esc(secTitle)}</div></div>
+          <div class="sec-header">
+            <div class="sec-title">
+              <span class="material-icons-round sec-icon">${icon}</span>${esc(secTitle)}
+            </div>
+          </div>
           <div class="row-wrap">
             <div class="row-arrow row-arrow-l hidden"><button data-scroll-row="${rowId}" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div>
-            <div class="card-row" id="${rowId}">${items.slice(0,20).map(m => makeCard(m, m.media_type || type)).join('')}</div>
+            <div class="card-row" id="${rowId}">${cards}</div>
             <div class="row-arrow row-arrow-r"><button data-scroll-row="${rowId}" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div>
           </div>
         </div>`;
       };
 
-      // Build rows: Originals (if any), Popular, TV Shows, Top Rated, mixed
-      rowView.innerHTML = [
-        originals.length ? makeRow('cp-originals', `Only on ${name}`, originals, null) : '',
-        movies.length    ? makeRow('cp-movies',    'Popular Movies',  movies,    'movie') : '',
-        tv.length        ? makeRow('cp-tv',        'Popular Shows',   tv,        'tv')    : '',
-        topRated.length  ? makeRow('cp-toprated',  'Top Rated',       topRated,  'movie') : '',
-      ].filter(Boolean).join('') || '<p style="padding:2rem;color:var(--muted);text-align:center">No content found for this provider</p>';
+      // Interleave movies+TV for the popular mixed row
+      const popularMixed = [];
+      for (let i=0; i<Math.max(movies.length,tv.length); i++) { if(movies[i]) popularMixed.push(movies[i]); if(tv[i]) popularMixed.push(tv[i]); }
+      const topMixed = [];
+      for (let i=0; i<Math.max(topMovies.length,topTv.length); i++) { if(topMovies[i]) topMixed.push(topMovies[i]); if(topTv[i]) topMixed.push(topTv[i]); }
+      const moreMixed = [];
+      for (let i=0; i<Math.max(moreMovies.length,moreTv.length); i++) { if(moreMovies[i]) moreMixed.push(moreMovies[i]); if(moreTv[i]) moreMixed.push(moreTv[i]); }
 
-      // Wire scroll arrows
+      const rows = [
+        originals.length    ? makeRow('cp-originals',  'star',              `Only on ${name}`,  originals,    null)   : '',
+        popularMixed.length ? makeRow('cp-popular',    'local_fire_department', `Popular on ${name}`, popularMixed, null) : '',
+        movies.length       ? makeRow('cp-movies',     'movie',             'Popular Movies',    movies,       'movie'): '',
+        tv.length           ? makeRow('cp-tv',         'tv',                'Popular Shows',     tv,           'tv')   : '',
+        topMixed.length     ? makeRow('cp-toprated',   'workspace_premium', 'Top Rated',         topMixed,     null)   : '',
+        topMovies.length    ? makeRow('cp-topmovies',  'movie',             'Top Rated Movies',  topMovies,    'movie'): '',
+        topTv.length        ? makeRow('cp-toptv',      'tv',                'Top Rated Shows',   topTv,        'tv')   : '',
+        moreMixed.length    ? makeRow('cp-more',       'explore',           'More to Explore',   moreMixed,    null)   : '',
+      ].filter(Boolean);
+
+      rowView.innerHTML = rows.join('') || '<p style="padding:3rem;color:var(--muted);text-align:center;font-size:1rem">No content available for this provider in your region.</p>';
+
+      // Wire scroll arrows inside provider overlay
       rowView.querySelectorAll('[data-scroll-row]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const row = rowView.querySelector(`#${btn.dataset.scrollRow}`);
-          if (row) {
-            const dir = +btn.dataset.scrollDir;
-            row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' });
-          }
+          const rowEl = document.getElementById(btn.dataset.scrollRow);
+          if (rowEl) rowEl.scrollBy({ left: +btn.dataset.scrollDir * rowEl.clientWidth * 0.75, behavior: 'smooth' });
         });
+      });
+
+      // Wire card clicks
+      rowView.querySelectorAll('.card[data-id][data-type]').forEach(cardEl => {
+        if (!cardEl._provWired) {
+          cardEl._provWired = true;
+          cardEl.addEventListener('click', e => {
+            if (e.target.closest('button')) return;
+            ov.classList.remove('open');
+            document.body.style.overflow = '';
+            setTimeout(() => openMedia(+cardEl.dataset.id, cardEl.dataset.type), 60);
+          });
+        }
       });
     }
 
-    // ── COMPACT VIEW: all content in grid ──────────────────────────
+    // ── COMPACT VIEW: dense grid ──────────────────────────────────
     if (grid) {
       grid.innerHTML = all.length
         ? all.slice(0,48).map(m => makeCard(m, m.media_type||'movie')).join('')
@@ -5775,13 +5807,17 @@ function clearHoverTrailer() {
   _hoverCurrentCard = null;
   _hoverCurrentId = null;
   const nc = document.getElementById('netflix-card');
-  if (nc) nc.classList.remove('visible');
-  setTimeout(() => {
-    if (!_hoverActive) {
-      const frame = document.getElementById('nc-frame');
-      if (frame) frame.removeAttribute('src');
-    }
-  }, 300);
+  if (nc) {
+    nc.classList.remove('visible');
+    // Run any DM cleanup timers
+    if (nc._dmCleanup) { nc._dmCleanup(); nc._dmCleanup = null; }
+  }
+  // Stop iframe immediately (no delay) to prevent audio leak
+  const frame = document.getElementById('nc-frame');
+  if (frame) frame.removeAttribute('src');
+  // Reset backdrop
+  const bd = document.getElementById('nc-backdrop');
+  if (bd) { bd.style.opacity = '1'; bd.style.transition = ''; }
 }
 
 async function showNetflixCard(card) {
@@ -5822,14 +5858,17 @@ async function showNetflixCard(card) {
   }
   if (backdrop) {
     const backdropPath = (card.dataset.backdrop || '').trim() || null;
+    // ALWAYS show backdrop — never hide it (prevents black screen)
+    backdrop.style.display = '';
+    backdrop.style.opacity = '1';
     if (backdropPath) {
       backdrop.src = `https://image.tmdb.org/t/p/w500${backdropPath}`;
-      backdrop.style.display = '';
     } else if (poster) {
       backdrop.src = poster;
-      backdrop.style.display = '';
     } else {
-      backdrop.style.display = 'none';
+      // No image — use a gradient placeholder so it's never pure black
+      backdrop.src = '';
+      backdrop.style.background = `linear-gradient(135deg, var(--s3) 0%, var(--s2) 100%)`;
     }
   }
   if (likeIcon) likeIcon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
@@ -5886,59 +5925,72 @@ async function showNetflixCard(card) {
 
   if (!_hoverActive || _hoverCurrentCard !== card) return;
 
-  // ── STEP 4: Load trailer — YouTube immediately, DM replaces if found ──
-  // Strategy: YouTube loads instantly (no black screen), DM replaces it if/when found
-  if (!frame) { if (backdrop) backdrop.style.opacity = '1'; return; }
+  // ── STEP 4: Trailer — DM first, YouTube fallback ─────────────────
+  // Backdrop is ALWAYS visible at this point (set above).
+  // DM is already fetching (started in step 1).
+  // Strategy:
+  //   1. Wait up to 2.5s for DM to resolve
+  //   2. If DM matches → use DM, backdrop fades after 3s
+  //   3. If DM times out/fails → use YouTube, backdrop fades when YT confirms playing
+  //   4. If neither → backdrop stays visible as the "preview"
 
-  if (trailerKey && trailerKey !== '__none__') {
-    // Load YouTube immediately — user sees something right away
-    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+  if (!frame) return; // no iframe → just show backdrop
+
+  // Ensure backdrop is visible while we wait
+  if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
+
+  // Wait for DM (max 2.5s from when we started)
+  const dmResult = await Promise.race([
+    dmPromise,
+    new Promise(res => setTimeout(() => res(null), 2500)),
+  ]);
+
+  // Check card is still active
+  if (!_hoverActive || _hoverCurrentCard !== card) {
+    frame.removeAttribute('src');
+    return;
+  }
+
+  if (dmResult?.embed_url) {
+    // ✅ Dailymotion found — use it, backdrop stays until video confirmed
     frame.style.display = '';
+    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
+    if (backdrop) { backdrop.style.opacity = '1'; }
+    // Fade backdrop after DM player has loaded (3s is generous)
+    const dmFadeTimer = setTimeout(() => {
+      if (_hoverCurrentCard === card && _hoverActive && backdrop) {
+        backdrop.style.transition = 'opacity .8s';
+        backdrop.style.opacity = '0';
+      }
+    }, 3000);
+    // If card changes before fade, clear timer
+    const _dmCleanup = () => { clearTimeout(dmFadeTimer); };
+    nc._dmCleanup = _dmCleanup;
 
-    // YouTube postMessage: hide backdrop when actually playing
-    const ytMsgHandler = (e) => {
+  } else if (trailerKey && trailerKey !== '__none__') {
+    // ⟳ DM timed out/no match — use YouTube
+    frame.style.display = '';
+    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+    if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
+
+    // YouTube postMessage: fade backdrop when video is actually playing
+    const ytHandler = (e) => {
       if (e.origin !== 'https://www.youtube.com') return;
       try {
         const d = JSON.parse(e.data);
         if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
           if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
-          window.removeEventListener('message', ytMsgHandler);
+          window.removeEventListener('message', ytHandler);
         }
       } catch {}
     };
-    window.addEventListener('message', ytMsgHandler);
-
-    // DM override: if DM finds a match within 3s, replace YouTube with DM
-    dmPromise.then(dmResult => {
-      if (!dmResult?.embed_url || !_hoverActive || _hoverCurrentCard !== card) return;
-      // Replace YouTube with Dailymotion
-      window.removeEventListener('message', ytMsgHandler);
-      if (backdrop) { backdrop.style.opacity = '0.3'; }
-      frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-      // Full fade after 2.5s (DM should be playing by then)
-      setTimeout(() => {
-        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
-      }, 2500);
-    }).catch(() => {});
-
-    // 8s failsafe
-    setTimeout(() => {
-      window.removeEventListener('message', ytMsgHandler);
-    }, 8000);
+    window.addEventListener('message', ytHandler);
+    setTimeout(() => window.removeEventListener('message', ytHandler), 10000);
 
   } else {
-    // No YouTube trailer — try DM only, then show backdrop
+    // No trailer at all — backdrop is the preview, no iframe
+    frame.removeAttribute('src');
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.objectFit = 'cover'; }
-    dmPromise.then(dmResult => {
-      if (!dmResult?.embed_url || !_hoverActive || _hoverCurrentCard !== card) return;
-      if (backdrop) backdrop.style.opacity = '0.3';
-      frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-      frame.style.display = '';
-      setTimeout(() => {
-        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
-      }, 2500);
-    }).catch(() => {});
   }
 }
 

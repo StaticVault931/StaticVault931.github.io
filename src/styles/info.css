@@ -533,13 +533,15 @@
   padding-top: 1.5rem; margin-top: .5rem;
 }
 
-/* ── SIDE COLUMN: episodes should not be too wide ────────────────── */
+/* ── EPISODES: 2 per row in side column ─────────────────────────── */
 .info-col-side .info-ep-grid {
-  grid-template-columns: 1fr !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: .4rem !important;
 }
+.info-col-side .info-ep-card { flex-direction: column; gap: .25rem; }
 .info-col-side .info-ep-thumb,
 .info-col-side .info-ep-thumb-ph {
-  width: 90px !important;
+  width: 100% !important; height: auto !important; aspect-ratio: 16/9;
 }
 
 /* ── INFO RELATED GRID in side column — 1 col ────────────────────── */
@@ -555,4 +557,33 @@
   scrollbar-color: rgba(255,255,255,.1) transparent;
   position: sticky;
   top: 60px;
+}
+
+/* ── INFO PANEL: wider side column for TV shows ──────────────────── */
+.info-content {
+  grid-template-columns: 1fr 400px;
+}
+/* Give side panel room to show all info without cutting off */
+.info-col-side {
+  max-height: calc(100vh - 140px);
+}
+/* Info detail rows: make key wider to prevent wrapping */
+.info-detail-row {
+  display: flex; justify-content: space-between; gap: .5rem;
+  font-size: .78rem; padding: .2rem 0; border-bottom: 1px solid var(--border);
+}
+.info-detail-row:last-child { border-bottom: none; }
+.info-detail-key { color: var(--muted); font-weight: 700; min-width: 80px; flex-shrink: 0; }
+.info-detail-val { color: var(--text); text-align: right; flex: 1; }
+/* Score row should be prominent */
+.info-score-row { padding: 1rem .9rem; border-radius: 8px; margin-bottom: .75rem; }
+.info-score-num { font-size: 3.2rem !important; }
+/* Extra details section spacing */
+.info-extra-details { border-top: 1px solid var(--border); padding-top: .5rem; margin-top: .5rem; }
+/* Omdb detail rows (box office, rated, etc.) */
+.omdb-detail .info-detail-key { color: #f5c518; }
+
+@media (max-width: 900px) {
+  .info-content { grid-template-columns: 1fr; }
+  .info-col-side { max-height: none; position: static; overflow: visible; }
 }
