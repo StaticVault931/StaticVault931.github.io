@@ -952,7 +952,7 @@ const ROW_CATALOG = [
   { id: 'row-90s-nostalgia',sec: 'sec-90s-nostalgia', type: null,   persona: false,
     labels: ['90s Nostalgia', 'Take Me Back', 'Throwback to the 90s', 'Before Streaming', 'That 90s Feeling', 'VHS Era Classics'] },
   { id: 'row-anime-mix',    sec: 'sec-anime-mix',     type: 'anime', persona: true,
-    labels: ['Anime You'll Actually Finish', 'Anime Starter Pack', 'Gateway Anime', 'For Everyone', 'Start Here with Anime', 'Accessible Anime'] },
+    labels: ["Anime You'll Actually Finish", 'Anime Starter Pack', 'Gateway Anime', 'For Everyone', 'Start Here with Anime', 'Accessible Anime'] },
 ];
 
 // Labels are picked randomly per session (stored so they don't change mid-session)
