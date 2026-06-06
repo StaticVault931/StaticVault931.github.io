@@ -6,45 +6,19 @@ import { state, persist } from './state.js';
 // noSandbox: true = disable iframe sandbox automatically (player needs it to work)
 export const PROVIDERS = [
   {
-    // #1 — VidSrc.ru: modern player, watch-progress postMessage, auto-next episode
-    id: 'vidsrcru',
-    label: 'VidSrc.ru',
-    prio: 'high',
-    note: 'HD · Auto-next',
-    domain: 'https://vidsrc.ru',
-    types: ['movie', 'tv', 'anime'],
-    noSandbox: true,
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
-      : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
-  },
-  {
-    // #2 — VidLink: 4K on some titles, needs sandbox disabled, anime support
-    id: 'vidlink',
-    label: 'VidLink',
-    prio: 'high',
-    note: '4K · No sandbox',
-    domain: 'https://vidlink.pro',
-    types: ['movie', 'tv', 'anime'],
-    noSandbox: true,
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://vidlink.pro/movie/${id}?primaryColor=e50914`
-      : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
-  },
-  {
-    // #3 — VidSrc CC: widest library, reliable HD
-    id: 'vidsrc',
+    // #1 — VidSrc.to: the original VidSrc, massive library, most-trusted
+    id: 'vidsrcto',
     label: 'VidSrc',
     prio: 'high',
-    note: 'HD · Wide library',
-    domain: 'https://vidsrc.cc',
+    note: 'Original · HD',
+    domain: 'https://vidsrc.to',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.cc/v2/embed/movie/${id}`
-      : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
+      ? `https://vidsrc.to/embed/movie/${id}`
+      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #4 — Embed.su: very reliable, clean UI, no ads
+    // #2 — Embed.su: very reliable, clean UI, consistent library
     id: 'embedsu',
     label: 'Embed.su',
     prio: 'high',
@@ -56,7 +30,69 @@ export const PROVIDERS = [
       : `https://embed.su/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #5 — Cineby: 4K available on select titles
+    // #3 — VidLink: 4K on some titles, needs sandbox disabled, anime support
+    id: 'vidlink',
+    label: 'VidLink',
+    prio: 'high',
+    note: '4K · Fast',
+    domain: 'https://vidlink.pro',
+    types: ['movie', 'tv', 'anime'],
+    noSandbox: true,
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidlink.pro/movie/${id}?primaryColor=e50914`
+      : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
+  },
+  {
+    // #4 — VidSrc.ru: modern player, watch-progress postMessage, auto-next episode
+    id: 'vidsrcru',
+    label: 'VidSrc.ru',
+    prio: 'high',
+    note: 'Auto-next',
+    domain: 'https://vidsrc.ru',
+    types: ['movie', 'tv', 'anime'],
+    noSandbox: true,
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
+      : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
+  },
+  {
+    // #5 — VidSrc CC: wide library, reliable HD
+    id: 'vidsrc',
+    label: 'VidSrc.cc',
+    prio: 'high',
+    note: 'HD · Wide',
+    domain: 'https://vidsrc.cc',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.cc/v2/embed/movie/${id}`
+      : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #6 — VidSrc Embed: original vidsrc embed backend, wide library
+    id: 'vidsrcembed',
+    label: 'VidSrc (Embed)',
+    prio: 'high',
+    note: 'Original backend',
+    domain: 'https://vidsrc-embed.ru',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc-embed.ru/embed/movie?tmdb=${id}`
+      : `https://vidsrc-embed.ru/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+  },
+  {
+    // #7 — Rive Stream: strong multi-source aggregator, wide library
+    id: 'rive',
+    label: 'Rive',
+    prio: 'high',
+    note: 'Multi-source',
+    domain: 'https://rive.stream',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://rive.stream/embed/movie?id=${id}&yt=1`
+      : `https://rive.stream/embed/tv?id=${id}&s=${s}&e=${e}&yt=1`,
+  },
+  {
+    // #8 — Cineby: 4K available on select titles
     id: 'cineby',
     label: 'Cineby',
     prio: 'high',
@@ -68,7 +104,19 @@ export const PROVIDERS = [
       : `https://www.cineby.app/tv/${id}/${s}/${e}`,
   },
   {
-    // #6 — VidSrc Me: alternate vidsrc backend
+    // #8 — VidBinge: solid coverage, clean player
+    id: 'vidbinge',
+    label: 'VidBinge',
+    prio: 'med',
+    note: 'Clean player',
+    domain: 'https://vidbinge.dev',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidbinge.dev/embed/movie/${id}`
+      : `https://vidbinge.dev/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #9 — VidSrc Me: alternate vidsrc backend
     id: 'vidsrcme',
     label: 'VidSrc.me',
     prio: 'med',
@@ -80,7 +128,31 @@ export const PROVIDERS = [
       : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
-    // #7 — MultiEmbed: multi-source, needs sandbox disabled
+    // #10 — MoviesAPI: good coverage, minimal ads
+    id: 'moviesapi',
+    label: 'MoviesAPI',
+    prio: 'med',
+    note: 'Low ads',
+    domain: 'https://moviesapi.club',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://moviesapi.club/movie/${id}`
+      : `https://moviesapi.club/tv/${id}-${s}-${e}`,
+  },
+  {
+    // #11 — AutoEmbed: good for recent content
+    id: 'autoembed',
+    label: 'AutoEmbed',
+    prio: 'med',
+    note: 'Recent content',
+    domain: 'https://player.autoembed.cc',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://player.autoembed.cc/embed/movie/${id}`
+      : `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #12 — MultiEmbed: multi-source, needs sandbox disabled
     id: 'superembed',
     label: 'MultiEmbed',
     prio: 'med',
@@ -93,7 +165,7 @@ export const PROVIDERS = [
       : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
   },
   {
-    // #8 — VidSrc Pro: separate library
+    // #13 — VidSrc Pro: separate library
     id: 'vidsrcpro',
     label: 'VidSrc Pro',
     prio: 'med',
@@ -105,7 +177,7 @@ export const PROVIDERS = [
       : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #9 — 2Embed: good coverage, needs sandbox disabled
+    // #14 — 2Embed: good coverage, needs sandbox disabled
     id: 'embed2',
     label: '2Embed',
     prio: 'med',
@@ -118,19 +190,7 @@ export const PROVIDERS = [
       : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    // #10 — AutoEmbed: good for recent content
-    id: 'autoembed',
-    label: 'AutoEmbed',
-    prio: 'med',
-    note: 'Recent content',
-    domain: 'https://player.autoembed.cc',
-    types: ['movie', 'tv'],
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://player.autoembed.cc/embed/movie/${id}`
-      : `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    // #11 — Smashy Stream: solid fallback
+    // #15 — Smashy Stream: solid fallback
     id: 'smashy',
     label: 'SmashyStream',
     prio: 'low',
@@ -142,7 +202,7 @@ export const PROVIDERS = [
       : `https://player.smashy.stream/tv/${id}?s=${s}&e=${e}`,
   },
   {
-    // #12 — Videasy: last resort fallback
+    // #16 — Videasy: last resort fallback
     id: 'videasy',
     label: 'Videasy',
     prio: 'low',
@@ -159,7 +219,7 @@ export const PROVIDERS = [
 const _isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 
 // IDs of providers known to block Firefox iframes
-const FIREFOX_BLOCKED_PROVIDERS = new Set(['vidsrc']);
+const FIREFOX_BLOCKED_PROVIDERS = new Set(['vidsrc', 'vidsrcto']);
 
 export function providersFor(type, opts = {}) {
   let list = PROVIDERS.filter(p => p.types.includes(type === 'anime' ? 'tv' : type));
@@ -241,6 +301,9 @@ export function buildProviderBar(mediaId, type, season, episode) {
     ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>`
     : `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
 
+  // Compute whether sandbox is effectively off for the active provider
+  const activeSandboxOff = sf === false || (sf === null && active.noSandbox);
+
   bar.innerHTML =
     `<span class="prov-label">Source</span>` +
     `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
@@ -255,6 +318,29 @@ export function buildProviderBar(mediaId, type, season, episode) {
         data-provider="${p.id}"
         title="${p.label}${p.note ? ' · ' + p.note : ''}${p.noSandbox ? ' (no sandbox)' : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}${noSandboxBadge}</button>`;
     }).join('');
+
+  // ── Sandbox-off warning banner — rendered as a sibling BELOW the top bar ──
+  const modal = document.getElementById('modal');
+  let warnEl = document.getElementById('prov-sandbox-warn');
+  if (activeSandboxOff) {
+    if (!warnEl) {
+      warnEl = document.createElement('div');
+      warnEl.id = 'prov-sandbox-warn';
+      warnEl.className = 'prov-sandbox-warn';
+      // Insert right after the modal-top-bar (before modal-body)
+      const topBar = modal?.querySelector('.modal-top-bar');
+      if (topBar && topBar.nextSibling) {
+        modal.insertBefore(warnEl, topBar.nextSibling);
+      } else if (modal) {
+        modal.appendChild(warnEl);
+      }
+    }
+    warnEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+      <span>Sandbox disabled — this source runs without restrictions. Malicious pop-ups and redirect links may appear. <strong>Close any unexpected windows immediately.</strong></span>`;
+    warnEl.style.display = 'flex';
+  } else if (warnEl) {
+    warnEl.style.display = 'none';
+  }
 }
 
 /* ── PLAYER LOAD ─────────────────────────────────────────────────── */

@@ -541,22 +541,51 @@ function _getHeroStartIdx(total) {
   return next;
 }
 
-async function loadHero() {
+async function loadHero(attempt = 0) {
   try {
-    const d = await tmdb('/trending/movie/week');
-    const all = (d.results || []).filter(x => x.backdrop_path);
-    // Mix in some TV for variety
-    const tv = await tmdb('/trending/tv/week').catch(() => ({ results: [] }));
-    const tvItems = (tv.results || []).filter(x => x.backdrop_path).slice(0, 3);
-    state.heroItems = [...all.slice(0, 5), ...tvItems].slice(0, 8);
+    const [movRes, tvRes] = await Promise.allSettled([
+      tmdb('/trending/movie/week'),
+      tmdb('/trending/tv/week'),
+    ]);
+    const all = movRes.status === 'fulfilled'
+      ? (movRes.value.results || []).filter(x => x.backdrop_path)
+      : [];
+    const tvItems = tvRes.status === 'fulfilled'
+      ? (tvRes.value.results || []).filter(x => x.backdrop_path).slice(0, 3)
+      : [];
+
+    const items = [...all.slice(0, 5), ...tvItems].slice(0, 8);
+
+    if (!items.length) {
+      // No items — retry once after 3s (network hiccup), then give up
+      if (attempt < 2) { setTimeout(() => loadHero(attempt + 1), 3000); return; }
+      _showHeroFallback();
+      return;
+    }
+
+    state.heroItems = items;
     buildHeroDots();
     const startIdx = _getHeroStartIdx(state.heroItems.length);
     showHero(startIdx);
     clearInterval(state.heroTimer);
     state.heroTimer = setInterval(() => {
       showHero((state.heroIdx + 1) % state.heroItems.length);
-    }, 8000); // slightly faster rotation
-  } catch {}
+    }, 8000);
+  } catch (err) {
+    console.warn('[SV] loadHero error:', err?.message);
+    if (attempt < 2) { setTimeout(() => loadHero(attempt + 1), 3000 * (attempt + 1)); return; }
+    _showHeroFallback();
+  }
+}
+
+function _showHeroFallback() {
+  // Show a nice "explore" placeholder so the page doesn't look broken
+  const titleEl = document.getElementById('hero-title');
+  const descEl  = document.getElementById('hero-desc');
+  const bg      = document.getElementById('hero-bg');
+  if (titleEl) titleEl.textContent = 'Discover Something New';
+  if (descEl)  descEl.textContent  = 'Browse movies, shows, and anime below.';
+  if (bg)      bg.style.background = 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%)';
 }
 
 /* ── ROW DEDUP (tracks IDs rendered per home-page load) ─────────── */
@@ -2898,7 +2927,11 @@ function initEventDelegation() {
     if (sbBtn) {
       const newState = cycleSandboxForce();
       const label = newState === false ? 'Sandbox: Off' : newState === true ? 'Sandbox: On' : 'Sandbox: Auto';
-      toast(label, 'security');
+      if (newState === false) {
+        toast('Sandbox Off — pop-ups may appear. Close unexpected windows.', 'warning');
+      } else {
+        toast(label, 'security');
+      }
       if (state.currentMedia) {
         const { useId, id, type } = state.currentMedia;
         const sel = document.getElementById('season-sel');
@@ -4779,7 +4812,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   const heroEl    = document.getElementById('company-hero');
   const heroImg   = document.getElementById('company-hero-img');
   const logoBig   = document.getElementById('company-logo-big');
-  const logoSm    = document.getElementById('company-logo-sm');
+  const logoSm    = document.getElementById('company-logo'); // toolbar logo (id="company-logo")
   const descEl    = document.getElementById('company-desc');
   const parentEl  = document.getElementById('company-parent');
 
@@ -6758,39 +6791,53 @@ function positionNetflixCard(card, nc) {
   const rect = card.getBoundingClientRect();
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
-  // Card width from actual card dimensions; ensure hover card is at least as wide as the card
+
+  // Card width: at least as wide as the card, capped at 520px
   const ncW = Math.min(520, Math.max(rect.width, 380));
-  nc.style.width = `${ncW}px`; // set before measuring height
-  const ncH = Math.min(nc.offsetHeight || 500, window.innerHeight * 0.85);
+  nc.style.width = `${ncW}px`;
+  nc.style.maxHeight = '';     // clear any previous max-height
+  nc.style.overflowY = '';
 
-  // Ideal: centered on the card
-  let left = rect.left + (rect.width / 2) - (ncW / 2);
-
-  const marginH = 12;
-  const isNearLeft = left < marginH;
-  const isNearRight = left + ncW > vpW - marginH;
-
-  if (isNearLeft && isNearRight) {
-    // Very narrow viewport — just center on screen
-    left = (vpW - ncW) / 2;
-  } else if (isNearLeft) {
-    // Near left edge: align left edge to card's left edge (expands rightward)
-    left = Math.max(marginH, rect.left);
-  } else if (isNearRight) {
-    // Near right edge: align right edge to card's right edge (expands leftward)
-    left = Math.min(vpW - ncW - marginH, rect.right - ncW);
+  // Use scrollHeight for accurate height even when inner content is taller than rendered
+  const rawH = Math.max(nc.scrollHeight || 0, nc.offsetHeight || 0) || 480;
+  // Cap the card at 85% of viewport height so it always fits
+  const maxH = Math.floor(vpH * 0.85);
+  const ncH = Math.min(rawH, maxH);
+  if (rawH > maxH) {
+    // Content taller than cap → allow inner scroll so buttons stay accessible
+    nc.style.maxHeight = `${maxH}px`;
+    nc.style.overflowY = 'auto';
   }
 
-  // Clamp within viewport
+  // ── Horizontal positioning ──────────────────────────────────────
+  let left = rect.left + (rect.width / 2) - (ncW / 2);
+  const marginH = 12;
+
+  if (left < marginH && left + ncW > vpW - marginH) {
+    left = (vpW - ncW) / 2; // narrow viewport — centre
+  } else if (left < marginH) {
+    left = Math.max(marginH, rect.left);          // near left edge
+  } else if (left + ncW > vpW - marginH) {
+    left = Math.min(vpW - ncW - marginH, rect.right - ncW); // near right edge
+  }
   left = Math.max(marginH, Math.min(left, vpW - ncW - marginH));
 
-  // Vertical: expand upward from card top
-  let top = rect.top - 24;
-  if (top < 70) top = rect.bottom + 8; // not enough room above → show below
-  if (top + ncH > vpH - 8) top = Math.max(70, vpH - ncH - 8);
+  // ── Vertical positioning ────────────────────────────────────────
+  // Prefer: top-align with card (expand down)
+  let top = rect.top;
+
+  // If expanding down goes off-screen, try expanding UP from card bottom
+  if (top + ncH > vpH - 8) {
+    top = rect.bottom - ncH;
+  }
+  // If that still clips the top, just pin to a safe vertical position
+  if (top < 70) top = Math.max(70, Math.min(vpH - ncH - 8, rect.top + rect.height / 2 - ncH / 2));
+
+  // Hard clamp — never go off-screen
+  top = Math.max(70, Math.min(top, vpH - ncH - 8));
 
   nc.style.left = `${left}px`;
-  nc.style.top = `${top}px`;
+  nc.style.top  = `${top}px`;
 }
 
 async function fetchTrailerKey(id, type, title = '', year = '') {

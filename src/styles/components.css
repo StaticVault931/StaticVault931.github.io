@@ -524,6 +524,26 @@
 .prov-sandbox-on  { color: #f59e0b !important; border-color: rgba(245,158,11,.3) !important; background: rgba(245,158,11,.07) !important; }
 .prov-sandbox-auto { opacity: .6; }
 .prov-sandbox:hover { opacity: 1 !important; }
+/* Sandbox-disabled warning banner — sits between top bar and modal body */
+.prov-sandbox-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  width: 100%;
+  padding: .55rem 1rem;
+  background: rgba(245,158,11,.12);
+  border-top: 1px solid rgba(245,158,11,.3);
+  border-bottom: 1px solid rgba(245,158,11,.2);
+  color: #f59e0b;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  animation: fadeIn .3s var(--ease);
+  flex-shrink: 0;
+  z-index: 10;
+  position: relative;
+}
+.prov-sandbox-warn svg { margin-top: .1rem; }
 /* No-sandbox dot indicator on provider button */
 .prov-nosandbox-dot {
   font-size: .5rem;
@@ -1559,10 +1579,18 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   max-width: 520px;
   border-radius: 14px;
   overflow: hidden;
+  /* Scrollable when card is capped in positionNetflixCard */
+  overflow-y: auto;
   box-shadow: 0 56px 140px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.1);
   background: var(--s1);
   cursor: pointer;
+  /* Custom scrollbar — minimal, dark */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.15) transparent;
 }
+#netflix-card::-webkit-scrollbar { width: 4px; }
+#netflix-card::-webkit-scrollbar-track { background: transparent; }
+#netflix-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 4px; }
 #netflix-card.visible {
   opacity: 1;
   pointer-events: auto;
