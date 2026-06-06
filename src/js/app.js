@@ -229,6 +229,9 @@ const SHORTCUTS = [
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  // Reset provider fail states every reload so previously-broken providers can be retried
+  localStorage.removeItem('sv_provider_working');
+
   injectOverlays();   // inject modals/overlays before anything else
   cleanState();       // remove corrupt null/empty items from all lists
   initProfiles();     // ensure at least one profile exists
@@ -4261,6 +4264,25 @@ async function loadInfoEpisodes(showId, season) {
 }
 
 /* ── PERSON FILMOGRAPHY PAGE ─────────────────────────────────────── */
+
+/* ── TMDB WATCH PROVIDER CACHE ───────────────────────────────────── */
+let _tmdbWatchProviders = null;
+
+async function getTmdbWatchProviders() {
+  if (_tmdbWatchProviders) return _tmdbWatchProviders;
+  try {
+    const data = await tmdb('/watch/providers/movie', { watch_region: 'US' });
+    // Sort by display priority (lower number = more prominent) and limit to top 60
+    const sorted = (data.results || [])
+      .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))
+      .slice(0, 60);
+    _tmdbWatchProviders = sorted;
+  } catch {
+    _tmdbWatchProviders = [];
+  }
+  return _tmdbWatchProviders;
+}
+
 /* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
 export async function openProviderPage(providerId, providerName) {
   const ov = document.getElementById('company-overlay');
@@ -4315,25 +4337,6 @@ export async function openProviderPage(providerId, providerName) {
   const base       = { with_watch_providers: providerId, watch_region: 'US' };
   const provPageId = 'page-provider';
 
-  // Known providers for the switcher bar — expanded to cover more services
-  const KNOWN_PROVIDERS = [
-    { id:8,   name:'Netflix',       domain:'netflix.com' },
-    { id:337, name:'Disney+',       domain:'disneyplus.com' },
-    { id:15,  name:'Hulu',          domain:'hulu.com' },
-    { id:9,   name:'Prime Video',   domain:'primevideo.com' },
-    { id:384, name:'Max',           domain:'max.com' },
-    { id:350, name:'Apple TV+',     domain:'tv.apple.com' },
-    { id:531, name:'Paramount+',    domain:'paramountplus.com' },
-    { id:386, name:'Peacock',       domain:'peacocktv.com' },
-    { id:283, name:'Crunchyroll',   domain:'crunchyroll.com' },
-    { id:37,  name:'Showtime',      domain:'showtime.com' },
-    { id:43,  name:'Starz',         domain:'starz.com' },
-    { id:387, name:'Mubi',          domain:'mubi.com' },
-    { id:73,  name:'Tubi',          domain:'tubi.tv' },
-    { id:300, name:'BritBox',       domain:'britbox.com' },
-    { id:123, name:'Shudder',       domain:'shudder.com' },
-  ];
-
   // ── Create provider page if needed ──
   if (!document.getElementById(provPageId)) {
     const pg = document.createElement('main');
@@ -4348,15 +4351,9 @@ export async function openProviderPage(providerId, providerName) {
           <img id="provider-page-logo" class="provider-page-logo" src="" alt="" style="display:none">
           <span id="provider-page-title" class="provider-page-title"></span>
         </div>
-        <!-- Provider switcher: all known providers as small buttons -->
+        <!-- Provider switcher: populated dynamically from TMDB -->
         <div class="provider-switcher" id="provider-switcher">
-          ${KNOWN_PROVIDERS.map(p => {
-            const lurl = `https://img.logo.dev/${p.domain}?token=${LOGO_DEV_TOKEN}&size=24&format=png`;
-            return `<button class="provider-switch-btn" data-provider-id="${p.id}" data-provider-name="${p.name}" title="${p.name}">
-              <img src="${lurl}" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'" alt="${p.name}">
-              <span>${p.name}</span>
-            </button>`;
-          }).join('')}
+          <span style="font-size:.72rem;color:var(--muted);padding:0 .5rem">Loading…</span>
         </div>
       </div>
       <div id="provider-page-body" style="padding-top:72px"></div>`;
@@ -4366,7 +4363,7 @@ export async function openProviderPage(providerId, providerName) {
       goPage(state._prevPage || 'home');
     });
 
-    // Wire provider switcher buttons
+    // Wire provider switcher buttons (delegated — works for dynamically-added buttons)
     pg.querySelector('#provider-switcher')?.addEventListener('click', e => {
       const btn = e.target.closest('.provider-switch-btn');
       if (!btn) return;
@@ -4376,6 +4373,37 @@ export async function openProviderPage(providerId, providerName) {
     });
 
     registerLoader('provider', () => {});
+
+    // Populate switcher from TMDB asynchronously
+    getTmdbWatchProviders().then(providers => {
+      const switcher = document.getElementById('provider-switcher');
+      if (!switcher) return;
+      switcher.innerHTML = providers.map(p => {
+        const logoSrc = p.logo_path
+          ? `https://image.tmdb.org/t/p/w45${p.logo_path}`
+          : '';
+        return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
+          ${logoSrc ? `<img src="${logoSrc}" width="20" height="20" style="border-radius:4px;object-fit:cover" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
+          <span>${esc(p.provider_name)}</span>
+        </button>`;
+      }).join('');
+    });
+  } else {
+    // Page already exists — refresh switcher in case TMDB data was just loaded
+    const switcher = document.getElementById('provider-switcher');
+    if (switcher && !switcher.querySelector('.provider-switch-btn')) {
+      getTmdbWatchProviders().then(providers => {
+        switcher.innerHTML = providers.map(p => {
+          const logoSrc = p.logo_path
+            ? `https://image.tmdb.org/t/p/w45${p.logo_path}`
+            : '';
+          return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
+            ${logoSrc ? `<img src="${logoSrc}" width="20" height="20" style="border-radius:4px;object-fit:cover" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
+            <span>${esc(p.provider_name)}</span>
+          </button>`;
+        }).join('');
+      });
+    }
   }
 
   // ── Wire dynamic nav tab ──
@@ -6870,6 +6898,45 @@ function initKeyboard() {
           persist('impressions');
         }
       }
+    } catch {}
+  });
+
+  // VidSrc.ru postMessage watch-progress tracking (MEDIA_DATA events)
+  window.addEventListener('message', e => {
+    if (!e.origin.includes('vidsrc.ru')) return;
+    try {
+      const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (d?.type !== 'MEDIA_DATA' || !d.payload) return;
+      const { mediaType, tmdbId, currentTime, duration, season, episode } = d.payload;
+      if (!tmdbId || !currentTime || !duration) return;
+
+      // Don't save if less than 5% or more than 95% watched (too early or already finished)
+      const pct = currentTime / duration;
+      if (pct < 0.05 || pct > 0.95) return;
+
+      const type = mediaType === 'tv' ? 'tv' : 'movie';
+      const key = String(tmdbId);
+
+      // Get existing continue-watching entry or build a stub from currentMedia
+      const existing = state.continueWatching[key] || state.continueWatching[tmdbId] || {};
+      const cm = state.currentMedia || {};
+
+      const entry = {
+        ...existing,
+        id:        tmdbId,
+        type,
+        title:     existing.title || cm.title || cm.name || '',
+        poster_path: existing.poster_path || cm.poster_path || null,
+        progress:  Math.round((currentTime / duration) * 100),
+        currentTime: Math.round(currentTime),
+        duration:  Math.round(duration),
+        updatedAt: Date.now(),
+      };
+      if (type === 'tv' && season)  entry.season  = season;
+      if (type === 'tv' && episode) entry.episode = episode;
+
+      state.continueWatching[key] = entry;
+      persist('continueWatching');
     } catch {}
   });
 }

@@ -3,10 +3,35 @@ import { state, persist } from './state.js';
 /* ── PROVIDERS ───────────────────────────────────────────────────── */
 // Ordered by: reliability > quality > coverage
 // prio: high = default / most reliable, med = good backup, low = last resort
-// 4K: VidLink, Cineby have 4K for select titles
+// noSandbox: true = disable iframe sandbox automatically (player needs it to work)
 export const PROVIDERS = [
   {
-    // #1 — VidSrc CC (vidsrc.to replacement, widest library, reliable HD)
+    // #1 — VidSrc.ru: modern player, watch-progress postMessage, auto-next episode
+    id: 'vidsrcru',
+    label: 'VidSrc.ru',
+    prio: 'high',
+    note: 'HD · Auto-next',
+    domain: 'https://vidsrc.ru',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
+      : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
+  },
+  {
+    // #2 — VidLink: 4K on some titles, needs sandbox disabled, anime support
+    id: 'vidlink',
+    label: 'VidLink',
+    prio: 'high',
+    note: '4K · No sandbox',
+    domain: 'https://vidlink.pro',
+    types: ['movie', 'tv', 'anime'],
+    noSandbox: true,
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidlink.pro/movie/${id}?primaryColor=e50914`
+      : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
+  },
+  {
+    // #3 — VidSrc CC: widest library, reliable HD
     id: 'vidsrc',
     label: 'VidSrc',
     prio: 'high',
@@ -18,7 +43,7 @@ export const PROVIDERS = [
       : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #2 — Embed.su: very reliable, clean UI, no ads
+    // #4 — Embed.su: very reliable, clean UI, no ads
     id: 'embedsu',
     label: 'Embed.su',
     prio: 'high',
@@ -30,19 +55,7 @@ export const PROVIDERS = [
       : `https://embed.su/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #3 — 4K on some titles, anime support, good reliability
-    id: 'vidlink',
-    label: 'VidLink',
-    prio: 'high',
-    note: '4K · Anime',
-    domain: 'https://vidlink.pro',
-    types: ['movie', 'tv', 'anime'],
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://vidlink.pro/movie/${id}?primaryColor=e50914`
-      : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
-  },
-  {
-    // #4 — Cineby: 4K available on select titles
+    // #5 — Cineby: 4K available on select titles
     id: 'cineby',
     label: 'Cineby',
     prio: 'high',
@@ -54,7 +67,7 @@ export const PROVIDERS = [
       : `https://www.cineby.app/tv/${id}/${s}/${e}`,
   },
   {
-    // #5 — VidSrc Me: alternate vidsrc backend
+    // #6 — VidSrc Me: alternate vidsrc backend
     id: 'vidsrcme',
     label: 'VidSrc.me',
     prio: 'med',
@@ -66,19 +79,20 @@ export const PROVIDERS = [
       : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
-    // #6 — Good for movies, multi-source fallback internally
+    // #7 — MultiEmbed: multi-source, needs sandbox disabled
     id: 'superembed',
     label: 'MultiEmbed',
     prio: 'med',
     note: 'Multi-source',
     domain: 'https://multiembed.mov',
     types: ['movie', 'tv'],
+    noSandbox: true,
     url: (id, t, s, e) => t === 'movie'
       ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
       : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
   },
   {
-    // #7 — VidSrc Pro: separate library
+    // #8 — VidSrc Pro: separate library
     id: 'vidsrcpro',
     label: 'VidSrc Pro',
     prio: 'med',
@@ -90,19 +104,20 @@ export const PROVIDERS = [
       : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #8 — 2Embed: good coverage
+    // #9 — 2Embed: good coverage, needs sandbox disabled
     id: 'embed2',
     label: '2Embed',
     prio: 'med',
     note: 'Wide coverage',
     domain: 'https://www.2embed.cc',
     types: ['movie', 'tv'],
+    noSandbox: true,
     url: (id, t, s, e) => t === 'movie'
       ? `https://www.2embed.cc/embed/${id}`
       : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    // #9 — AutoEmbed: good for recent content
+    // #10 — AutoEmbed: good for recent content
     id: 'autoembed',
     label: 'AutoEmbed',
     prio: 'med',
@@ -114,7 +129,7 @@ export const PROVIDERS = [
       : `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #10 — Smashy Stream: solid fallback
+    // #11 — Smashy Stream: solid fallback
     id: 'smashy',
     label: 'SmashyStream',
     prio: 'low',
@@ -126,7 +141,7 @@ export const PROVIDERS = [
       : `https://player.smashy.stream/tv/${id}?s=${s}&e=${e}`,
   },
   {
-    // #11 — Videasy: last resort fallback
+    // #12 — Videasy: last resort fallback
     id: 'videasy',
     label: 'Videasy',
     prio: 'low',
@@ -206,10 +221,18 @@ export function buildProviderBar(mediaId, type, season, episode) {
 /* ── PLAYER LOAD ─────────────────────────────────────────────────── */
 let _providerTimer = null;
 
+// Saved sandbox attribute value so we can restore it when switching away
+let _iframeSandboxDefault = null;
+
 export function loadPlayer(mediaId, type, season = 1, episode = 1) {
   const loading = document.getElementById('player-loading');
   const iframe = document.getElementById('player-frame');
   if (!loading || !iframe) return;
+
+  // Save original sandbox value on first call
+  if (_iframeSandboxDefault === null) {
+    _iframeSandboxDefault = iframe.getAttribute('sandbox') || '';
+  }
 
   clearTimeout(_providerTimer);
   loading.classList.remove('hidden');
@@ -221,6 +244,14 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
     const safe = PROVIDERS.find(p => !FIREFOX_BLOCKED_PROVIDERS.has(p.id));
     if (safe) { _activeProvider = safe; state.lastProvider = safe.id; provider = safe; }
   }
+
+  // Auto sandbox toggle: some providers require sandbox to be removed to function
+  if (provider.noSandbox) {
+    iframe.removeAttribute('sandbox');
+  } else if (_iframeSandboxDefault) {
+    iframe.setAttribute('sandbox', _iframeSandboxDefault);
+  }
+
   const src = provider.url(mediaId, type === 'anime' ? 'tv' : type, season, episode);
 
   iframe.removeAttribute('src');
