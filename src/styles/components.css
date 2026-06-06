@@ -17,7 +17,7 @@
 .card:nth-child(4) { animation-delay: .12s; }
 .card:nth-child(5) { animation-delay: .16s; }
 .card:hover {
-  transform: scale(1.06) translateY(-6px);
+  transform: scaleX(1.10) scaleY(1.07) translateY(-6px);
   box-shadow: 0 20px 56px rgba(0,0,0,.9);
   z-index: 20;
 }
@@ -100,6 +100,21 @@
 .card:has(.card-num-overlay) .card-img-title-name { padding-left: 3rem; }
 .card:has(.card-num-overlay) .card-img-title-year { padding-left: 3rem; }
 
+/* TMDB title-treatment logo image (replaces text title when available) */
+.card-logo-img {
+  display: block;
+  max-height: 44px;
+  max-width: calc(100% - 54px); /* leave room for rating badge */
+  width: auto;
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 1px 6px rgba(0,0,0,.9));
+  margin-bottom: 2px;
+}
+/* When logo is showing, hide text title */
+.card-logo-img.loaded ~ .card-img-title-name,
+.card-logo-img.loaded ~ .card-img-title-year { display: none; }
+
 /* Overlay on hover */
 .card-ov {
   position: absolute;
@@ -175,13 +190,13 @@
 .badge-wl       { background: rgba(245,197,24,.88); color: #000; }
 .badge-liked    { background: rgba(255,100,130,.88); color: #fff; }
 
-/* Rating badge — bottom-right so it doesn't overlap title text */
+/* Rating badge — bottom-right, above title gradient */
 .card-rating {
   position: absolute;
   bottom: 7px;
   right: 7px;
   left: auto;
-  z-index: 2;
+  z-index: 5;
   background: linear-gradient(135deg, rgba(0,0,0,.9) 0%, rgba(20,20,20,.85) 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -495,6 +510,27 @@
   display: flex;
   align-items: center;
   gap: .25rem;
+}
+/* Sandbox toggle button */
+.prov-sandbox {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .6rem !important;
+  color: var(--muted) !important;
+}
+.prov-sandbox-off { color: #4ade80 !important; border-color: rgba(74,222,128,.3) !important; background: rgba(74,222,128,.07) !important; }
+.prov-sandbox-on  { color: #f59e0b !important; border-color: rgba(245,158,11,.3) !important; background: rgba(245,158,11,.07) !important; }
+.prov-sandbox-auto { opacity: .6; }
+.prov-sandbox:hover { opacity: 1 !important; }
+/* No-sandbox dot indicator on provider button */
+.prov-nosandbox-dot {
+  font-size: .5rem;
+  color: #4ade80;
+  margin-left: 2px;
+  vertical-align: middle;
+  opacity: .7;
 }
 .prov-note {
   font-size: .5rem;
@@ -2288,7 +2324,7 @@ img[alt]::after {
 /* Content area */
 #company-content-area { padding-bottom: 3rem; }
 #company-row-view { padding-top: .5rem; }
-.company-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .6rem; padding: 1rem 2rem; }
+.company-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .85rem; padding: 1.5rem 2rem; }
 .company-grid .card { width: 100%; }
 
 /* Sections inside company overlay match home page style */

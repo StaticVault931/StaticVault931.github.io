@@ -11,7 +11,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
   fetchTasteDive, TVAPI_KEY2 } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
-import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
+import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
@@ -165,6 +165,7 @@ const SV_SETTINGS = [
   { id: 'disableSandbox',    label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.',   default: false, icon: 'security',         group: 'Playback' },
   // Display
   { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: true,  icon: 'star',             group: 'Display' },
+  { id: 'useTitleLogos',     label: 'Title Treatment Images', desc: 'Show Netflix-style title logo images on cards instead of text (lazy-loads from TMDB)', default: false, icon: 'title', group: 'Display' },
   { id: 'compactMode',       label: 'Compact Grid Mode',      desc: 'Show content as a grid (no horizontal scroll)',               default: false, icon: 'grid_view',        group: 'Display' },
   { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
   { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
@@ -257,6 +258,7 @@ const SHORTCUTS = [
   registerAllSeeAll();
   initSearch();
   loadGenresUI();
+  initCardLogoObserver(); // lazy-load TMDB title treatment logos when setting is on
 
   // Start home data loading
   loadHero().catch(() => {});
@@ -1937,6 +1939,11 @@ function applySetting(id, val) {
     }
   }
   if (id === 'showRatings') document.body.classList.toggle('sv-hide-ratings', !val);
+  if (id === 'useTitleLogos') {
+    // Re-init the logo observer when the setting is toggled
+    // Use setTimeout so initCardLogoObserver is guaranteed to be defined
+    setTimeout(() => initCardLogoObserver(), 0);
+  }
   if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
   if (id === 'disableSandbox') {
     const frame = document.getElementById('player-frame');
@@ -2885,6 +2892,22 @@ function initEventDelegation() {
       const ep = activeEp ? +activeEp.dataset.ep : 1;
       const next = nextProvider(useId || id, type, s, ep);
       toast(`Trying ${next.label}`, 'sync');
+    }
+    // Sandbox force-override toggle
+    const sbBtn = e.target.closest('#prov-sandbox-btn');
+    if (sbBtn) {
+      const newState = cycleSandboxForce();
+      const label = newState === false ? 'Sandbox: Off' : newState === true ? 'Sandbox: On' : 'Sandbox: Auto';
+      toast(label, 'security');
+      if (state.currentMedia) {
+        const { useId, id, type } = state.currentMedia;
+        const sel = document.getElementById('season-sel');
+        const s = sel ? +sel.value : 1;
+        const activeEp = document.querySelector('.ep-card.on');
+        const ep = activeEp ? +activeEp.dataset.ep : 1;
+        buildProviderBar(useId || id, type, s, ep);
+        loadPlayer(useId || id, type, s, ep);
+      }
     }
   });
 
@@ -4062,64 +4085,79 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    // Info page trailer: TMDB → tv-api.com YouTubeTrailer → Dailymotion → backdrop image
+    // DM from TMDB videos (preferred — no X-Frame-Options block)
+    const dmFromTmdb =
+      videos.find(v => v.site === 'Dailymotion' && v.type === 'Trailer' && v.official) ||
+      videos.find(v => v.site === 'Dailymotion' && v.type === 'Trailer') ||
+      videos.find(v => v.site === 'Dailymotion');
+
+    // Info page trailer: DM (TMDB) → DM (search) → YouTube → tv-api → backdrop
     const trailerWrap = document.getElementById('info-trailer-wrap');
     const posterImg = details.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
       : details.poster_path ? `https://image.tmdb.org/t/p/w780${details.poster_path}` : null;
 
-    if (trailerKey && trailerWrap) {
+    if ((trailerKey || dmFromTmdb) && trailerWrap) {
       trailerWrap.style.cursor = 'default';
       if (trailerFallback) trailerFallback.style.display = 'none';
-      // ── Guard: save a token so stale async callbacks don't clobber a newer open ──
-      const _trailerToken = id; // the TMDB id of this open
-      const _infoTitle = (title || '').replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
-      // ── Show YouTube IMMEDIATELY (no waiting for Dailymotion) ──────────
-      // This eliminates the 20-30s delay. YouTube is available instantly from TMDB.
-      if (trailerFrame) {
+      const _trailerToken = id;
+      const _searchQuery = `${title} ${String(details.release_date || details.first_air_date || '').slice(0,4)}`;
+
+      if (dmFromTmdb && trailerFrame) {
+        // ── Dailymotion from TMDB (best option — no embedding restrictions) ──
+        trailerFrame.style.display = '';
+        trailerFrame.src = `https://www.dailymotion.com/embed/video/${dmFromTmdb.key}?autoplay=1&mute=0&controls=1&ui-start-screen-info=0&endscreen-enable=0&sharing-enable=0`;
+      } else if (trailerKey && trailerFrame) {
+        // ── YouTube as initial display while we race a DM search ──
         trailerFrame.style.display = '';
         trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-      }
 
-      // Detect Error 153 / failed trailer and show backdrop image instead
-      const infoMsgHandler = (e) => {
-        if (e.origin !== 'https://www.youtube.com') return;
-        try {
-          const d = JSON.parse(e.data);
-          if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
-            window.removeEventListener('message', infoMsgHandler);
-            clearTimeout(infoTrailerTimer);
-            if (state.currentInfoMedia?.id === _trailerToken)
-              _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-          }
-        } catch {}
-      };
-      window.addEventListener('message', infoMsgHandler);
-      const infoTrailerTimer = setTimeout(async () => {
-        window.removeEventListener('message', infoMsgHandler);
-        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale
-        if (trailerFallback?.style.display !== '' && trailerFrame?.src) {
-          // TMDB trailer failed — try tv-api.com as backup
-          const imdbIdForTrailer = details.imdb_id ||
-            (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
-          if (imdbIdForTrailer) {
-            const ytData = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
-            if (ytData?.videoId && state.currentInfoMedia?.id === _trailerToken) {
-              if (trailerFrame) {
+        // Race a Dailymotion search in background — swap within 4s if found
+        const _dmRaceTimer = setTimeout(async () => {
+          if (state.currentInfoMedia?.id !== _trailerToken) return;
+          try {
+            const dmVid = await fetchDailymotionTrailer(_searchQuery);
+            if (dmVid?.embed_url && trailerFrame && state.currentInfoMedia?.id === _trailerToken) {
+              trailerFrame.src = dmVid.embed_url;
+              return; // switched to DM — no further fallback needed
+            }
+          } catch {}
+        }, 800);
+
+        // Detect YouTube Error 153 / embedding disabled
+        const infoMsgHandler = (e) => {
+          if (e.origin !== 'https://www.youtube.com') return;
+          try {
+            const d = JSON.parse(e.data);
+            if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+              window.removeEventListener('message', infoMsgHandler);
+              clearTimeout(infoTrailerTimer);
+              clearTimeout(_dmRaceTimer);
+              if (state.currentInfoMedia?.id === _trailerToken)
+                _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+            }
+          } catch {}
+        };
+        window.addEventListener('message', infoMsgHandler);
+        const infoTrailerTimer = setTimeout(async () => {
+          window.removeEventListener('message', infoMsgHandler);
+          if (state.currentInfoMedia?.id !== _trailerToken) return;
+          if (trailerFallback?.style.display !== '' && trailerFrame?.src) {
+            // YouTube failed — try tv-api.com
+            const imdbIdForTrailer = details.imdb_id ||
+              (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
+            if (imdbIdForTrailer) {
+              const ytData = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
+              if (ytData?.videoId && state.currentInfoMedia?.id === _trailerToken && trailerFrame) {
                 trailerFrame.src = `https://www.youtube.com/embed/${ytData.videoId}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
                 return;
               }
             }
-            const dmVideo = await fetchDailymotionTrailer(`${title} ${String(details.release_date||'').slice(0,4)}`).catch(() => null);
-            if (dmVideo?.embed_url && trailerFrame && state.currentInfoMedia?.id === _trailerToken) {
-              trailerFrame.src = dmVideo.embed_url;
-              return;
-            }
+            if (state.currentInfoMedia?.id === _trailerToken)
+              _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
           }
-          if (state.currentInfoMedia?.id === _trailerToken)
-            _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-        }
-      }, 7000);
+        }, 7000);
+      } // end else if (trailerKey)
     } else {
       if (trailerFrame) { trailerFrame.removeAttribute('src'); trailerFrame.style.display = 'none'; }
       if (trailerFallback) {
@@ -4333,7 +4371,12 @@ export async function openProviderPage(providerId, providerName) {
     11:   174,   // AMC (alt)
   };
   const networkId  = PROVIDER_NETWORK_IDS[providerId];
-  const logoUrl    = getProviderLogoUrl(providerName, 48);
+  // Prefer TMDB logo over logo.dev (TMDB logos are already cached from the dynamic list)
+  const _cachedProviders = _tmdbWatchProviders || [];
+  const _tmdbMatch = _cachedProviders.find(p => p.provider_id === providerId);
+  const logoUrl = _tmdbMatch?.logo_path
+    ? `https://image.tmdb.org/t/p/w92${_tmdbMatch.logo_path}`
+    : getProviderLogoUrl(providerName, 48);
   const base       = { with_watch_providers: providerId, watch_region: 'US' };
   const provPageId = 'page-provider';
 
@@ -4380,10 +4423,10 @@ export async function openProviderPage(providerId, providerName) {
       if (!switcher) return;
       switcher.innerHTML = providers.map(p => {
         const logoSrc = p.logo_path
-          ? `https://image.tmdb.org/t/p/w45${p.logo_path}`
+          ? `https://image.tmdb.org/t/p/w92${p.logo_path}`
           : '';
         return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
-          ${logoSrc ? `<img src="${logoSrc}" width="20" height="20" style="border-radius:4px;object-fit:cover" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
+          ${logoSrc ? `<img src="${logoSrc}" width="22" height="22" style="border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
           <span>${esc(p.provider_name)}</span>
         </button>`;
       }).join('');
@@ -4395,10 +4438,10 @@ export async function openProviderPage(providerId, providerName) {
       getTmdbWatchProviders().then(providers => {
         switcher.innerHTML = providers.map(p => {
           const logoSrc = p.logo_path
-            ? `https://image.tmdb.org/t/p/w45${p.logo_path}`
+            ? `https://image.tmdb.org/t/p/w92${p.logo_path}`
             : '';
           return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
-            ${logoSrc ? `<img src="${logoSrc}" width="20" height="20" style="border-radius:4px;object-fit:cover" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
+            ${logoSrc ? `<img src="${logoSrc}" width="22" height="22" style="border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
             <span>${esc(p.provider_name)}</span>
           </button>`;
         }).join('');
@@ -4426,7 +4469,13 @@ export async function openProviderPage(providerId, providerName) {
   const hdrLogo  = document.getElementById('provider-page-logo');
   const hdrTitle = document.getElementById('provider-page-title');
   if (hdrLogo && logoUrl) { hdrLogo.src = logoUrl; hdrLogo.style.display = ''; }
+  else if (hdrLogo && !logoUrl) { hdrLogo.style.display = 'none'; }
   if (hdrTitle) hdrTitle.textContent = providerName;
+
+  // ── Mark active provider in switcher ──
+  document.querySelectorAll('#provider-switcher .provider-switch-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.providerId === providerId);
+  });
 
   // ── Navigate to provider page ──
   // Close any open overlays before navigating
@@ -4629,14 +4678,27 @@ export async function openCollectionPage(collectionId, collectionName) {
   _openCompanyOverlay({
     name: collectionName,
     subtitle: 'Film Collection',
+    defaultCompact: true, // collections look better as a grid
     fetchFn: async () => {
       const col = await tmdb(`/collection/${collectionId}`);
       const movies = (col.parts || [])
         .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1)
         .map(m => ({...m, media_type:'movie'}));
+
+      // Build a readable subtitle: "X Films · Year–Year"
+      const years = movies.map(m => +(m.release_date||'').slice(0,4)).filter(Boolean);
+      const yearRange = years.length > 1
+        ? `${Math.min(...years)}–${Math.max(...years)}`
+        : years[0] || '';
+      const subtitle = [
+        `${movies.length} Film${movies.length !== 1 ? 's' : ''}`,
+        yearRange,
+      ].filter(Boolean).join(' · ');
+
       return {
         name: col.name || collectionName,
         desc: col.overview || '',
+        parent: subtitle,
         backdropUrl: col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280') : null,
         movies,
         tv: [],
@@ -4646,7 +4708,7 @@ export async function openCollectionPage(collectionId, collectionName) {
 }
 
 /* ── UNIFIED COMPANY / PROVIDER / COLLECTION OVERLAY ─────────────── */
-async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
+async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCompact = false }) {
   // Stop hover trailer immediately — don't let it play behind the overlay
   clearHoverTrailer();
   const ov = document.getElementById('company-overlay');
@@ -4693,13 +4755,20 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn }) {
     });
   }
 
-  // Default to row view
+  // Default view: compact for collections, row for everything else
   const rowView     = ov.querySelector('#company-row-view');
   const compactView = ov.querySelector('#company-compact-view');
-  if (rowView)     rowView.style.display = '';
-  if (compactView) compactView.style.display = 'none';
-  ov.querySelector('#cv-btn-row')?.classList.add('on');
-  ov.querySelector('#cv-btn-compact')?.classList.remove('on');
+  if (defaultCompact) {
+    if (rowView)     rowView.style.display = 'none';
+    if (compactView) compactView.style.display = '';
+    ov.querySelector('#cv-btn-row')?.classList.remove('on');
+    ov.querySelector('#cv-btn-compact')?.classList.add('on');
+  } else {
+    if (rowView)     rowView.style.display = '';
+    if (compactView) compactView.style.display = 'none';
+    ov.querySelector('#cv-btn-row')?.classList.add('on');
+    ov.querySelector('#cv-btn-compact')?.classList.remove('on');
+  }
 
   // Set loading state
   const moviesRow = document.getElementById('company-movies-row');
@@ -6334,6 +6403,85 @@ function checkProviderNotification() {
   }
 }
 
+/* ── TMDB TITLE TREATMENT LOGOS (lazy card logo loader) ─────────── */
+let _cardLogoObserver = null;
+let _cardLogoMutObs   = null;
+const _logoCache = new Map(); // id → logoUrl | null
+
+async function _loadCardLogo(card) {
+  const id   = card.dataset.id;
+  const type = card.dataset.type;
+  if (!id || !type) return;
+
+  // Use cached result if available
+  if (_logoCache.has(id)) {
+    const url = _logoCache.get(id);
+    if (url) _applyCardLogo(card, url);
+    return;
+  }
+
+  try {
+    const ep = type === 'anime' ? 'tv' : type;
+    const data = await tmdb(`/${ep}/${id}/images`, { include_image_language: 'en,null' });
+    const logos = (data.logos || [])
+      .filter(l => l.iso_639_1 === 'en' && l.file_path)
+      .sort((a, b) => b.vote_average - a.vote_average);
+    // Fallback: accept any-language logo if no English one
+    const best = logos[0] || (data.logos || []).sort((a, b) => b.vote_average - a.vote_average)[0];
+    const url = best ? `https://image.tmdb.org/t/p/w300${best.file_path}` : null;
+    _logoCache.set(id, url);
+    if (url) _applyCardLogo(card, url);
+  } catch {
+    _logoCache.set(id, null);
+  }
+}
+
+function _applyCardLogo(card, url) {
+  const imgEl = card.querySelector('.card-logo-img');
+  if (!imgEl) return;
+  imgEl.src = url;
+  imgEl.style.display = 'block';
+  imgEl.onload = () => imgEl.classList.add('loaded');
+  imgEl.onerror = () => { imgEl.style.display = 'none'; };
+}
+
+function _observeCards(target) {
+  if (!_cardLogoObserver) return;
+  if (target.matches?.('.card[data-id]:not([data-logo-obs])')) {
+    target.dataset.logoObs = '1';
+    _cardLogoObserver.observe(target);
+  }
+  target.querySelectorAll?.('.card[data-id]:not([data-logo-obs])').forEach(c => {
+    c.dataset.logoObs = '1';
+    _cardLogoObserver.observe(c);
+  });
+}
+
+function initCardLogoObserver() {
+  // Tear down previous observers
+  _cardLogoObserver?.disconnect();
+  _cardLogoMutObs?.disconnect();
+
+  if (!getSetting('useTitleLogos')) return;
+
+  _cardLogoObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      _cardLogoObserver.unobserve(entry.target);
+      _loadCardLogo(entry.target);
+    });
+  }, { rootMargin: '200px' });
+
+  // Observe cards already in DOM
+  _observeCards(document);
+
+  // Watch for new cards added dynamically
+  _cardLogoMutObs = new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) _observeCards(n); }));
+  });
+  _cardLogoMutObs.observe(document.body, { childList: true, subtree: true });
+}
+
 /* ── NETFLIX-STYLE HOVER CARD ────────────────────────────────────── */
 const _hoverTrailerCache = new Map();
 let _hoverTimer = null;
@@ -6536,11 +6684,13 @@ async function showNetflixCard(card) {
     ? Promise.resolve(_genreCache.get(id))
     : fetchRichDetails(id, type);
 
-  // ── STEP 2: Load YouTube trailer immediately — no DM wait ──────────
+  // ── STEP 2: Fetch trailer — DM preferred, YouTube fallback ──────────
   if (!frame) return;
   if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
 
-  const trailerKey = await fetchTrailerKey(id, type);
+  const _hoverTitle = card.dataset.title || '';
+  const _hoverYear  = card.dataset.year  || '';
+  const trailerKey = await fetchTrailerKey(id, type, _hoverTitle, _hoverYear);
 
   if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
@@ -6643,7 +6793,7 @@ function positionNetflixCard(card, nc) {
   nc.style.top = `${top}px`;
 }
 
-async function fetchTrailerKey(id, type) {
+async function fetchTrailerKey(id, type, title = '', year = '') {
   let key = _hoverTrailerCache.get(id);
   if (key !== undefined) return key;
   try {
@@ -6659,16 +6809,27 @@ async function fetchTrailerKey(id, type) {
                vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
                vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
                vids.find(v => v.site === 'YouTube');
-    if (dm) key = `dm:${dm.key}`;
-    else if (yt) key = yt.key;
-    else key = '__none__';
+    if (dm) {
+      key = `dm:${dm.key}`;
+    } else if (yt) {
+      key = yt.key; // Use YouTube for now; race a DM search to upgrade cache
+      // Background DM search — updates cache if found (next hover will use DM)
+      if (title) {
+        const searchQuery = `${title} ${year}`.trim();
+        fetchDailymotionTrailer(searchQuery).then(dmVid => {
+          if (dmVid?.id) _hoverTrailerCache.set(id, `dm:${dmVid.id}`);
+        }).catch(() => {});
+      }
+    } else {
+      key = '__none__';
+    }
   } catch {
     key = '__none__';
   }
   _hoverTrailerCache.set(id, key);
   if (_hoverTrailerCache.size > 200) {
-    const keys = [..._hoverTrailerCache.keys()].slice(0, 100);
-    keys.forEach(k => _hoverTrailerCache.delete(k));
+    const firstKeys = [..._hoverTrailerCache.keys()].slice(0, 100);
+    firstKeys.forEach(k => _hoverTrailerCache.delete(k));
   }
   return key;
 }

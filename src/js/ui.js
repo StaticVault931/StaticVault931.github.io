@@ -102,6 +102,7 @@ export function makeCard(m, type, opts = {}) {
       ${showOverlayRating && rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
       ${numEl}
       <div class="card-img-title">
+        <img class="card-logo-img" src="" alt="" style="display:none" loading="lazy">
         <div class="card-img-title-name">${esc(title)}</div>
         ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
       </div>

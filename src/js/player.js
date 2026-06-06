@@ -13,6 +13,7 @@ export const PROVIDERS = [
     note: 'HD · Auto-next',
     domain: 'https://vidsrc.ru',
     types: ['movie', 'tv', 'anime'],
+    noSandbox: true,
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
       : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
@@ -169,6 +170,32 @@ export function providersFor(type, opts = {}) {
   return list.filter(p => !disabled.includes(p.id));
 }
 
+/* ── SANDBOX FORCE OVERRIDE ──────────────────────────────────────── */
+// null = auto per-provider, false = always off, true = always on
+let _sandboxForce = null;
+
+export function getSandboxForce() { return _sandboxForce; }
+
+export function setSandboxForce(val) {
+  _sandboxForce = val;
+  const iframe = document.getElementById('player-frame');
+  if (!iframe) return;
+  if (val === false) {
+    iframe.removeAttribute('sandbox');
+  } else if (val === true && _iframeSandboxDefault) {
+    iframe.setAttribute('sandbox', _iframeSandboxDefault);
+  }
+  // val === null → will be applied on next loadPlayer call
+}
+
+export function cycleSandboxForce() {
+  // Cycle: auto → force off → force on → auto
+  if (_sandboxForce === null)  setSandboxForce(false);
+  else if (_sandboxForce === false) setSandboxForce(true);
+  else setSandboxForce(null);
+  return _sandboxForce;
+}
+
 /* ── ACTIVE PROVIDER ─────────────────────────────────────────────── */
 let _activeProvider = null;
 
@@ -204,18 +231,30 @@ export function buildProviderBar(mediaId, type, season, episode) {
   const list = providersFor(type);
   const active = getActiveProvider();
 
+  // Sandbox button label reflects current state
+  const sf = _sandboxForce;
+  const sbLabel = sf === false ? 'Sandbox: Off' : sf === true ? 'Sandbox: On' : 'Sandbox: Auto';
+  const sbClass = sf === false ? ' prov-sandbox-off' : sf === true ? ' prov-sandbox-on' : ' prov-sandbox-auto';
+  // Active provider sandbox state (for auto mode)
+  const activeSandbox = sf !== null ? sf : !active.noSandbox;
+  const sbIcon = activeSandbox
+    ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>`
+    : `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
+
   bar.innerHTML =
     `<span class="prov-label">Source</span>` +
     `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
-       <span class="material-icons-round" style="font-size:.9rem">skip_next</span> Next
+       <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg> Next
      </button>` +
-    list.map(p =>
-      `<button class="prov-btn${active.id === p.id ? ' on' : ''}${p.prio === 'high' ? ' prio-high' : p.prio === 'low' ? ' prio-low' : ''}"
+    `<button class="prov-btn prov-sandbox${sbClass}" id="prov-sandbox-btn" title="Cycle sandbox mode: Auto → Off → On\nAuto: off for VidLink/MultiEmbed/2Embed/VidSrc.ru, on for others\nOff: removes sandbox for all providers\nOn: forces sandbox on for all providers">${sbIcon} ${sbLabel}</button>` +
+    list.map(p => {
+      const isActive = active.id === p.id;
+      const sandboxActive = sf !== null ? sf !== false : !p.noSandbox;
+      const noSandboxBadge = !sandboxActive ? `<span class="prov-nosandbox-dot" title="Sandbox off">●</span>` : '';
+      return `<button class="prov-btn${isActive ? ' on' : ''}${p.prio === 'high' ? ' prio-high' : p.prio === 'low' ? ' prio-low' : ''}"
         data-provider="${p.id}"
-        title="${p.label}${p.note ? ' · ' + p.note : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}</button>`
-    ).join('');
-
-  // delegate in player.js via data-provider attr — handled in app.js
+        title="${p.label}${p.note ? ' · ' + p.note : ''}${p.noSandbox ? ' (no sandbox)' : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}${noSandboxBadge}</button>`;
+    }).join('');
 }
 
 /* ── PLAYER LOAD ─────────────────────────────────────────────────── */
@@ -245,11 +284,18 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
     if (safe) { _activeProvider = safe; state.lastProvider = safe.id; provider = safe; }
   }
 
-  // Auto sandbox toggle: some providers require sandbox to be removed to function
-  if (provider.noSandbox) {
+  // Sandbox: force override wins; otherwise auto per-provider
+  if (_sandboxForce === false) {
     iframe.removeAttribute('sandbox');
-  } else if (_iframeSandboxDefault) {
-    iframe.setAttribute('sandbox', _iframeSandboxDefault);
+  } else if (_sandboxForce === true) {
+    if (_iframeSandboxDefault) iframe.setAttribute('sandbox', _iframeSandboxDefault);
+  } else {
+    // Auto: disable for noSandbox providers, restore for others
+    if (provider.noSandbox) {
+      iframe.removeAttribute('sandbox');
+    } else if (_iframeSandboxDefault) {
+      iframe.setAttribute('sandbox', _iframeSandboxDefault);
+    }
   }
 
   const src = provider.url(mediaId, type === 'anime' ? 'tv' : type, season, episode);
