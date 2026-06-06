@@ -65,7 +65,8 @@ export const state = {
   ageRating:    load('sv_age', 'PG'),
   prefLikes:    load('sv_pref_likes', []),    // [{id,type,title,poster,score}]
   prefDislikes: load('sv_pref_dislikes', []), // [{id,type,title,poster}]
-  prefGenres:   load('sv_pref_genres', []),   // [genreId]
+  prefGenres:         load('sv_pref_genres', []),          // [genreId] — liked genres
+  prefGenreDislikes:  load('sv_pref_genre_dislikes', []),  // [genreId] — disliked genres
   prefTagLikes:    load('sv_pref_tag_likes', []),    // [{id,name}] — liked TMDB keywords
   prefTagDislikes: load('sv_pref_tag_dislikes', []), // [{id,name}] — disliked TMDB keywords
   lastProvider: load('sv_last_provider', 'vidsrc'),
@@ -97,6 +98,7 @@ const PERSIST_MAP = {
   prefLikes:        'sv_pref_likes',
   prefDislikes:     'sv_pref_dislikes',
   prefGenres:         'sv_pref_genres',
+  prefGenreDislikes:  'sv_pref_genre_dislikes',
   prefTagLikes:       'sv_pref_tag_likes',
   prefTagDislikes:    'sv_pref_tag_dislikes',
   lastProvider:       'sv_last_provider',

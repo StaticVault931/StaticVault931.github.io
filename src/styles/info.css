@@ -364,6 +364,40 @@
   margin-bottom: .25rem;
 }
 
+/* ── TAG PREFERENCE SEARCH (in CYF page) ─────────────────────────── */
+.pref-tag-search-row {
+  display: flex; align-items: center; gap: .5rem;
+  background: var(--s3); border: 1.5px solid var(--border2);
+  border-radius: 8px; padding: .38rem .7rem;
+  transition: border-color .15s;
+}
+.pref-tag-search-row:focus-within { border-color: rgba(255,255,255,.3); }
+.pref-tag-search-input {
+  background: none; border: none; outline: none;
+  color: var(--text); font-size: .82rem; flex: 1;
+  min-width: 0; font-family: inherit;
+}
+.pref-tag-search-input::placeholder { color: var(--dim); }
+.pref-tag-search-results {
+  display: flex; flex-wrap: wrap; gap: .28rem;
+  margin-top: .4rem; min-height: 0;
+}
+.pref-kw-result {
+  display: inline-flex; align-items: center; gap: .22rem;
+  padding: .2rem .5rem; border-radius: 5px;
+  font-size: .72rem; font-weight: 700;
+  background: var(--s3); border: 1px solid var(--border2);
+  color: var(--text);
+}
+.pref-kw-result-btn {
+  display: inline-flex; align-items: center; background: none;
+  border: none; padding: 0 .12rem; cursor: pointer; border-radius: 3px;
+  color: var(--dim); transition: color .12s;
+}
+.pref-kw-result-btn.like:hover,  .pref-kw-result-btn.like.active  { color: #4ade80; }
+.pref-kw-result-btn.dislike:hover, .pref-kw-result-btn.dislike.active { color: #f87171; }
+.pref-kw-result-btn .material-icons-round { font-size: .82rem; }
+
 /* ── ANIME TAGS (AniList rich tags) ──────────────────────────────── */
 .info-ani-tag {
   display: inline-flex; align-items: center;

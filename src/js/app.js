@@ -1684,11 +1684,36 @@ function loadPrefsPage() {
   renderTagPrefsSection();
   buildRatingDescriptions();
   buildGenreChips('pref-genres', GENRES, (id, _name, chipEl) => {
-    const i = state.prefGenres.indexOf(id);
-    if (i >= 0) state.prefGenres.splice(i, 1); else state.prefGenres.push(id);
-    persist('prefGenres');
-    chipEl.classList.toggle('on', state.prefGenres.includes(id));
-  }, state.prefGenres);
+    const liked    = state.prefGenres.includes(id);
+    const disliked = state.prefGenreDislikes.includes(id);
+    const ICONS    = Object.fromEntries(GENRES.map(g => [g.id, g.icon]));
+
+    if (!liked && !disliked) {
+      // None → Liked
+      state.prefGenres.push(id);
+      persist('prefGenres');
+      chipEl.classList.add('on');
+      chipEl.querySelector('.material-icons-round').textContent = ICONS[id] || 'thumb_up';
+      chipEl.title = 'Click to dislike';
+    } else if (liked) {
+      // Liked → Disliked
+      state.prefGenres = state.prefGenres.filter(x => x !== id);
+      persist('prefGenres');
+      state.prefGenreDislikes.push(id);
+      persist('prefGenreDislikes');
+      chipEl.classList.remove('on');
+      chipEl.classList.add('off');
+      chipEl.querySelector('.material-icons-round').textContent = 'thumb_down';
+      chipEl.title = 'Click to reset';
+    } else {
+      // Disliked → None
+      state.prefGenreDislikes = state.prefGenreDislikes.filter(x => x !== id);
+      persist('prefGenreDislikes');
+      chipEl.classList.remove('off');
+      chipEl.querySelector('.material-icons-round').textContent = ICONS[id] || 'star';
+      chipEl.title = 'Click to like';
+    }
+  }, state.prefGenres, state.prefGenreDislikes);
   buildVidsrcDomainList();
   buildAgeRatingUI();
   initPrefAutocomplete();
@@ -1796,8 +1821,28 @@ function buildProviderTestUI() {
     btn.innerHTML = '<span class="material-icons-round">play_circle</span>Test Everything';
   };
 
-  document.getElementById('test-all-apis-btn')?.addEventListener('click', _runAllTests);
+  document.getElementById('test-all-apis-btn')?.addEventListener('click', () => {
+    // Auto-expand when testing
+    const body = document.getElementById('provider-test-body');
+    const toggleBtn = document.getElementById('ptest-toggle-btn');
+    if (body && body.classList.contains('collapsed')) {
+      body.classList.remove('collapsed');
+      if (toggleBtn) toggleBtn.innerHTML = '<span class="material-icons-round" style="font-size:.85rem">expand_less</span>Hide';
+    }
+    _runAllTests();
+  });
   document.getElementById('test-all-providers-cyf-btn')?.addEventListener('click', _runAllTests);
+
+  // Show/hide toggle
+  document.getElementById('ptest-toggle-btn')?.addEventListener('click', () => {
+    const body = document.getElementById('provider-test-body');
+    const btn = document.getElementById('ptest-toggle-btn');
+    if (!body || !btn) return;
+    const collapsed = body.classList.toggle('collapsed');
+    btn.innerHTML = collapsed
+      ? '<span class="material-icons-round" style="font-size:.85rem">expand_more</span>Show'
+      : '<span class="material-icons-round" style="font-size:.85rem">expand_less</span>Hide';
+  });
 }
 
 function buildAgeRatingUI() {
@@ -2094,11 +2139,6 @@ function renderTagPrefsSection() {
   const likes    = state.prefTagLikes;
   const dislikes = state.prefTagDislikes;
 
-  if (!likes.length && !dislikes.length) {
-    sec.innerHTML = `<p class="muted-note" style="font-size:.8rem;padding:.4rem 0">No tag preferences yet. Open any title and click a keyword tag to like or dislike it.</p>`;
-    return;
-  }
-
   const likeChips = likes.map(t =>
     `<span class="pref-keyword-chip liked" data-tag-id="${t.id}" data-tag-type="like">
       <span class="material-icons-round" style="font-size:.7rem;color:#4ade80">favorite</span>
@@ -2120,6 +2160,15 @@ function renderTagPrefsSection() {
   ).join('');
 
   sec.innerHTML = `
+    <!-- Tag search -->
+    <div class="pref-tag-search-wrap" style="margin-bottom:.75rem">
+      <div class="pref-tag-search-row">
+        <span class="material-icons-round" style="color:var(--dim);font-size:1rem">search</span>
+        <input class="pref-tag-search-input" id="pref-tag-search-input" type="text"
+          placeholder="Search for a keyword tag to add…" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="pref-tag-search-results" class="pref-tag-search-results"></div>
+    </div>
     ${likes.length ? `
       <div class="pref-tag-subhead">
         <span class="material-icons-round" style="color:#4ade80;font-size:.9rem">favorite</span>
@@ -2134,7 +2183,84 @@ function renderTagPrefsSection() {
       </div>
       <div class="pref-keyword-row">${dislikeChips}</div>
     ` : ''}
+    ${!likes.length && !dislikes.length ? `
+      <p class="muted-note" style="font-size:.78rem;color:var(--dim);margin-top:.35rem">No tag preferences yet — search above or open a title and click a keyword tag.</p>
+    ` : ''}
   `;
+
+  // Wire tag search
+  const searchInput = sec.querySelector('#pref-tag-search-input');
+  const searchResults = sec.querySelector('#pref-tag-search-results');
+  if (searchInput && searchResults) {
+    let _tagSearchTimer = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(_tagSearchTimer);
+      const q = searchInput.value.trim();
+      if (!q) { searchResults.innerHTML = ''; return; }
+      searchResults.innerHTML = `<span style="font-size:.72rem;color:var(--dim)">Searching…</span>`;
+      _tagSearchTimer = setTimeout(async () => {
+        try {
+          const data = await tmdb('/search/keyword', { query: q });
+          const kws = (data.results || []).slice(0, 12);
+          if (!kws.length) { searchResults.innerHTML = `<span style="font-size:.72rem;color:var(--dim)">No results for "${esc(q)}"</span>`; return; }
+          searchResults.innerHTML = kws.map(kw => {
+            const isLiked    = state.prefTagLikes.some(t => t.id === kw.id);
+            const isDisliked = state.prefTagDislikes.some(t => t.id === kw.id);
+            return `<span class="pref-kw-result" data-kw-id="${kw.id}" data-kw-name="${esc(kw.name)}">
+              ${esc(kw.name)}
+              <button class="pref-kw-result-btn like${isLiked ? ' active' : ''}" data-kw-like="${kw.id}" title="Like tag">
+                <span class="material-icons-round">favorite${isLiked ? '' : '_border'}</span>
+              </button>
+              <button class="pref-kw-result-btn dislike${isDisliked ? ' active' : ''}" data-kw-dislike="${kw.id}" title="Dislike tag">
+                <span class="material-icons-round">thumb_down${isDisliked ? '' : '_off_alt'}</span>
+              </button>
+            </span>`;
+          }).join('');
+          // Wire result buttons
+          searchResults.querySelectorAll('[data-kw-like]').forEach(btn => {
+            btn.addEventListener('click', e => {
+              e.stopPropagation();
+              const id = +btn.dataset.kwLike;
+              const name = btn.closest('[data-kw-name]')?.dataset.kwName || '';
+              if (state.prefTagLikes.some(t => t.id === id)) {
+                state.prefTagLikes = state.prefTagLikes.filter(t => t.id !== id);
+                persist('prefTagLikes');
+              } else {
+                state.prefTagDislikes = state.prefTagDislikes.filter(t => t.id !== id);
+                persist('prefTagDislikes');
+                state.prefTagLikes.push({ id, name });
+                if (state.prefTagLikes.length > 40) state.prefTagLikes = state.prefTagLikes.slice(-40);
+                persist('prefTagLikes');
+                toast(`Liked tag: ${name}`, 'favorite');
+              }
+              renderTagPrefsSection();
+            });
+          });
+          searchResults.querySelectorAll('[data-kw-dislike]').forEach(btn => {
+            btn.addEventListener('click', e => {
+              e.stopPropagation();
+              const id = +btn.dataset.kwDislike;
+              const name = btn.closest('[data-kw-name]')?.dataset.kwName || '';
+              if (state.prefTagDislikes.some(t => t.id === id)) {
+                state.prefTagDislikes = state.prefTagDislikes.filter(t => t.id !== id);
+                persist('prefTagDislikes');
+              } else {
+                state.prefTagLikes = state.prefTagLikes.filter(t => t.id !== id);
+                persist('prefTagLikes');
+                state.prefTagDislikes.push({ id, name });
+                if (state.prefTagDislikes.length > 40) state.prefTagDislikes = state.prefTagDislikes.slice(-40);
+                persist('prefTagDislikes');
+                toast(`Disliked tag: ${name}`, 'thumb_down');
+              }
+              renderTagPrefsSection();
+            });
+          });
+        } catch {
+          searchResults.innerHTML = `<span style="font-size:.72rem;color:var(--dim)">Search failed</span>`;
+        }
+      }, 320);
+    });
+  }
 
   // Wire remove buttons
   sec.querySelectorAll('[data-remove-tag-like]').forEach(btn => {
@@ -2983,8 +3109,9 @@ function initEventDelegation() {
       continueWatching: state.continueWatching,
       prefLikes:        state.prefLikes,
       prefDislikes:     state.prefDislikes,
-      prefGenres:       state.prefGenres,
-      prefTagLikes:     state.prefTagLikes,
+      prefGenres:           state.prefGenres,
+      prefGenreDislikes:    state.prefGenreDislikes,
+      prefTagLikes:         state.prefTagLikes,
       prefTagDislikes:  state.prefTagDislikes,
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
@@ -3027,8 +3154,9 @@ function initEventDelegation() {
         if (data.watched)          { state.watched = merge(state.watched, data.watched); persist('watched'); }
         if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
         if (data.prefDislikes)     { state.prefDislikes = merge(state.prefDislikes, data.prefDislikes); persist('prefDislikes'); }
-        if (data.prefGenres)       { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
-        if (data.prefTagLikes)     { state.prefTagLikes = merge(state.prefTagLikes, data.prefTagLikes); persist('prefTagLikes'); }
+        if (data.prefGenres)           { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
+        if (data.prefGenreDislikes)    { state.prefGenreDislikes = [...new Set([...state.prefGenreDislikes, ...(data.prefGenreDislikes || [])])]; persist('prefGenreDislikes'); }
+        if (data.prefTagLikes)         { state.prefTagLikes = merge(state.prefTagLikes, data.prefTagLikes); persist('prefTagLikes'); }
         if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
         if (data.continueWatching) {
           Object.assign(state.continueWatching, data.continueWatching);
@@ -4231,7 +4359,7 @@ export async function openProviderPage(providerId, providerName) {
           }).join('')}
         </div>
       </div>
-      <div id="provider-page-body" style="padding-top:110px"></div>`;
+      <div id="provider-page-body" style="padding-top:72px"></div>`;
     document.getElementById('footer').before(pg);
 
     pg.querySelector('#provider-back-btn')?.addEventListener('click', () => {
@@ -4319,52 +4447,79 @@ export async function openProviderPage(providerId, providerName) {
 
   // Build "For You on Provider" using user's preferred genres
   const prefGenresStr = state.prefGenres?.length ? state.prefGenres.slice(0,2).join('|') : null;
+  const thisYear = new Date().getFullYear();
+  const lastYear = thisYear - 1;
+  const newReleaseCutoff = `${lastYear}-01-01`;
 
-  // Fetch all provider content in parallel (10 queries including personalized)
+  // Genre IDs for category rows
+  const G = { ACTION_M: 28, DRAMA: 18, COMEDY: 35, SCIFI_M: 878, HORROR: 27,
+               ACTION_TV: 10759, SCIFI_TV: 10765 };
+
+  // Fetch all provider content in parallel (14 queries)
   Promise.allSettled([
-    tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),
-    tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),
-    tmdb('/discover/movie', { ...base, sort_by:'vote_average.desc', 'vote_count.gte':100, page:1 }),
-    tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }),
-    tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),
-    tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),
-    networkId ? tmdb('/discover/movie', { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
-    networkId ? tmdb('/discover/tv',    { with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
-    // Personalized: user's pref genres on this provider
-    prefGenresStr ? tmdb('/discover/movie', { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
-    prefGenresStr ? tmdb('/discover/tv',    { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 0 */ tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),
+    /* 1 */ tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),
+    /* 2 */ tmdb('/discover/movie', { ...base, sort_by:'vote_average.desc', 'vote_count.gte':100, page:1 }),
+    /* 3 */ tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }),
+    /* 4 */ tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),
+    /* 5 */ tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),
+    /* 6 */ networkId ? tmdb('/discover/movie', { ...base, with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 7 */ networkId ? tmdb('/discover/tv',    { ...base, with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 8 */ prefGenresStr ? tmdb('/discover/movie', { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 9 */ prefGenresStr ? tmdb('/discover/tv',    { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 10 */ tmdb('/discover/movie', { ...base, sort_by:'primary_release_date.desc', 'primary_release_date.gte': newReleaseCutoff, page:1 }),
+    /* 11 */ tmdb('/discover/tv',    { ...base, sort_by:'first_air_date.desc', 'first_air_date.gte': newReleaseCutoff, page:1 }),
+    /* 12 */ tmdb('/discover/movie', { ...base, with_genres:`${G.ACTION_M}|${G.SCIFI_M}`, sort_by:'popularity.desc', page:1 }),
+    /* 13 */ tmdb('/discover/tv',    { ...base, with_genres:`${G.ACTION_TV}`, sort_by:'popularity.desc', page:1 }),
+    /* 14 */ tmdb('/discover/movie', { ...base, with_genres:`${G.DRAMA}`, sort_by:'popularity.desc', page:1 }),
+    /* 15 */ tmdb('/discover/tv',    { ...base, with_genres:`${G.DRAMA}`, sort_by:'popularity.desc', page:1 }),
+    /* 16 */ tmdb('/discover/movie', { ...base, with_genres:`${G.COMEDY}`, sort_by:'popularity.desc', page:1 }),
+    /* 17 */ tmdb('/discover/tv',    { ...base, with_genres:`${G.COMEDY}`, sort_by:'popularity.desc', page:1 }),
   ]).then(results => {
     if (state.currentPage !== 'provider') return; // don't update if navigated away
 
     const get = (i, mt) => results[i].status==='fulfilled'
       ? (results[i].value.results||[]).map(x=>({...x,media_type:mt})) : [];
 
-    const popMovies  = get(0,'movie');
-    const popTv      = get(1,'tv');
-    const topMovies  = get(2,'movie');
-    const topTv      = get(3,'tv');
-    const moreMovies = get(4,'movie');
-    const moreTv     = get(5,'tv');
-    const origMovies = get(6,'movie');
-    const origTv     = get(7,'tv');
-    const prefMovies = get(8,'movie');
-    const prefTv     = get(9,'tv');
-    const originals  = [...origMovies, ...origTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
-    const forYou     = [...prefMovies,...prefTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+    const popMovies    = get(0,'movie');
+    const popTv        = get(1,'tv');
+    const topMovies    = get(2,'movie');
+    const topTv        = get(3,'tv');
+    const moreMovies   = get(4,'movie');
+    const moreTv       = get(5,'tv');
+    const origMovies   = get(6,'movie');
+    const origTv       = get(7,'tv');
+    const prefMovies   = get(8,'movie');
+    const prefTv       = get(9,'tv');
+    const newMovies    = get(10,'movie');
+    const newTv        = get(11,'tv');
+    const actionMovies = get(12,'movie');
+    const actionTv     = get(13,'tv');
+    const dramaMovies  = get(14,'movie');
+    const dramaTv      = get(15,'tv');
+    const comedyMovies = get(16,'movie');
+    const comedyTv     = get(17,'tv');
+
+    const originals = [...origMovies, ...origTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
+    const forYou    = [...prefMovies, ...prefTv].sort((a,b)=>(b.popularity||0)-(a.popularity||0));
 
     // Interleave helpers
     const mix = (a, b) => { const out=[]; for(let i=0;i<Math.max(a.length,b.length);i++){if(a[i])out.push(a[i]);if(b[i])out.push(b[i]);} return out; };
 
     const rows = [
-      forYou.length     ? makeHomeRow('auto_awesome',          '#a78bfa', `For You on ${providerName}`, 'pv-foryou',     forYou,     null)    : '',
-      originals.length  ? makeHomeRow('star',                  '#f5c518', `${providerName} Originals & Exclusives`, 'pv-originals', originals, null) : '',
-      mix(popMovies,popTv).length ? makeHomeRow('local_fire_department','#f97316',`Trending on ${providerName}`,'pv-trending',mix(popMovies,popTv),''):'',
-      popMovies.length  ? makeHomeRow('movie',                 '',        'Popular Movies',              'pv-pop-movies', popMovies,  'movie') : '',
-      popTv.length      ? makeHomeRow('tv',                    '',        'Popular Shows',               'pv-pop-tv',     popTv,      'tv')    : '',
-      topMovies.length  ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',            'pv-top-movies', topMovies,  'movie') : '',
-      topTv.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',             'pv-top-tv',     topTv,      'tv')    : '',
-      moreMovies.length ? makeHomeRow('explore',               '',        'More Movies',                 'pv-more-movies',moreMovies,'movie') : '',
-      moreTv.length     ? makeHomeRow('explore',               '',        'More Shows',                  'pv-more-tv',    moreTv,     'tv')    : '',
+      forYou.length         ? makeHomeRow('auto_awesome',          '#a78bfa', `For You on ${providerName}`,              'pv-foryou',     forYou,                      null)    : '',
+      originals.length      ? makeHomeRow('star',                  '#f5c518', `${providerName} Originals & Exclusives`,  'pv-originals',  originals,                   null)    : '',
+      mix(popMovies,popTv).length ? makeHomeRow('local_fire_department','#f97316',`Popular on ${providerName}`,          'pv-trending',   mix(popMovies,popTv),        '')      : '',
+      popMovies.length      ? makeHomeRow('movie',                 '',        'Popular Movies',                          'pv-pop-movies', popMovies,                   'movie') : '',
+      popTv.length          ? makeHomeRow('tv',                    '',        'Popular Shows',                           'pv-pop-tv',     popTv,                       'tv')    : '',
+      mix(newMovies,newTv).length ? makeHomeRow('fiber_new',       '#22c55e', `New on ${providerName}`,                  'pv-new',        mix(newMovies,newTv),        '')      : '',
+      topMovies.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',                        'pv-top-movies', topMovies,                   'movie') : '',
+      topTv.length          ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',                         'pv-top-tv',     topTv,                       'tv')    : '',
+      mix(actionMovies,actionTv).length ? makeHomeRow('bolt',      '#f97316', 'Action & Sci-Fi',                         'pv-action',     mix(actionMovies,actionTv),  '')      : '',
+      mix(dramaMovies,dramaTv).length   ? makeHomeRow('theater_comedy','#a78bfa','Drama',                                'pv-drama',      mix(dramaMovies,dramaTv),    '')      : '',
+      mix(comedyMovies,comedyTv).length ? makeHomeRow('sentiment_very_satisfied','#22c55e','Comedy',                     'pv-comedy',     mix(comedyMovies,comedyTv),  '')      : '',
+      moreMovies.length     ? makeHomeRow('explore',               '',        'More Movies',                             'pv-more-movies',moreMovies,                  'movie') : '',
+      moreTv.length         ? makeHomeRow('explore',               '',        'More Shows',                              'pv-more-tv',    moreTv,                      'tv')    : '',
     ].filter(Boolean);
 
     if (body) {
@@ -6362,27 +6517,37 @@ async function showNetflixCard(card) {
   if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
   if (trailerKey && trailerKey !== '__none__') {
-    // ⟳ Use YouTube
     frame.style.display = '';
-    frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
-    // Hide backdrop via timer (postMessage unreliable in Firefox)
-    const ytFadeTimer = setTimeout(() => {
-      if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
-    }, 2000);
-    const ytHandler = (e) => {
-      if (e.origin !== 'https://www.youtube.com') return;
-      try {
-        const d = JSON.parse(e.data);
-        if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
-          clearTimeout(ytFadeTimer);
-          if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
-          window.removeEventListener('message', ytHandler);
-        }
-      } catch {}
-    };
-    window.addEventListener('message', ytHandler);
-    setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
+
+    if (trailerKey.startsWith('dm:')) {
+      // ── Dailymotion (preferred — no X-Frame-Options blocking) ──
+      const dmId = trailerKey.slice(3);
+      frame.src = `https://www.dailymotion.com/embed/video/${dmId}?autoplay=1&mute=1&controls=0&ui-start-screen-info=0&endscreen-enable=0&sharing-enable=0&queue-enable=0`;
+      // Dailymotion doesn't support reliable postMessage, just fade after delay
+      setTimeout(() => {
+        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
+      }, 2500);
+    } else {
+      // ── YouTube (last resort) ──
+      frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+      const ytFadeTimer = setTimeout(() => {
+        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
+      }, 2000);
+      const ytHandler = (e) => {
+        if (e.origin !== 'https://www.youtube.com') return;
+        try {
+          const d = JSON.parse(e.data);
+          if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
+            clearTimeout(ytFadeTimer);
+            if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
+            window.removeEventListener('message', ytHandler);
+          }
+        } catch {}
+      };
+      window.addEventListener('message', ytHandler);
+      setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
+    }
 
   } else {
     frame.removeAttribute('src');
@@ -6452,16 +6617,23 @@ function positionNetflixCard(card, nc) {
 
 async function fetchTrailerKey(id, type) {
   let key = _hoverTrailerCache.get(id);
-  if (key) return key;
+  if (key !== undefined) return key;
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
     const data = await tmdb(`/${endpoint}/videos`);
     const vids = data.results || [];
-    const vid = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
-                vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
-                vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
-                vids.find(v => v.site === 'YouTube');
-    key = vid?.key || '__none__';
+    // Dailymotion preferred — no X-Frame-Options blocking; YouTube is last resort
+    const dm = vids.find(v => v.site === 'Dailymotion' && v.type === 'Trailer' && v.official) ||
+               vids.find(v => v.site === 'Dailymotion' && v.type === 'Trailer') ||
+               vids.find(v => v.site === 'Dailymotion' && v.type === 'Teaser') ||
+               vids.find(v => v.site === 'Dailymotion');
+    const yt = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
+               vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
+               vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
+               vids.find(v => v.site === 'YouTube');
+    if (dm) key = `dm:${dm.key}`;
+    else if (yt) key = yt.key;
+    else key = '__none__';
   } catch {
     key = '__none__';
   }

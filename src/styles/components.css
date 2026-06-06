@@ -26,7 +26,7 @@
 .card-poster {
   position: relative;
   aspect-ratio: 16/9;
-  border-radius: var(--r) var(--r) 0 0;
+  border-radius: var(--r);
   overflow: hidden;
   background: var(--s3);
 }
@@ -69,6 +69,37 @@
   -webkit-box-orient: vertical;
 }
 
+/* Netflix-style title overlay on card image */
+.card-img-title {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 2rem .6rem .5rem;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.88) 60%, rgba(0,0,0,.96) 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+.card-img-title-name {
+  display: block;
+  font-size: .78rem;
+  font-weight: 900;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0,0,0,.8);
+  line-height: 1.2;
+  padding-right: 50px; /* room for rating badge on right */
+}
+.card-img-title-year {
+  display: block;
+  font-size: .58rem;
+  color: rgba(255,255,255,.48);
+  margin-top: 2px;
+}
+/* When card has a top-10 number, indent title so they don't overlap */
+.card:has(.card-num-overlay) .card-img-title-name { padding-left: 3rem; }
+.card:has(.card-num-overlay) .card-img-title-year { padding-left: 3rem; }
+
 /* Overlay on hover */
 .card-ov {
   position: absolute;
@@ -79,6 +110,7 @@
   display: flex;
   align-items: flex-end;
   padding: .55rem;
+  z-index: 3;
 }
 .card:hover .card-ov { opacity: 1; }
 .card-ov-actions { display: flex; gap: .35rem; margin-left: auto; }
@@ -143,11 +175,12 @@
 .badge-wl       { background: rgba(245,197,24,.88); color: #000; }
 .badge-liked    { background: rgba(255,100,130,.88); color: #fff; }
 
-/* Rating badge */
+/* Rating badge — bottom-right so it doesn't overlap title text */
 .card-rating {
   position: absolute;
   bottom: 7px;
-  left: 7px;
+  right: 7px;
+  left: auto;
   z-index: 2;
   background: linear-gradient(135deg, rgba(0,0,0,.9) 0%, rgba(20,20,20,.85) 100%);
   backdrop-filter: blur(10px);
@@ -211,13 +244,11 @@
   transition: width .3s;
 }
 
-/* Card body */
-.card-body {
-  padding: .58rem .7rem .65rem;
-  background: var(--s2);
-  border-radius: 0 0 var(--r) var(--r);
-  min-height: 62px;
-}
+/* Card body — hidden globally, replaced by image title overlay */
+/* Exception: modal-related-section re-enables it via higher-specificity rule below */
+.card-body { display: none; }
+/* Hide title overlay in compact horizontal card layout (modal related section) */
+#modal-related-section .card-img-title { display: none !important; }
 .card-title {
   font-size: .9rem;
   font-weight: 800;
@@ -235,6 +266,22 @@
   gap: .38rem;
 }
 .card-num { font-size: .76rem; font-weight: 900; color: var(--red); }
+/* Top-10 number overlay on card image (Netflix-style large outline number) */
+.card-num-overlay {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  z-index: 4; /* above title overlay (z-index:2) and hover overlay (z-index:3) */
+  font-size: 4.2rem;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 2.5px rgba(255,255,255,.8);
+  paint-order: stroke fill;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 2px 12px rgba(0,0,0,.7);
+  user-select: none;
+}
 
 /* Card skeleton */
 .card-sk {
@@ -244,8 +291,8 @@
   overflow: hidden;
   background: var(--s2);
 }
-.csk-poster { aspect-ratio: 16/9; width: 100%; }
-.csk-body { padding: .58rem .7rem .65rem; background: var(--s2); }
+.csk-poster { aspect-ratio: 16/9; width: 100%; border-radius: var(--r); }
+.csk-body { display: none; }
 .csk-line { height: 9px; border-radius: 4px; margin-bottom: 4px; }
 
 /* Genre chips */
@@ -270,6 +317,8 @@
 .genre-chip:hover .material-icons-round { transform: scale(1.15); color: #fff; }
 .genre-chip.on { background: var(--red) !important; border-color: var(--red) !important; color: #fff !important; box-shadow: 0 6px 20px rgba(229,9,20,.3); }
 .genre-chip.on .material-icons-round { color: #fff; }
+.genre-chip.off { background: rgba(229,9,20,.1) !important; border-color: rgba(229,9,20,.45) !important; color: #f87171 !important; }
+.genre-chip.off .material-icons-round { color: #f87171; }
 
 /* Empty states */
 .empty-state {

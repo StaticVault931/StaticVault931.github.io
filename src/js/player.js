@@ -171,7 +171,12 @@ export function getActiveProvider() {
 }
 
 export function setActiveProvider(id) {
-  _activeProvider = PROVIDERS.find(p => p.id === id) || PROVIDERS[0];
+  let provider = PROVIDERS.find(p => p.id === id) || PROVIDERS[0];
+  // Firefox: silently redirect away from blocked providers
+  if (_isFirefox && FIREFOX_BLOCKED_PROVIDERS.has(provider.id)) {
+    provider = PROVIDERS.find(p => !FIREFOX_BLOCKED_PROVIDERS.has(p.id)) || PROVIDERS[0];
+  }
+  _activeProvider = provider;
   state.lastProvider = _activeProvider.id;
   persist('lastProvider');
   return _activeProvider;
@@ -210,7 +215,12 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
   loading.classList.remove('hidden');
   loading.innerHTML = `<div class="spin"></div><p>Loading player…</p>`;
 
-  const provider = getActiveProvider();
+  let provider = getActiveProvider();
+  // Safety: if Firefox ended up with a blocked provider anyway, swap it out
+  if (_isFirefox && FIREFOX_BLOCKED_PROVIDERS.has(provider.id)) {
+    const safe = PROVIDERS.find(p => !FIREFOX_BLOCKED_PROVIDERS.has(p.id));
+    if (safe) { _activeProvider = safe; state.lastProvider = safe.id; provider = safe; }
+  }
   const src = provider.url(mediaId, type === 'anime' ? 'tv' : type, season, episode);
 
   iframe.removeAttribute('src');

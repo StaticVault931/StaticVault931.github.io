@@ -71,10 +71,11 @@ export function makeCard(m, type, opts = {}) {
     ? `<div class="card-progress"><div class="card-progress-fill" style="width:${Math.min(100, Math.round(contData.progress * 100))}%"></div></div>`
     : '';
 
-  const numEl = numbered != null ? `<div class="card-num">${numbered}</div>` : '';
+  // Number overlay for top-10 style rows (Netflix-style large outline number)
+  const numEl = numbered != null ? `<div class="card-num-overlay">${numbered}</div>` : '';
 
-  // For compact/related view: don't overlay rating on image — show in text
-  const showOverlayRating = !compact;
+  // Always show rating as image overlay now that card-body is hidden
+  const showOverlayRating = true;
 
   return `<div class="card${compact ? ' card-compact' : ''}"
     data-id="${id}"
@@ -99,6 +100,11 @@ export function makeCard(m, type, opts = {}) {
       <div class="type-pill ${typeClass}">${typeLabel}</div>
       ${badges.length ? `<div class="card-badges">${badges.join('')}</div>` : ''}
       ${showOverlayRating && rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
+      ${numEl}
+      <div class="card-img-title">
+        <div class="card-img-title-name">${esc(title)}</div>
+        ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
+      </div>
       <div class="card-ov">
         <div class="card-ov-actions">
           <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
@@ -118,8 +124,7 @@ export function makeCard(m, type, opts = {}) {
       <div class="card-title" title="${esc(title)}">${esc(title)}</div>
       <div class="card-sub">
         ${year ? `<span class="card-sub-year">${year}</span>` : ''}
-        ${!showOverlayRating && rating ? `<span class="card-sub-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</span>` : ''}
-        ${numEl}
+        ${rating ? `<span class="card-sub-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</span>` : ''}
       </div>
     </div>
   </div>`;
@@ -404,18 +409,25 @@ export function scrollRow(rowId, dir) {
 }
 
 /* ── GENRE CHIPS ─────────────────────────────────────────────────── */
-export function buildGenreChips(containerId, genres, onClick, selectedIds = []) {
+// selectedIds = liked genres, dislikedIds = disliked genres
+// onClick(id, name, chip) — caller handles state transitions
+export function buildGenreChips(containerId, genres, onClick, selectedIds = [], dislikedIds = []) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  el.innerHTML = genres.map(g =>
-    `<div class="genre-chip${selectedIds.includes(g.id) ? ' on' : ''}"
+  el.innerHTML = genres.map(g => {
+    const liked    = selectedIds.includes(g.id);
+    const disliked = dislikedIds.includes(g.id);
+    const cls = liked ? ' on' : disliked ? ' off' : '';
+    const icon = disliked ? 'thumb_down' : g.icon;
+    return `<div class="genre-chip${cls}"
       data-genre-id="${g.id}"
       data-genre-name="${esc(g.name)}"
       role="button"
-      tabindex="0">
-      <span class="material-icons-round">${g.icon}</span>${g.name}
-    </div>`
-  ).join('');
+      tabindex="0"
+      title="${liked ? 'Click to dislike' : disliked ? 'Click to reset' : 'Click to like'}">
+      <span class="material-icons-round">${icon}</span>${g.name}
+    </div>`;
+  }).join('');
 
   el.querySelectorAll('.genre-chip').forEach(chip => {
     chip.addEventListener('click', () => onClick(+chip.dataset.genreId, chip.dataset.genreName, chip));
