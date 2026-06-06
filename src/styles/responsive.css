@@ -1,6 +1,21 @@
 /* ── 2560px ultra-wide ───────────────────────────────────────────── */
 @media (min-width: 2200px) {
   :root { --card-w: 480px; }
+  #header, .section, .genre-wrap, #hero-content,
+  #page-search, #page-library, #page-prefs, #page-seeall {
+    padding-left: 5rem;
+    padding-right: 5rem;
+  }
+}
+
+/* ── 2048px / 2000px — 2K displays ──────────────────────────────── */
+@media (min-width: 1921px) and (max-width: 2199px) {
+  :root { --card-w: 420px; }
+  #header, .section, .genre-wrap, #hero-content,
+  #page-search, #page-library, #page-prefs, #page-seeall {
+    padding-left: 4rem;
+    padding-right: 4rem;
+  }
 }
 
 /* ── 1920px ───────────────────────────────────────────────────────── */
@@ -145,6 +160,75 @@
   #modal-overlay { padding: 0; }
   .modal-left-panel { display: none; }
   .modal-right-panel { max-height: 260px; }
+}
+
+/* ── 360px — very small screens (640x360, 512x288) ──────────────── */
+@media (max-width: 360px) {
+  :root { --card-w: 90vw; }
+
+  #header { height: 52px; padding: 0 .6rem; }
+  .logo { font-size: 1.3rem; }
+
+  #hero { height: 55vw; min-height: 200px; max-height: 280px; }
+  #hero-title { font-size: clamp(1.6rem, 11vw, 2.5rem); }
+  #hero-desc { display: none; }
+  .hero-btns { gap: .25rem; }
+  .btn-play, .btn-info { padding: .42rem .75rem; font-size: .78rem; }
+
+  .section,
+  .genre-wrap,
+  #page-search,
+  #page-library,
+  #page-prefs,
+  #page-seeall { padding-left: .6rem; padding-right: .6rem; }
+
+  .section-head h2 { font-size: 1rem; }
+
+  .search-grid,
+  .lib-grid,
+  #seeall-grid { grid-template-columns: 1fr; }
+
+  #modal { border-radius: 0; min-height: 100vh; width: 100%; }
+  #modal-overlay { padding: 0; }
+  .modal-left-panel { display: none; }
+  .modal-right-panel { max-height: 220px; }
+  #modal-title { font-size: 1rem; }
+  .ma { padding: .3rem .55rem; font-size: .7rem; }
+
+  #page-prefs { padding: 70px .6rem 3rem; }
+
+  .bottom-nav-btn { min-width: 40px; padding: .2rem .3rem; font-size: .55rem; }
+  .bottom-nav-btn .material-icons-round { font-size: 1.1rem; }
+  #bottom-nav { padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom)); }
+  body { padding-bottom: 52px; }
+}
+
+/* ── SHORT VIEWPORT — any width, very short height ───────────────── */
+@media (max-height: 500px) {
+  #hero { min-height: 160px !important; max-height: 260px !important; height: 55vh !important; }
+  #hero-desc { display: none; }
+  #hero-dots { display: none; }
+  .hero-btns { gap: .25rem; }
+}
+@media (max-height: 400px) {
+  #hero { min-height: 100px !important; max-height: 200px !important; height: 50vh !important; }
+  #hero-content { padding-bottom: 1.5rem; }
+}
+
+/* ── SHORT VIEWPORT (1280x720, 1024x768, laptop screens) ─────────── */
+@media (max-height: 800px) and (min-width: 768px) {
+  #hero { max-height: 380px; }
+  .info-hero { height: clamp(240px, 38vh, 340px) !important; }
+  .info-overview { max-height: 70px; }
+  .info-col-side { max-height: calc(100vh - 100px); }
+}
+@media (max-height: 650px) and (min-width: 768px) {
+  #hero { max-height: 300px; }
+  .info-hero { height: clamp(200px, 33vh, 280px) !important; }
+  .info-poster { width: 80px; }
+  .info-title { font-size: clamp(1.4rem, 3vw, 2.2rem); }
+  .info-overview { display: none; }
+  .info-col-side { max-height: calc(100vh - 90px); }
 }
 
 /* ── HOVER MEDIA ─────────────────────────────────────────────────── */

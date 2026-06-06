@@ -266,6 +266,43 @@
     </div>
   </div>
 
+  <!-- Trending in Your Genre (personalized) — hidden until JS fills it -->
+  <div class="section" id="sec-genre-trending" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon" style="color:var(--red)">trending_up</span>
+        <span id="sec-genre-trending-title">Trending in Your Genre</span>
+      </div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l hidden">
+        <button data-scroll-row="row-genre-trending" data-scroll-dir="-1" aria-label="Scroll left"><span class="material-icons-round">chevron_left</span></button>
+      </div>
+      <div class="card-row" id="row-genre-trending"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-genre-trending" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deep Cuts — highly rated content user hasn't seen -->
+  <div class="section" id="sec-deep-cuts" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">diamond</span>Highly Rated You Haven't Seen
+      </div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l hidden">
+        <button data-scroll-row="row-deep-cuts" data-scroll-dir="-1" aria-label="Scroll left"><span class="material-icons-round">chevron_left</span></button>
+      </div>
+      <div class="card-row" id="row-deep-cuts"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-deep-cuts" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button>
+      </div>
+    </div>
+  </div>
+
   <!-- New in Cinemas -->
   <div class="section" id="sec-new">
     <div class="sec-header">
@@ -312,6 +349,25 @@
         <button data-scroll-row="row-toprated" data-scroll-dir="1" aria-label="Scroll right">
           <span class="material-icons-round">chevron_right</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- More Like Your History — based on recently watched/liked mix -->
+  <div class="section" id="sec-history-mix" style="display:none">
+    <div class="sec-header">
+      <div class="sec-title">
+        <span class="material-icons-round sec-icon">history</span>
+        <span id="sec-history-mix-title">More Like What You've Been Watching</span>
+      </div>
+    </div>
+    <div class="row-wrap">
+      <div class="row-arrow row-arrow-l hidden">
+        <button data-scroll-row="row-history-mix" data-scroll-dir="-1" aria-label="Scroll left"><span class="material-icons-round">chevron_left</span></button>
+      </div>
+      <div class="card-row" id="row-history-mix"></div>
+      <div class="row-arrow row-arrow-r">
+        <button data-scroll-row="row-history-mix" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button>
       </div>
     </div>
   </div>
@@ -544,9 +600,9 @@
   <!-- ─ NEW CURATED ROWS ─ -->
   <div class="section" id="sec-top10"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#f5c518">workspace_premium</span>Top 10 Today</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-top10" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-top10"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-top10" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <!-- Provider-specific rows (rotate daily) -->
-  <div class="section" id="sec-on-netflix" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="Netflix"></span>Only on Netflix</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-netflix" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-netflix"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-netflix" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
-  <div class="section" id="sec-on-disney" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/disneyplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="Disney+"></span>Only on Disney+</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-disney" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-disney"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-disney" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
-  <div class="section" id="sec-on-hulu" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/hulu.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="Hulu"></span>Only on Hulu</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-hulu" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-hulu"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-hulu" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-on-netflix" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="Netflix"></span>Netflix Originals</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-netflix" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-netflix"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-netflix" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-on-disney" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/disneyplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="Disney+"></span>Disney+ Originals</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-disney" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-disney"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-disney" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
+  <div class="section" id="sec-on-hulu" style="display:none"><div class="sec-header"><div class="sec-title"><span class="sec-icon" style="display:inline-flex;vertical-align:middle;margin-right:.3rem"><img src="https://img.logo.dev/max.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=20" style="height:20px;border-radius:3px" alt="HBO Max"></span>HBO Max Originals</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-on-hulu" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-on-hulu"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-on-hulu" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <div class="section" id="sec-sequels" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#f59e0b">movie_filter</span>Popular Sequels &amp; Franchises</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-sequels" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-sequels"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-sequels" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <div class="section" id="sec-new-to-you" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#6366f1">explore</span>Content New to You</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-new-to-you" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-new-to-you"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-new-to-you" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
   <div class="section" id="sec-recently-added" style="display:none"><div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon" style="color:#22c55e">fiber_new</span>Recently Added Movies</div></div><div class="row-wrap"><div class="row-arrow row-arrow-l hidden"><button data-scroll-row="row-recently-added" data-scroll-dir="-1"><span class="material-icons-round">chevron_left</span></button></div><div class="card-row" id="row-recently-added"></div><div class="row-arrow row-arrow-r"><button data-scroll-row="row-recently-added" data-scroll-dir="1"><span class="material-icons-round">chevron_right</span></button></div></div></div>
@@ -795,71 +851,120 @@
      PAGE: CUSTOMIZE FEED
 ════════════════════════════════════════════════════════════════ -->
 <main class="page" id="page-prefs">
-  <h1>Customize Your Feed</h1>
-  <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.5rem;max-width:640px">Tell us what you like and dislike — we personalize everything based on this. Changes apply automatically when you leave.</p>
 
-  <!-- Main 2-column layout: Left = titles + genres, Right = content rating -->
-  <div class="cyf-main-grid">
-
-    <!-- LEFT COLUMN: Titles + Genres -->
-    <div class="cyf-left-col">
-      <div class="pref-section">
-        <h3><span class="material-icons-round">favorite</span>Titles I Love</h3>
-        <div class="pref-input-wrap">
-          <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-          <div class="pref-ac-drop" id="pref-like-ac"></div>
-        </div>
-        <div class="pref-tag-list" id="pref-likes-list"></div>
-      </div>
-
-      <div class="pref-section">
-        <h3><span class="material-icons-round">thumb_down</span>Titles I Dislike</h3>
-        <div class="pref-input-wrap">
-          <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-          <div class="pref-ac-drop" id="pref-dis-ac"></div>
-        </div>
-        <div class="pref-tag-list" id="pref-dislikes-list"></div>
-      </div>
-
-      <div class="pref-section">
-        <h3><span class="material-icons-round">category</span>Preferred Genres</h3>
-        <p class="pref-hint">Click to toggle. Selected genres shape your recommendations.</p>
-        <div class="pref-genres-wrap" id="pref-genres"></div>
-      </div>
-
-      <div class="pref-section">
-        <h3><span class="material-icons-round">tag</span>Tag Preferences</h3>
-        <p class="pref-hint">Like or dislike specific keywords on any title's info page. Liked tags boost similar content; disliked tags reduce it.</p>
-        <div id="pref-tags-section"></div>
-      </div>
+  <!-- Page header -->
+  <div class="cyf-header">
+    <div class="cyf-header-left">
+      <h1>Customize Your Feed</h1>
+      <p>Tell us what you love — we personalize everything based on this. Changes apply automatically when you leave.</p>
     </div>
-
-    <!-- RIGHT COLUMN: Content Rating -->
-    <div class="cyf-right-col">
-      <div class="pref-section">
-        <h3><span class="material-icons-round">child_care</span>Content Rating</h3>
-        <p class="pref-hint">Set the maximum content rating you want recommended.</p>
-        <div id="pref-age-row"></div>
-        <div class="pref-rating-descs" id="pref-rating-descs"></div>
-      </div>
+    <div class="cyf-header-actions">
+      <button class="pref-apply-btn pref-randomize-btn" id="pref-randomize-btn" aria-label="Randomize feed">
+        <span class="material-icons-round">shuffle</span>Mix It Up
+      </button>
+      <span class="pref-autosave-note">
+        <span class="material-icons-round">autorenew</span>Auto-saved
+      </span>
     </div>
   </div>
 
-  <!-- Actions row: Randomize (auto-apply replaces Apply button) -->
-  <div class="pref-actions-row" style="margin-top:1.5rem">
-    <button class="pref-apply-btn pref-randomize-btn" id="pref-randomize-btn" aria-label="Randomize feed">
-      <span class="material-icons-round">shuffle</span>Mix Up My Feed
-    </button>
-    <span class="pref-autosave-note">
-      <span class="material-icons-round">autorenew</span>Auto-saved &amp; applied on exit
-    </span>
+  <!-- ── TASTE SECTION ──────────────────────────────────────────── -->
+  <div class="cyf-section-label">
+    <span class="material-icons-round">auto_awesome</span>Your Taste
+  </div>
+  <div class="cyf-taste-grid">
+
+    <!-- Titles I Love -->
+    <div class="cyf-card cyf-card-love">
+      <div class="cyf-card-head">
+        <span class="cyf-card-icon" style="background:rgba(229,9,20,.15);color:#f87171"><span class="material-icons-round">favorite</span></span>
+        <div>
+          <div class="cyf-card-title">Titles I Love</div>
+          <div class="cyf-card-sub">Boosts similar content in your feed</div>
+        </div>
+      </div>
+      <div class="pref-input-wrap">
+        <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+        <div class="pref-ac-drop" id="pref-like-ac"></div>
+      </div>
+      <div class="pref-tag-list" id="pref-likes-list"></div>
+    </div>
+
+    <!-- Titles I Dislike -->
+    <div class="cyf-card cyf-card-dislike">
+      <div class="cyf-card-head">
+        <span class="cyf-card-icon" style="background:rgba(99,102,241,.12);color:#a78bfa"><span class="material-icons-round">thumb_down</span></span>
+        <div>
+          <div class="cyf-card-title">Titles I Dislike</div>
+          <div class="cyf-card-sub">Hides similar content from your feed</div>
+        </div>
+      </div>
+      <div class="pref-input-wrap">
+        <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+        <div class="pref-ac-drop" id="pref-dis-ac"></div>
+      </div>
+      <div class="pref-tag-list" id="pref-dislikes-list"></div>
+    </div>
+
+    <!-- Content Rating -->
+    <div class="cyf-card">
+      <div class="cyf-card-head">
+        <span class="cyf-card-icon" style="background:rgba(245,158,11,.12);color:#fbbf24"><span class="material-icons-round">child_care</span></span>
+        <div>
+          <div class="cyf-card-title">Content Rating</div>
+          <div class="cyf-card-sub">Maximum rating shown in your feed</div>
+        </div>
+      </div>
+      <div id="pref-age-row"></div>
+      <div class="pref-rating-descs" id="pref-rating-descs"></div>
+    </div>
+
   </div>
 
-  <!-- Settings section -->
-  <div class="pref-section" id="sv-settings-section" style="margin-top:2rem">
-    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.9rem">
-      <h3 style="margin:0"><span class="material-icons-round">settings</span>Display &amp; Player Settings</h3>
-      <div style="margin-left:auto;display:flex;gap:.4rem">
+  <!-- ── GENRE & TAGS ───────────────────────────────────────────── -->
+  <div class="cyf-section-label" style="margin-top:2rem">
+    <span class="material-icons-round">tune</span>Genre & Tags
+  </div>
+  <div class="cyf-wide-grid">
+
+    <!-- Preferred Genres -->
+    <div class="cyf-card">
+      <div class="cyf-card-head">
+        <span class="cyf-card-icon" style="background:rgba(34,197,94,.12);color:#4ade80"><span class="material-icons-round">category</span></span>
+        <div>
+          <div class="cyf-card-title">Preferred Genres</div>
+          <div class="cyf-card-sub">Selected genres shape your recommendations</div>
+        </div>
+      </div>
+      <div class="pref-genres-wrap" id="pref-genres"></div>
+    </div>
+
+    <!-- Tag Preferences -->
+    <div class="cyf-card">
+      <div class="cyf-card-head">
+        <span class="cyf-card-icon" style="background:rgba(96,165,250,.12);color:#60a5fa"><span class="material-icons-round">tag</span></span>
+        <div>
+          <div class="cyf-card-title">Tag Preferences</div>
+          <div class="cyf-card-sub">Click any keyword tag on a title's info page</div>
+        </div>
+      </div>
+      <div id="pref-tags-section"></div>
+    </div>
+
+  </div>
+
+  <!-- ── DISPLAY SETTINGS ──────────────────────────────────────── -->
+  <div class="cyf-section-label" style="margin-top:2rem">
+    <span class="material-icons-round">settings</span>Display &amp; Player
+  </div>
+  <div class="cyf-card cyf-card-full" id="sv-settings-section">
+    <div class="cyf-card-head" style="margin-bottom:.75rem">
+      <span class="cyf-card-icon" style="background:rgba(255,255,255,.07);color:var(--muted)"><span class="material-icons-round">tune</span></span>
+      <div style="flex:1">
+        <div class="cyf-card-title">Display &amp; Player Settings</div>
+        <div class="cyf-card-sub">Control what shows up and how content plays</div>
+      </div>
+      <div style="display:flex;gap:.4rem;flex-shrink:0">
         <button class="sv-reset-settings-btn" id="sv-reset-impressions-btn" title="Clear what you've seen so fresh content appears">
           <span class="material-icons-round">history</span>Clear History
         </button>
@@ -871,20 +976,26 @@
     <div class="sv-settings-grid" id="sv-settings-grid"></div>
   </div>
 
-  <!-- Single combined Provider + API test section -->
-  <div class="pref-section pref-section-full" id="provider-test-section" style="margin-top:2rem">
-    <h3><span class="material-icons-round">monitor_heart</span>Video Sources &amp; API Health</h3>
-    <p class="pref-hint">Test all video providers and external APIs in one click. Results are specific to your browser and network.</p>
-    <div id="provider-test-grid" class="provider-test-grid"></div>
-    <div class="pref-actions-row" style="margin-top:.75rem">
-      <button class="data-btn data-btn-primary" id="test-all-apis-btn" style="min-width:220px">
+  <!-- ── VIDEO SOURCES & API HEALTH ───────────────────────────── -->
+  <div class="cyf-section-label" style="margin-top:2rem">
+    <span class="material-icons-round">monitor_heart</span>Video Sources &amp; API Health
+  </div>
+  <div class="cyf-card cyf-card-full" id="provider-test-section">
+    <div class="cyf-card-head" style="margin-bottom:.75rem">
+      <span class="cyf-card-icon" style="background:rgba(34,197,94,.1);color:#4ade80"><span class="material-icons-round">play_circle</span></span>
+      <div style="flex:1">
+        <div class="cyf-card-title">Test Providers &amp; APIs</div>
+        <div class="cyf-card-sub">Results are specific to your browser and network</div>
+      </div>
+      <button class="data-btn data-btn-primary" id="test-all-apis-btn">
         <span class="material-icons-round">play_circle</span>Test Everything
       </button>
     </div>
+    <div id="provider-test-grid" class="provider-test-grid"></div>
     <div id="api-test-results" style="margin-top:.75rem"></div>
   </div>
 
-  <div style="height:3rem"></div>
+  <div style="height:4rem"></div>
 </main>
 
 <!-- Modal, toast, hover card, overlays injected by src/js/templates.js at runtime -->

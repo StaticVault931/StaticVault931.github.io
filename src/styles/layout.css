@@ -803,16 +803,84 @@
 }
 .data-btn-primary:hover { background: var(--red) !important; border-color: var(--red) !important; color: #fff !important; }
 
-/* ── PAGE: PREFS ─────────────────────────────────────────────────── */
-/* ── CYF NEW LAYOUT ──────────────────────────────────────────────── */
-.cyf-main-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;  /* equal columns */
-  gap: 2rem;
-  align-items: start;
-}
+/* ── PAGE: PREFS / CYF ───────────────────────────────────────────── */
+/* Legacy grid classes (kept for compatibility) */
+.cyf-main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
 .cyf-left-col { display: flex; flex-direction: column; gap: 1.2rem; }
 .cyf-right-col { position: sticky; top: 80px; }
+
+/* ── CYF: Page header ─────────────────────────────────────────────── */
+.cyf-header {
+  display: flex; align-items: flex-start; gap: 1.5rem;
+  margin-bottom: 2rem; flex-wrap: wrap;
+}
+.cyf-header-left { flex: 1; min-width: 0; }
+.cyf-header-left h1 {
+  font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
+  font-size: 2.4rem; letter-spacing: .04em; text-transform: uppercase;
+  margin: 0 0 .3rem; line-height: 1;
+}
+.cyf-header-left p { color: var(--muted); font-size: .88rem; margin: 0; max-width: 560px; line-height: 1.6; }
+.cyf-header-actions { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; padding-top: .5rem; }
+
+/* ── CYF: Section labels ──────────────────────────────────────────── */
+.cyf-section-label {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .72rem; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--muted);
+  margin-bottom: .9rem; padding-left: .1rem;
+  border-left: 2px solid var(--red); padding-left: .5rem;
+}
+.cyf-section-label .material-icons-round { font-size: .85rem; color: var(--red); }
+
+/* ── CYF: Cards ───────────────────────────────────────────────────── */
+.cyf-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  transition: border-color .18s;
+}
+.cyf-card:hover { border-color: var(--border3); }
+.cyf-card-full { width: 100%; }
+.cyf-card-head {
+  display: flex; align-items: flex-start; gap: .8rem;
+  margin-bottom: 1rem;
+}
+.cyf-card-icon {
+  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.cyf-card-icon .material-icons-round { font-size: 1.1rem; }
+.cyf-card-title { font-size: .9rem; font-weight: 800; line-height: 1.2; margin-bottom: .15rem; }
+.cyf-card-sub { font-size: .74rem; color: var(--muted); line-height: 1.4; }
+
+/* ── CYF: Taste grid (3 columns) ─────────────────────────────────── */
+.cyf-taste-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+/* ── CYF: Genre/Tags grid (2 columns) ────────────────────────────── */
+.cyf-wide-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .cyf-taste-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 900px) {
+  .cyf-main-grid { grid-template-columns: 1fr; }
+  .cyf-right-col { position: static; }
+  .cyf-taste-grid, .cyf-wide-grid { grid-template-columns: 1fr; }
+  .cyf-header { flex-direction: column; gap: .75rem; }
+  .cyf-header-actions { padding-top: 0; }
+}
 
 .pref-autosave-note {
   display: flex; align-items: center; gap: .35rem;
@@ -826,14 +894,10 @@
 }
 
 #page-prefs { padding: 80px 3.5rem 4rem; }
-#page-prefs h1 {
-  font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
-  font-size: 2.8rem;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  margin-bottom: .4rem;
+/* h1 and p are now inside .cyf-header-left — keep generic page heading style for other pages */
+@media (max-width: 768px) {
+  #page-prefs { padding: 75px 1rem 3rem; }
 }
-#page-prefs > p { color: var(--muted); font-size: .9rem; margin-bottom: 2.5rem; line-height: 1.65; max-width: 640px; }
 .pref-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -898,7 +962,8 @@
 .pref-tag-list {
   display: flex; flex-wrap: wrap; gap: .4rem;
   margin-top: .65rem; min-height: 28px;
-  max-height: 120px; overflow-y: auto;
+  /* Removed max-height limit — inside a cyf-card which has its own structure */
+  max-height: 160px; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--s4) transparent;
 }
 .pref-tag {

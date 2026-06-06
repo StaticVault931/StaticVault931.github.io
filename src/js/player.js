@@ -11,6 +11,7 @@ export const PROVIDERS = [
     label: 'VidSrc',
     prio: 'high',
     note: 'HD · Wide library',
+    domain: 'https://vidsrc.cc',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.cc/v2/embed/movie/${id}`
@@ -22,6 +23,7 @@ export const PROVIDERS = [
     label: 'Embed.su',
     prio: 'high',
     note: 'Clean · Fast',
+    domain: 'https://embed.su',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://embed.su/embed/movie/${id}`
@@ -33,6 +35,7 @@ export const PROVIDERS = [
     label: 'VidLink',
     prio: 'high',
     note: '4K · Anime',
+    domain: 'https://vidlink.pro',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidlink.pro/movie/${id}?primaryColor=e50914`
@@ -44,6 +47,7 @@ export const PROVIDERS = [
     label: 'Cineby',
     prio: 'high',
     note: '4K available',
+    domain: 'https://www.cineby.app',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://www.cineby.app/movie/${id}`
@@ -55,6 +59,7 @@ export const PROVIDERS = [
     label: 'VidSrc.me',
     prio: 'med',
     note: 'Alt backend',
+    domain: 'https://vidsrc.me',
     types: ['movie', 'tv', 'anime'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.me/embed/movie?tmdb=${id}`
@@ -66,6 +71,7 @@ export const PROVIDERS = [
     label: 'MultiEmbed',
     prio: 'med',
     note: 'Multi-source',
+    domain: 'https://multiembed.mov',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
@@ -77,6 +83,7 @@ export const PROVIDERS = [
     label: 'VidSrc Pro',
     prio: 'med',
     note: 'Pro library',
+    domain: 'https://vidsrc.pro',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.pro/embed/movie/${id}`
@@ -88,6 +95,7 @@ export const PROVIDERS = [
     label: '2Embed',
     prio: 'med',
     note: 'Wide coverage',
+    domain: 'https://www.2embed.cc',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://www.2embed.cc/embed/${id}`
@@ -99,6 +107,7 @@ export const PROVIDERS = [
     label: 'AutoEmbed',
     prio: 'med',
     note: 'Recent content',
+    domain: 'https://player.autoembed.cc',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.autoembed.cc/embed/movie/${id}`
@@ -110,6 +119,7 @@ export const PROVIDERS = [
     label: 'SmashyStream',
     prio: 'low',
     note: 'Fallback',
+    domain: 'https://player.smashy.stream',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.smashy.stream/movie/${id}`
@@ -121,6 +131,7 @@ export const PROVIDERS = [
     label: 'Videasy',
     prio: 'low',
     note: 'Last resort',
+    domain: 'https://player.videasy.net',
     types: ['movie', 'tv'],
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.videasy.net/movie/${id}`
@@ -128,9 +139,17 @@ export const PROVIDERS = [
   },
 ];
 
+// Detect Firefox — vidsrc.cc blocks iframe embedding in Firefox (X-Frame-Options)
+const _isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
+
+// IDs of providers known to block Firefox iframes
+const FIREFOX_BLOCKED_PROVIDERS = new Set(['vidsrc']);
+
 export function providersFor(type, opts = {}) {
-  const list = PROVIDERS.filter(p => p.types.includes(type === 'anime' ? 'tv' : type));
-  // Respect disabled providers
+  let list = PROVIDERS.filter(p => p.types.includes(type === 'anime' ? 'tv' : type));
+  // Firefox: skip providers known to block iframe embedding
+  if (_isFirefox) list = list.filter(p => !FIREFOX_BLOCKED_PROVIDERS.has(p.id));
+  // Respect user-disabled providers
   const disabled = JSON.parse(localStorage.getItem('sv_provider_disabled') || '[]');
   return list.filter(p => !disabled.includes(p.id));
 }
@@ -141,7 +160,13 @@ let _activeProvider = null;
 export function getActiveProvider() {
   if (_activeProvider) return _activeProvider;
   const saved = state.lastProvider;
-  _activeProvider = PROVIDERS.find(p => p.id === saved) || PROVIDERS[0];
+  const preferred = PROVIDERS.find(p => p.id === saved);
+  // Firefox: if saved provider is blocked, fall back to first compatible one
+  if (preferred && !(_isFirefox && FIREFOX_BLOCKED_PROVIDERS.has(preferred.id))) {
+    _activeProvider = preferred;
+  } else {
+    _activeProvider = PROVIDERS.find(p => !(_isFirefox && FIREFOX_BLOCKED_PROVIDERS.has(p.id))) || PROVIDERS[0];
+  }
   return _activeProvider;
 }
 

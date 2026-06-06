@@ -3,7 +3,7 @@
   position: fixed;
   inset: 0;
   z-index: 810;
-  background: rgba(0,0,0,.92);
+  background: #050505;
   display: none;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -75,28 +75,35 @@
 
 /* ── BIG WATCH NOW BUTTON ─────────────────────────────────────────── */
 .info-play-btn-big {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .55rem 1.6rem;
-  border-radius: 6px;
+  display: flex; align-items: center; gap: .6rem;
+  padding: .7rem 2rem;
+  border-radius: 8px;
   border: none;
-  background: var(--red);
+  background: linear-gradient(135deg, #e50914 0%, #c0060f 100%);
   color: #fff;
-  font-size: .92rem;
+  font-size: 1rem;
   font-weight: 900;
-  letter-spacing: .04em;
+  letter-spacing: .05em;
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   transition: all .18s;
-  box-shadow: 0 2px 16px rgba(229,9,20,.45);
+  box-shadow: 0 4px 24px rgba(229,9,20,.55), 0 1px 4px rgba(0,0,0,.3);
+  position: relative; overflow: hidden;
+}
+.info-play-btn-big::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, transparent 60%);
+  pointer-events: none;
 }
 .info-play-btn-big:hover {
-  background: #f6121d;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 24px rgba(229,9,20,.6);
+  background: linear-gradient(135deg, #ff1a24 0%, #cc0810 100%);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 32px rgba(229,9,20,.7), 0 2px 8px rgba(0,0,0,.35);
 }
-.info-play-btn-big .material-icons-round { font-size: 1.3rem; }
+.info-play-btn-big:active { transform: translateY(0) scale(.99); }
+.info-play-btn-big .material-icons-round { font-size: 1.5rem; }
 
 .info-default-toggle {
   display: flex; align-items: center; gap: .3rem;
@@ -475,7 +482,19 @@
 .info-detail-val { color: var(--text); text-align: right; }
 .info-keywords { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 .info-actions {
-  display: flex; flex-direction: column; gap: .4rem;
+  display: flex; flex-direction: column; gap: .5rem;
+  padding: .6rem;
+  background: rgba(229,9,20,.06);
+  border: 1px solid rgba(229,9,20,.18);
+  border-radius: 10px;
+  margin-bottom: .5rem;
+}
+/* Row layout for secondary action buttons */
+.info-actions .ma:not(#info-action-watch) {
+  flex: 1;
+}
+.info-actions-row {
+  display: flex; gap: .4rem;
 }
 
 /* ── REVIEWS ─────────────────────────────────────────────────────── */
@@ -508,9 +527,12 @@
 
 /* 2560px ultra-wide — use more space */
 @media (min-width: 2200px) {
-  .info-content { grid-template-columns: 1fr 500px; gap: 3.5rem; padding: 2.5rem 5rem 5rem; }
+  #info-panel { max-width: 2200px; }
+  .info-content { grid-template-columns: 1fr 560px; gap: 4rem; padding: 2.5rem 6rem 5rem; }
   .info-hero { height: clamp(380px, 48vh, 680px); }
+  .info-hero-content { padding: 2.5rem 6rem; }
   .info-title { font-size: clamp(2.2rem, 4.5vw, 3.8rem); }
+  .info-poster { width: 160px; }
 }
 
 /* 1440–2199px */
@@ -722,41 +744,61 @@
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
 }
 
-/* ── INFO PAGE CONTENT COLUMN: allow side col scroll ─────────────── */
+/* ── INFO SIDE COLUMN: sticky with independent scroll ───────────── */
 .info-col-side {
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,.1) transparent;
   position: sticky;
-  top: 60px;
+  top: 58px;
+}
+.info-col-side::-webkit-scrollbar { width: 4px; }
+.info-col-side::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 2px; }
+
+/* ── INFO PANEL: default 2-col layout ────────────────────────────── */
+.info-content {
+  grid-template-columns: 1fr clamp(320px, 30vw, 420px);
 }
 
-/* ── INFO PANEL: wider side column for TV shows ──────────────────── */
-.info-content {
-  grid-template-columns: 1fr 400px;
-}
-/* Give side panel room to show all info without cutting off */
-.info-col-side {
-  max-height: calc(100vh - 140px);
-}
-/* Info detail rows: make key wider to prevent wrapping */
+/* Info detail rows */
 .info-detail-row {
   display: flex; justify-content: space-between; gap: .5rem;
-  font-size: .78rem; padding: .2rem 0; border-bottom: 1px solid var(--border);
+  font-size: .78rem; padding: .25rem 0; border-bottom: 1px solid var(--border);
+  align-items: flex-start;
 }
 .info-detail-row:last-child { border-bottom: none; }
 .info-detail-key { color: var(--muted); font-weight: 700; min-width: 80px; flex-shrink: 0; }
-.info-detail-val { color: var(--text); text-align: right; flex: 1; }
-/* Score row should be prominent */
-.info-score-row { padding: 1rem .9rem; border-radius: 8px; margin-bottom: .75rem; }
-.info-score-num { font-size: 3.2rem !important; }
-/* Extra details section spacing */
+.info-detail-val { color: var(--text); text-align: right; flex: 1; word-break: break-word; }
+/* Score row */
+.info-score-row { padding: .9rem; border-radius: 8px; margin-bottom: .65rem; }
+.info-score-num { font-size: 3rem !important; }
+/* Extra details section */
 .info-extra-details { border-top: 1px solid var(--border); padding-top: .5rem; margin-top: .5rem; }
-/* Omdb detail rows (box office, rated, etc.) */
+/* OMDb detail rows (box office, rated, etc.) */
 .omdb-detail .info-detail-key { color: #f5c518; }
+/* Clickable person/studio links in details */
+.info-person-link, .info-studio-link {
+  cursor: pointer; color: inherit;
+  text-decoration: underline dotted rgba(255,255,255,.3);
+  transition: color .14s;
+}
+.info-person-link:hover { color: var(--text); text-decoration: underline; }
+.info-studio-link:hover { color: #54b9c5; text-decoration: underline; }
+
+/* ── INFO ACTIONS: Watch Now area ────────────────────────────────── */
+.info-actions {
+  background: linear-gradient(135deg, rgba(229,9,20,.07), rgba(192,6,15,.04));
+  border: 1px solid rgba(229,9,20,.2);
+  border-radius: 10px;
+  padding: .75rem;
+  margin-bottom: .65rem;
+}
 
 @media (max-width: 900px) {
   .info-content { grid-template-columns: 1fr; }
   .info-col-side { max-height: none; position: static; overflow: visible; }
 }
+
+/* ── INFO: person links in ratings area ──────────────────────────── */
+.info-clickable-people { display: flex; flex-wrap: wrap; gap: .15rem; justify-content: flex-end; }

@@ -552,10 +552,18 @@
   white-space: nowrap;
 }
 .ma:hover { background: var(--s4); border-color: var(--border3); }
-.ma.primary { background: var(--red); border-color: var(--red); color: #fff; }
-.ma.primary:hover { background: #f6121d; box-shadow: 0 4px 22px rgba(229,9,20,.35); }
-.ma.saved  { background: rgba(245,197,24,.15); border-color: rgba(245,197,24,.3); color: var(--gold); }
-.ma.liked  { background: rgba(229,9,20,.15);   border-color: rgba(229,9,20,.3);   color: #f87171; }
+.ma.primary { background: linear-gradient(135deg,#e50914,#c0060f); border-color: var(--red); color: #fff; font-size:.85rem; padding:.5rem 1.1rem; }
+.ma.primary:hover { background: linear-gradient(135deg,#ff1a24,#cc0810); box-shadow: 0 4px 22px rgba(229,9,20,.45); transform: translateY(-1px); }
+/* Special treatment for the info side panel's Watch Now button */
+#info-action-watch.ma.primary {
+  width: 100%; justify-content: center; font-size: .9rem;
+  padding: .7rem 1.4rem; border-radius: 8px; letter-spacing: .04em;
+  box-shadow: 0 3px 18px rgba(229,9,20,.5);
+}
+#info-action-watch.ma.primary .material-icons-round { font-size: 1.2rem; }
+.ma.saved    { background: rgba(245,197,24,.15); border-color: rgba(245,197,24,.3); color: var(--gold); }
+.ma.liked    { background: rgba(229,9,20,.15);   border-color: rgba(229,9,20,.3);   color: #f87171; }
+.ma.watched  { background: rgba(34,197,94,.12);  border-color: rgba(34,197,94,.3);  color: #4ade80; }
 .ma .material-icons-round { font-size: .9rem; }
 
 .modal-ratings { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .7rem; }
@@ -1461,7 +1469,9 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   opacity: 0;
   transform: scale(.82) translateY(18px);
   transition: opacity .3s var(--ease), transform .3s var(--ease);
-  width: 460px;         /* bigger */
+  /* Width = max of card width and 380px so it's never smaller than the card */
+  width: max(var(--card-w, 380px), 380px);
+  max-width: 520px;
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 56px 140px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.1);
@@ -1808,10 +1818,10 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 .person-bio {
   font-size: .8rem; color: var(--muted); line-height: 1.6;
-  display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden;
-  cursor: pointer;
+  /* Always show full bio — person page has its own scroll */
+  overflow: visible;
 }
-.person-bio.expanded { -webkit-line-clamp: unset; overflow: visible; }
+.person-bio.expanded { overflow: visible; } /* kept for compat */
 
 /* MIDDLE CONTENT */
 .person-content { min-width: 0; }
@@ -2234,3 +2244,46 @@ img[alt]::after {
 
 /* Sections inside company overlay match home page style */
 #company-row-view .section { padding: 0 2rem; margin-bottom: 1rem; }
+
+/* ── PERSON PAGE IMPROVEMENTS ──────────────────────────────────────── */
+/* Better person panel header area */
+#person-panel { min-height: min-content; }
+.person-name {
+  font-size: 1.8rem;
+}
+/* Person meta chips */
+.person-meta-item {
+  background: var(--s3); border: 1px solid var(--border2);
+  border-radius: 5px; padding: .2rem .6rem;
+}
+/* Improve person bio readability */
+.person-bio {
+  font-size: .82rem;
+  line-height: 1.7;
+  color: var(--muted);
+  border-left: 2px solid var(--border2);
+  padding-left: .65rem;
+  margin-top: .3rem;
+}
+
+/* ── COMPANY / PROVIDER OVERLAY: polish ───────────────────────────── */
+/* Better hero gradient for company pages */
+.company-hero {
+  height: clamp(200px, 30vh, 320px);
+}
+/* Company toolbar: close button has arrow_back icon, style like info close */
+#company-close {
+  border-radius: 8px;
+  width: 34px; height: 34px;
+}
+#company-close .material-icons-round { font-size: 1.1rem; }
+
+/* ── HOVER CARD WATCH NOW button (info-actions panel) ─────────────── */
+/* Ensure action row buttons are equal width */
+.info-actions-row .ma { flex: 1; justify-content: center; }
+
+/* ── HOVER CARD (Netflix-style) ────────────────────────────────────── */
+#netflix-card {
+  width: max(var(--card-w, 380px), 380px);
+  max-width: 520px;
+}

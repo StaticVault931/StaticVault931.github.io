@@ -13,7 +13,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
-import { loadForYou, loadBecauseYouLiked, loadGenreRow } from './recommendations.js';
+import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
@@ -1030,14 +1030,17 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     return results.filter(Boolean);
   }, 'movie');
 
-  // ── Provider-specific rows: Only on Netflix/Disney+/Hulu (rotates daily) ──
+  // ── Originals & Exclusives rows (rotates daily across 3 providers) ──
+  // Uses only with_networks — combining with_watch_providers AND with_networks
+  // creates an AND filter that returns nearly nothing. Network IDs are the
+  // accurate way to find content produced/owned by a streaming service.
   const providerDay = Math.floor(Date.now() / (24*3600000)) % 3;
   if (providerDay === 0) {
-    // Only on Netflix (Netflix network = 213, TMDB provider = 8)
+    // Netflix Originals (network 213 = Netflix)
     _scheduleRowLoad('row-on-netflix', 'sec-on-netflix', async () => {
       const [m, t] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_watch_providers:8, watch_region:'US', with_networks:213, sort_by:'popularity.desc', page: rng }),
-        tmdb('/discover/tv',    { with_watch_providers:8, watch_region:'US', with_networks:213, sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/movie', { with_networks:213, sort_by:'popularity.desc', 'vote_count.gte':20, page: rng }),
+        tmdb('/discover/tv',    { with_networks:213, sort_by:'popularity.desc', 'vote_count.gte':20, page: rng }),
       ]);
       const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
       const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
@@ -1045,11 +1048,11 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       return out;
     }, null);
   } else if (providerDay === 1) {
-    // Only on Disney+ (network=2739, provider=337)
+    // Disney+ Originals (network 2739 = Disney+)
     _scheduleRowLoad('row-on-disney', 'sec-on-disney', async () => {
       const [m, t] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_watch_providers:337, watch_region:'US', with_networks:2739, sort_by:'popularity.desc', page: rng }),
-        tmdb('/discover/tv',    { with_watch_providers:337, watch_region:'US', with_networks:2739, sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/movie', { with_networks:2739, sort_by:'popularity.desc', 'vote_count.gte':10, page: rng }),
+        tmdb('/discover/tv',    { with_networks:2739, sort_by:'popularity.desc', 'vote_count.gte':10, page: rng }),
       ]);
       const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
       const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
@@ -1057,11 +1060,11 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       return out;
     }, null);
   } else {
-    // Only on Hulu (network=453, provider=15)
+    // Max (HBO) Originals (network 49 = HBO) — Hulu has no network ID so use HBO which has tons of content
     _scheduleRowLoad('row-on-hulu', 'sec-on-hulu', async () => {
       const [m, t] = await Promise.allSettled([
-        tmdb('/discover/movie', { with_watch_providers:15, watch_region:'US', sort_by:'popularity.desc', page: rng }),
-        tmdb('/discover/tv',    { with_watch_providers:15, watch_region:'US', with_networks:453, sort_by:'popularity.desc', page: rng }),
+        tmdb('/discover/movie', { with_networks:49, sort_by:'popularity.desc', 'vote_count.gte':30, page: rng }),
+        tmdb('/discover/tv',    { with_networks:49, sort_by:'popularity.desc', 'vote_count.gte':30, page: rng }),
       ]);
       const movies = m.status==='fulfilled'?(m.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
       const shows  = t.status==='fulfilled'?(t.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
@@ -1078,6 +1081,12 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Because You Liked — personalized
   setTimeout(() => loadBecauseYouLiked().catch(() => {}), 800);
+
+  // Additional personalized rows — staggered to avoid hammering the API
+  setTimeout(() => loadGenreTrending().catch(() => {}), 1200);
+  setTimeout(() => loadDeepCuts().catch(() => {}), 1600);
+  setTimeout(() => loadHistoryMix().catch(() => {}), 2000);
+  setTimeout(() => loadBecauseYouWatched().catch(() => {}), 2400);
 }
 
 /* ── ROW CATALOG with ALT NAMES ─────────────────────────────────── */
@@ -3683,6 +3692,36 @@ export async function openInfoPage(id, type, hint = {}) {
     document.getElementById('info-season-sel')?.addEventListener('change', function() {
       if (state.currentInfoMedia) loadInfoEpisodes(state.currentInfoMedia.id, +this.value);
     });
+
+    // ── DELEGATED: studio / person / network links (handles dynamically-added rows) ──
+    overlay.addEventListener('click', async e => {
+      // Studio / network → company page
+      const studioLink = e.target.closest('.info-studio-link');
+      if (studioLink) {
+        const cid = studioLink.dataset.companyId;
+        if (!cid) return;
+        closeInfoPage();
+        setTimeout(() => openCompanyPage(+cid, studioLink.textContent.trim()), 80);
+        return;
+      }
+      // Person name → person page
+      const personLink = e.target.closest('.info-person-link');
+      if (personLink) {
+        const name = personLink.dataset.search;
+        if (!name) return;
+        try {
+          const d = await tmdb('/search/person', { query: name, language: 'en-US' });
+          const person = (d.results || []).find(p => p.known_for_department) || d.results?.[0];
+          if (person?.id) { closeInfoPage(); setTimeout(() => openPersonPage(person.id), 80); return; }
+        } catch {}
+        closeInfoPage();
+        goPage('search');
+        setTimeout(() => {
+          const inp = document.getElementById('search-input');
+          if (inp) { inp.value = name; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+        }, 150);
+      }
+    });
   }
 
   // Set default checkbox state
@@ -3836,17 +3875,22 @@ export async function openInfoPage(id, type, hint = {}) {
     // Side: actions
     const actionsEl = document.getElementById('info-actions');
     if (actionsEl) {
-      const likedNow = isLiked(id), wlNow = isInWatchlist(id);
+      const likedNow = isLiked(id), wlNow = isInWatchlist(id), watchedNow = isWatched(id);
       actionsEl.innerHTML = `
-        <button class="ma primary" id="info-action-watch">
-          <span class="material-icons-round">play_arrow</span>Watch Now
+        <button class="ma primary" id="info-action-watch" style="width:100%;justify-content:center;font-size:.95rem;padding:.75rem 1.4rem;font-weight:900;letter-spacing:.04em">
+          <span class="material-icons-round" style="font-size:1.3rem">play_circle_filled</span>Watch Now
         </button>
-        <button class="ma${wlNow ? ' saved' : ''}" id="info-wl-btn">
-          <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
-        </button>
-        <button class="ma${likedNow ? ' liked' : ''}" id="info-like-btn">
-          <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
-        </button>`;
+        <div class="info-actions-row" style="margin-top:.4rem">
+          <button class="ma${wlNow ? ' saved' : ''}" id="info-wl-btn" style="flex:1;justify-content:center">
+            <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
+          </button>
+          <button class="ma${likedNow ? ' liked' : ''}" id="info-like-btn" style="flex:1;justify-content:center">
+            <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
+          </button>
+          <button class="ma${watchedNow ? ' watched' : ''}" id="info-watched-btn" title="${watchedNow ? 'Mark as unwatched' : 'Mark as watched'}" style="flex:1;justify-content:center">
+            <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
+          </button>
+        </div>`;
       // Watch Now: close info page, open player modal
       document.getElementById('info-action-watch')?.addEventListener('click', () => {
         const capturedId = id, capturedType = type, capturedHint = { title, poster_path: details.poster_path };
@@ -3862,6 +3906,17 @@ export async function openInfoPage(id, type, hint = {}) {
         handleLike(id, type, null, { id, type, title, poster_path: details.poster_path });
         const btn = document.getElementById('info-like-btn');
         if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isLiked(id) ? 'favorite' : 'favorite_border'}</span>${isLiked(id) ? 'Liked' : 'Like'}`; }
+      });
+      document.getElementById('info-watched-btn')?.addEventListener('click', () => {
+        toggleWatched({ id, type, title, poster_path: details.poster_path });
+        const nowWatched = isWatched(id);
+        const btn = document.getElementById('info-watched-btn');
+        if (btn) {
+          btn.className = `ma${nowWatched ? ' watched' : ''}`;
+          btn.title = nowWatched ? 'Mark as unwatched' : 'Mark as watched';
+          btn.innerHTML = `<span class="material-icons-round">${nowWatched ? 'visibility' : 'visibility_off'}</span>`;
+        }
+        toast(nowWatched ? 'Marked as watched' : 'Removed from watched', nowWatched ? 'visibility' : 'visibility_off');
       });
     }
     window._openMediaFromInfo = () => openMedia(id, type, { title, poster_path: details.poster_path });
@@ -3888,23 +3943,12 @@ export async function openInfoPage(id, type, hint = {}) {
       // ── Guard: save a token so stale async callbacks don't clobber a newer open ──
       const _trailerToken = id; // the TMDB id of this open
       const _infoTitle = (title || '').replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
-      // DM first (non-blocking) — check token before setting src
-      fetchDailymotionTrailer(`${_infoTitle} ${year}`).then(dmVid => {
-        if (!trailerFrame) return;
-        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale — new item opened
-        if (dmVid?.embed_url) {
-          trailerFrame.style.display = '';
-          trailerFrame.src = `${dmVid.embed_url.split('?')[0]}?autoplay=1&mute=0`;
-        } else {
-          trailerFrame.style.display = '';
-          trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-        }
-      }).catch(() => {
-        if (!trailerFrame) return;
-        if (state.currentInfoMedia?.id !== _trailerToken) return; // stale
+      // ── Show YouTube IMMEDIATELY (no waiting for Dailymotion) ──────────
+      // This eliminates the 20-30s delay. YouTube is available instantly from TMDB.
+      if (trailerFrame) {
         trailerFrame.style.display = '';
         trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-      });
+      }
 
       // Detect Error 153 / failed trailer and show backdrop image instead
       const infoMsgHandler = (e) => {
@@ -4048,38 +4092,8 @@ export async function openInfoPage(id, type, hint = {}) {
       }).catch(() => {});
     }
 
-    // Wire clickable studio/person/network links in info page
-    document.querySelectorAll('#info-overlay .info-studio-link').forEach(link => {
-      link.addEventListener('click', () => {
-        const cid = link.dataset.companyId;
-        if (!cid) return;
-        closeInfoPage();
-        setTimeout(() => openCompanyPage(+cid, link.textContent.trim()), 80);
-      });
-    });
-    document.querySelectorAll('#info-overlay .info-person-link').forEach(link => {
-      link.addEventListener('click', async () => {
-        const name = link.dataset.search;
-        if (!name) return;
-        // Try to find person by name and open their page directly
-        try {
-          const d = await tmdb('/search/person', { query: name, language: 'en-US' });
-          const person = (d.results || []).find(p => p.known_for_department) || d.results?.[0];
-          if (person?.id) {
-            closeInfoPage();
-            setTimeout(() => openPersonPage(person.id), 80);
-            return;
-          }
-        } catch {}
-        // Fallback: search
-        closeInfoPage();
-        goPage('search');
-        setTimeout(() => {
-          const inp = document.getElementById('search-input');
-          if (inp) { inp.value = name; inp.dispatchEvent(new Event('input', { bubbles: true })); }
-        }, 150);
-      });
-    });
+    // Note: .info-studio-link and .info-person-link clicks are handled via
+    // delegated listener registered in overlay._wired block above.
 
     // Update URL — info page IS the canonical; watch pages point here
     const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
@@ -4672,8 +4686,11 @@ async function _enrichInfoPage(id, type, details, credits) {
   // ── TV show aggregate_credits: adds directors/writers/crew ──────────
   // For TV shows, individual episode directors aren't in /credits — use aggregate_credits
   if (type === 'tv' && credits) {
+    const _aggToken = id; // guard against stale responses if user opens another item
     tmdb(`/tv/${id}/aggregate_credits`).then(agg => {
       if (!agg) return;
+      // Race-condition guard: ignore if user has navigated to a different item
+      if (state.currentInfoMedia?.id !== _aggToken) return;
       const extraEl = document.querySelector('#info-overlay .info-extra-details');
       if (!extraEl) return;
 
@@ -5140,15 +5157,13 @@ function closePersonPage() {
 }
 
 export function closeInfoPage() {
-  // Stop trailer iframe to prevent audio/video playing in background
+  // Stop trailer iframe — use about:blank for reliable audio/video kill in all browsers
   const tf = document.getElementById('info-trailer-frame');
-  if (tf) { tf.removeAttribute('src'); tf.src = ''; }
+  if (tf) { tf.removeAttribute('src'); tf.src = 'about:blank'; }
   const overlay = document.getElementById('info-overlay');
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
   state.currentInfoMedia = null;
-  const frame = document.getElementById('info-trailer-frame');
-  if (frame) frame.removeAttribute('src');
   resetPageSEO();
 }
 
@@ -5958,14 +5973,18 @@ window._testProv = async function(id) {
   if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('testing');
   if (ptestStatusEl) ptestStatusEl.textContent = 'Testing…';
 
+  // Use the base domain for testing (much faster than embed URL)
+  // In no-cors mode, any response (even CORS block) = server is reachable
+  const testUrl = prov.domain || prov.url(550, 'movie', 1, 1);
+  const ctrl = new AbortController();
+  // 10-second timeout (some providers behind CDNs are slow to respond)
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+
   try {
-    const testUrl = prov.url(550, 'movie', 1, 1);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 7000);
     await fetch(testUrl, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
     clearTimeout(timer);
 
-    // no-cors fetch resolves even for blocked URLs; treat all non-abort as reachable
+    // no-cors fetch resolves for reachable URLs (response is opaque but that's fine)
     const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
     working[id] = Date.now();
     localStorage.setItem('sv_provider_working', JSON.stringify(working));
@@ -5975,13 +5994,14 @@ window._testProv = async function(id) {
     const row = document.getElementById(`tp-row-${id}`);
     if (row) row.querySelector('.tp-btn')?.classList.add('tp-ok');
   } catch (e) {
+    clearTimeout(timer);
     if (e.name === 'AbortError') {
       if (iconEl) iconEl.innerHTML = _provStatusSVG('fail');
       if (ptestIconEl) ptestIconEl.innerHTML = _provStatusSVG('fail');
-      if (ptestStatusEl) ptestStatusEl.textContent = 'Timeout';
-      toast(`${prov.label}: Timed out`, 'timer_off');
+      if (ptestStatusEl) ptestStatusEl.textContent = 'Timed out';
+      // Don't toast — too noisy when running all tests at once
     } else {
-      // Other errors treated as reachable (network/CORS masking)
+      // Network/CORS error treated as reachable (browser masked the real response)
       const working = JSON.parse(localStorage.getItem('sv_provider_working') || '{}');
       working[id] = Date.now();
       localStorage.setItem('sv_provider_working', JSON.stringify(working));
@@ -6328,42 +6348,20 @@ async function showNetflixCard(card) {
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
 
-  // ── STEP 1: Start ALL fetches in parallel — trailer independent of details ──
-  const cleanTitle = title.replace(/[^a-z0-9 ]/gi,'').toLowerCase().trim();
-  // DM + YouTube key fetch both start NOW, don't wait for rich details
-  const dmPromise     = fetchDailymotionTrailer(`${cleanTitle} ${year}`).catch(() => null);
-  const ytKeyPromise  = fetchTrailerKey(id, type);
+  // ── STEP 1: Fetch trailer key from TMDB (fast) and rich details in parallel ──
   const detailsPromise = _genreCache.has(id)
     ? Promise.resolve(_genreCache.get(id))
     : fetchRichDetails(id, type);
 
-  // ── STEP 2: Load trailer ASAP — race DM vs YouTube key ──────────
-  // Don't wait for rich details (that can take many seconds)
+  // ── STEP 2: Load YouTube trailer immediately — no DM wait ──────────
   if (!frame) return;
   if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
 
-  // Race: DM (3s timeout) vs YouTube key (fast TMDB call)
-  const [dmResult, trailerKey] = await Promise.all([
-    Promise.race([dmPromise, new Promise(res => setTimeout(() => res(null), 3000))]),
-    ytKeyPromise,
-  ]);
+  const trailerKey = await fetchTrailerKey(id, type);
 
   if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
-  if (dmResult?.embed_url) {
-    // ✅ Dailymotion found
-    frame.style.display = '';
-    frame.src = `${dmResult.embed_url.split('?')[0]}?autoplay=1&mute=1`;
-    if (backdrop) backdrop.style.opacity = '1';
-    const dmFadeTimer = setTimeout(() => {
-      if (_hoverCurrentCard === card && _hoverActive && backdrop) {
-        backdrop.style.transition = 'opacity .8s';
-        backdrop.style.opacity = '0';
-      }
-    }, 2500);
-    nc._dmCleanup = () => clearTimeout(dmFadeTimer);
-
-  } else if (trailerKey && trailerKey !== '__none__') {
+  if (trailerKey && trailerKey !== '__none__') {
     // ⟳ Use YouTube
     frame.style.display = '';
     frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
@@ -6417,7 +6415,9 @@ function positionNetflixCard(card, nc) {
   const rect = card.getBoundingClientRect();
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
-  const ncW = 460; // bigger card
+  // Card width from actual card dimensions; ensure hover card is at least as wide as the card
+  const ncW = Math.min(520, Math.max(rect.width, 380));
+  nc.style.width = `${ncW}px`; // set before measuring height
   const ncH = Math.min(nc.offsetHeight || 500, window.innerHeight * 0.85);
 
   // Ideal: centered on the card
@@ -6448,7 +6448,6 @@ function positionNetflixCard(card, nc) {
 
   nc.style.left = `${left}px`;
   nc.style.top = `${top}px`;
-  nc.style.width = `${ncW}px`; // always set width
 }
 
 async function fetchTrailerKey(id, type) {
@@ -6564,8 +6563,19 @@ function initKeyboard() {
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;
 
-    // Escape closes modal — always enabled
-    if (e.key === 'Escape') { closeModal(); return; }
+    // Escape closes the topmost open overlay — always enabled
+    if (e.key === 'Escape') {
+      if (document.getElementById('info-overlay')?.classList.contains('open')) { closeInfoPage(); return; }
+      if (document.getElementById('person-overlay')?.classList.contains('open')) { closePersonPage(); return; }
+      if (document.getElementById('company-overlay')?.classList.contains('open')) {
+        document.getElementById('company-close')?.click(); return;
+      }
+      if (document.getElementById('shortcuts-overlay')?.classList.contains('open')) {
+        document.getElementById('shortcuts-close')?.click(); return;
+      }
+      closeModal();
+      return;
+    }
 
     // / opens search
     if (e.key === '/' && _isShortcutEnabled('/')) {

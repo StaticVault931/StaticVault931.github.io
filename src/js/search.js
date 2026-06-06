@@ -248,7 +248,7 @@ export function initSearch() {
 
     document.getElementById('search-results-area').innerHTML =
       `<div class="search-spinner"><div class="spin"></div></div>`;
-    _debounce = setTimeout(() => { closeInlineDrop(); doSearch(q); }, 400);
+    _debounce = setTimeout(() => { closeInlineDrop(); doSearch(q); }, 280);
   });
 
   inp.addEventListener('focus', () => {
@@ -627,24 +627,28 @@ export async function doSearch(q) {
 
 async function fetchSearchPage(q, page) {
   let _personResults = [];
-  let movies = [], shows = [], anime = [];
 
   // Person search — only for queries that look like names (2+ words) or when results are sparse
   const looksLikeName = q.trim().split(/\s+/).length >= 2 && !/[0-9:!?]/.test(q);
 
-  if (_sfActive !== 'tv' && _sfActive !== 'anime') {
-    const d = await tmdb('/search/movie', { query: q, page });
-    movies = (d.results || []).map(x => ({ ...x, _type: 'movie' }));
-  }
-  if (_sfActive !== 'movie' && _sfActive !== 'anime') {
-    const d = await tmdb('/search/tv', { query: q, page });
-    shows = (d.results || []).map(x => ({ ...x, _type: 'tv' }));
-  }
-  if (_sfActive === 'anime' || _sfActive === 'all') {
-    const Q = `query($s:String,$p:Int){Page(page:$p,perPage:20){media(type:ANIME,search:$s,isAdult:false,sort:[POPULARITY_DESC]){id title{romaji english}coverImage{large}averageScore startDate{year}description(asHtml:false)popularity}}}`;
-    const d = await aniQuery(Q, { s: q, p: page });
-    anime = (d?.data?.Page?.media || []).map(m => ({ ...normalizeAnime(m), _type: 'anime' }));
-  }
+  // ── Run movie / TV / anime searches IN PARALLEL for speed ──────────
+  const wantMovies = _sfActive !== 'tv' && _sfActive !== 'anime';
+  const wantTV     = _sfActive !== 'movie' && _sfActive !== 'anime';
+  const wantAnime  = _sfActive === 'anime' || _sfActive === 'all';
+  const aniGQL = `query($s:String,$p:Int){Page(page:$p,perPage:20){media(type:ANIME,search:$s,isAdult:false,sort:[POPULARITY_DESC]){id title{romaji english}coverImage{large}averageScore startDate{year}description(asHtml:false)popularity}}}`;
+
+  const [movieRes, tvRes, animeRes] = await Promise.allSettled([
+    wantMovies ? tmdb('/search/movie', { query: q, page }) : Promise.resolve(null),
+    wantTV     ? tmdb('/search/tv',    { query: q, page }) : Promise.resolve(null),
+    wantAnime  ? aniQuery(aniGQL, { s: q, p: page })       : Promise.resolve(null),
+  ]);
+
+  const movies = (movieRes.status === 'fulfilled' && movieRes.value?.results)
+    ? movieRes.value.results.map(x => ({ ...x, _type: 'movie' })) : [];
+  const shows  = (tvRes.status === 'fulfilled' && tvRes.value?.results)
+    ? tvRes.value.results.map(x => ({ ...x, _type: 'tv' })) : [];
+  const anime  = (animeRes.status === 'fulfilled' && animeRes.value?.data?.Page?.media)
+    ? animeRes.value.data.Page.media.map(m => ({ ...normalizeAnime(m), _type: 'anime' })) : [];
 
   let all = [...movies, ...shows, ...anime];
   if (_sfActive === 'movie') all = movies;
@@ -778,9 +782,14 @@ async function fetchSearchPage(q, page) {
     try {
       const personData = await tmdb('/search/person', { query: q });
       const people = (personData.results || []).slice(0, 2).filter(p => p.known_for_department);
-      for (const person of people) {
-        const credits = await tmdb(`/person/${person.id}/combined_credits`);
-        const existIds = new Set(all.map(x => x.id));
+      // Fetch all person credits in parallel
+      const creditResults = await Promise.allSettled(
+        people.map(p => tmdb(`/person/${p.id}/combined_credits`))
+      );
+      const existIds = new Set(all.map(x => x.id));
+      people.forEach((person, i) => {
+        if (creditResults[i].status !== 'fulfilled') return;
+        const credits = creditResults[i].value;
         const personMovies = (credits.cast || [])
           .filter(m => m.media_type === 'movie' && m.poster_path && !existIds.has(m.id))
           .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
@@ -792,7 +801,9 @@ async function fetchSearchPage(q, page) {
           .slice(0, 6)
           .map(m => ({ ...m, _type: 'tv', _viaActor: person.name, _viaActorId: person.id }));
         _personResults.push(...personMovies, ...personShows);
-      }
+        personMovies.forEach(m => existIds.add(m.id));
+        personShows.forEach(m => existIds.add(m.id));
+      });
     } catch {}
   }
 

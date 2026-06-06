@@ -1,6 +1,6 @@
 import { state, AGE_LEVELS, getImpressionPenalty } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
-import { makeCard, renderRow, skelCards, hideSection, showSection } from './ui.js';
+import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from './ui.js';
 
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
@@ -238,6 +238,185 @@ export async function loadBecauseYouLiked() {
     } catch {
       sec.style.display = 'none';
     }
+  }
+}
+
+/* ── TRENDING IN YOUR GENRE ──────────────────────────────────────── */
+export async function loadGenreTrending() {
+  const sec = document.getElementById('sec-genre-trending');
+  const row = document.getElementById('row-genre-trending');
+  const titleEl = document.getElementById('sec-genre-trending-title');
+  if (!sec || !row) return;
+
+  // Need at least one preferred genre or watched/liked content to derive one
+  const prefGenres = state.prefGenres || [];
+  const likedGenres = {};
+  [...(state.liked || []), ...(state.watched || [])].forEach(item => {
+    (item.genre_ids || []).forEach(g => { likedGenres[g] = (likedGenres[g] || 0) + 1; });
+  });
+
+  // Pick the top genre by preference → then by liked count
+  const topPrefGenre = prefGenres[0];
+  const topLikedGenre = Object.entries(likedGenres).sort((a,b) => b[1]-a[1])[0]?.[0];
+  const genreId = topPrefGenre || topLikedGenre;
+  if (!genreId) return; // no data yet
+
+  // Genre name map
+  const GENRE_NAMES = { 28:'Action',35:'Comedy',18:'Drama',27:'Horror',878:'Sci-Fi',
+    10749:'Romance',16:'Animation',80:'Crime',53:'Thriller',12:'Adventure',
+    14:'Fantasy',99:'Documentary',10751:'Family',10402:'Music',9648:'Mystery' };
+  const genreName = GENRE_NAMES[+genreId] || 'Your Genre';
+
+  if (titleEl) titleEl.textContent = `Trending in ${genreName}`;
+  sec.style.display = '';
+  row.innerHTML = skelCards(8);
+
+  try {
+    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+    const watchedIds  = new Set((state.watched  || []).map(x => x.id));
+    const [mv, tv] = await Promise.allSettled([
+      tmdb('/discover/movie', { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 50 }),
+      tmdb('/discover/tv',    { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 20 }),
+    ]);
+    const movies = mv.status==='fulfilled' ? (mv.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+    const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
+    const mixed = []; const ml=movies.length, sl=shows.length;
+    for (let i=0;i<Math.max(ml,sl);i++) { if(movies[i])mixed.push(movies[i]); if(shows[i])mixed.push(shows[i]); }
+    const filtered = mixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)).slice(0, 18);
+    if (!filtered.length) { sec.style.display='none'; return; }
+    row.innerHTML = filtered.map(m => makeCard(m, m.media_type)).join('');
+  } catch { sec.style.display = 'none'; }
+}
+
+/* ── DEEP CUTS — highly rated but unseen ─────────────────────────── */
+export async function loadDeepCuts() {
+  const sec = document.getElementById('sec-deep-cuts');
+  const row = document.getElementById('row-deep-cuts');
+  if (!sec || !row) return;
+
+  const watchedIds  = new Set((state.watched  || []).map(x => x.id));
+  const likedIds    = new Set((state.liked    || []).map(x => x.id));
+  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+  const recentIds   = new Set((state.recentlyViewed || []).map(x => x.id));
+
+  // Need some history to determine "unseen"
+  if (!watchedIds.size && !likedIds.size) return;
+
+  sec.style.display = '';
+  row.innerHTML = skelCards(8);
+
+  try {
+    const page = Math.floor(Math.random() * 5) + 1;
+    const [mv, tv] = await Promise.allSettled([
+      tmdb('/discover/movie', { sort_by:'vote_average.desc', 'vote_count.gte':1000, 'vote_average.gte':7.5, page }),
+      tmdb('/discover/tv',    { sort_by:'vote_average.desc', 'vote_count.gte':300,  'vote_average.gte':7.8, page }),
+    ]);
+    const movies = mv.status==='fulfilled' ? (mv.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
+    const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
+    const all = [...movies,...shows]
+      .filter(m => !watchedIds.has(m.id) && !likedIds.has(m.id) && !dislikedIds.has(m.id) && !recentIds.has(m.id))
+      .sort((a,b) => (b.vote_average||0) - (a.vote_average||0))
+      .slice(0, 18);
+    if (!all.length) { sec.style.display='none'; return; }
+    row.innerHTML = all.map(m => makeCard(m, m.media_type)).join('');
+  } catch { sec.style.display = 'none'; }
+}
+
+/* ── MORE LIKE YOUR HISTORY — from recently watched ─────────────── */
+export async function loadHistoryMix() {
+  const sec = document.getElementById('sec-history-mix');
+  const row = document.getElementById('row-history-mix');
+  const titleEl = document.getElementById('sec-history-mix-title');
+  if (!sec || !row) return;
+
+  // Pull from recently watched (not just liked) — top 4 unique items
+  const history = [
+    ...(state.watched || []).slice().reverse().slice(0, 4),
+    ...(state.recentlyViewed || []).slice(0, 4),
+  ];
+  const seen = new Set();
+  const candidates = history.filter(x => x.id && !seen.has(x.id) && seen.add(x.id)).slice(0, 3);
+  if (!candidates.length) return;
+
+  // Use first item as the "anchor" label
+  const anchor = candidates[0];
+  const anchorName = anchor.title || anchor.name || '';
+  if (titleEl && anchorName) {
+    titleEl.textContent = `More Like "${anchorName}"`;
+  }
+
+  sec.style.display = '';
+  row.innerHTML = skelCards(8);
+
+  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+  const watchedIds  = new Set((state.watched  || []).map(x => x.id));
+
+  try {
+    const recResults = await Promise.allSettled(
+      candidates.map(item => tmdb(`/${item.type || item.media_type || 'movie'}/${item.id}/recommendations`).then(d => d.results || []))
+    );
+    const allRecs = recResults.flatMap(r => r.status==='fulfilled' ? r.value : []);
+    const uniqSeen = new Set();
+    const filtered = allRecs
+      .filter(m => m.id && !dislikedIds.has(m.id) && !watchedIds.has(m.id) && !uniqSeen.has(m.id) && uniqSeen.add(m.id))
+      .sort((a,b) => (b.popularity||0)-(a.popularity||0))
+      .slice(0, 18);
+    if (!filtered.length) { sec.style.display='none'; return; }
+    row.innerHTML = filtered.map(m => makeCard(m, m.media_type || (m.title ? 'movie' : 'tv'))).join('');
+  } catch { sec.style.display = 'none'; }
+}
+
+/* ── BECAUSE YOU WATCHED [Title] rows ───────────────────────────── */
+export async function loadBecauseYouWatched() {
+  // Take top 2 recently-watched items (that aren't already covered by BecauseYouLiked)
+  const likedIds = new Set([...(state.prefLikes||[]), ...(state.liked||[])].map(x => x.id));
+  const candidates = (state.watched || [])
+    .slice().reverse()
+    .filter(x => x.id && !likedIds.has(x.id) && x.type !== 'anime')
+    .slice(0, 2);
+  if (!candidates.length) return;
+
+  for (const item of candidates) {
+    const secId = `sec-watched-${item.id}`;
+    const rowId = `row-watched-${item.id}`;
+    let sec = document.getElementById(secId);
+    if (!sec) {
+      sec = document.createElement('div');
+      sec.className = 'section';
+      sec.id = secId;
+      sec.innerHTML = `
+        <div class="sec-header">
+          <div class="sec-title">
+            <span class="material-icons-round sec-icon" style="color:#60a5fa">history</span>
+            Because you watched <em>${esc(item.title || item.name || 'this')}</em>
+          </div>
+        </div>
+        <div class="row-wrap">
+          <div class="row-arrow row-arrow-l hidden">
+            <button data-scroll-row="${rowId}" data-scroll-dir="-1" aria-label="Scroll left"><span class="material-icons-round">chevron_left</span></button>
+          </div>
+          <div class="card-row" id="${rowId}"></div>
+          <div class="row-arrow row-arrow-r">
+            <button data-scroll-row="${rowId}" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button>
+          </div>
+        </div>`;
+      // Insert after sec-history-mix or sec-toprated
+      const anchor = document.getElementById('sec-history-mix') || document.getElementById('sec-toprated');
+      if (anchor?.parentNode) anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+      else document.getElementById('page-home')?.appendChild(sec);
+    }
+    const rowEl = document.getElementById(rowId);
+    if (!rowEl) continue;
+    rowEl.innerHTML = skelCards(8);
+    try {
+      const type = item.type || item.media_type || 'movie';
+      const d = await tmdb(`/${type}/${item.id}/recommendations`);
+      const results = (d.results || [])
+        .filter(m => !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id))
+        .slice(0, 14);
+      if (!results.length) { sec.style.display='none'; continue; }
+      renderRow(rowId, results, type);
+    } catch { sec.style.display = 'none'; }
   }
 }
 
