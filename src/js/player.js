@@ -1,36 +1,51 @@
 import { state, persist } from './state.js';
 
 /* ── PROVIDERS ───────────────────────────────────────────────────── */
-// Ordered by: reliability > quality > coverage
-// prio: high = default / most reliable, med = good backup, low = last resort
+// Ordered by: user-verified reliability (tested 2026-06)
+// prio: high = shown by default, med/low = hidden under "More Sources" dropdown
 // noSandbox: true = disable iframe sandbox automatically (player needs it to work)
+// group: 'more' = collapsed under "More Sources" by default
 export const PROVIDERS = [
   {
-    // #1 — VidSrc.to: the original VidSrc, massive library, most-trusted
-    id: 'vidsrcto',
-    label: 'VidSrc',
+    // #1 — VidSrc.ru: verified working, no popups, auto-next episode
+    id: 'vidsrcru',
+    label: 'VidSrc.ru',
     prio: 'high',
-    note: 'Original · HD',
-    domain: 'https://vidsrc.to',
+    note: 'Auto-next · HD',
+    domain: 'https://vidsrc.ru',
     types: ['movie', 'tv', 'anime'],
+    noSandbox: true,
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.to/embed/movie/${id}`
-      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+      ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
+      : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
   },
   {
-    // #2 — Embed.su: very reliable, clean UI, consistent library
-    id: 'embedsu',
-    label: 'Embed.su',
+    // #2 — 2Embed: verified working, wide coverage
+    id: 'embed2',
+    label: '2Embed',
     prio: 'high',
-    note: 'Clean · Fast',
-    domain: 'https://embed.su',
-    types: ['movie', 'tv', 'anime'],
+    note: 'Wide coverage',
+    domain: 'https://www.2embed.cc',
+    types: ['movie', 'tv'],
+    noSandbox: true,
     url: (id, t, s, e) => t === 'movie'
-      ? `https://embed.su/embed/movie/${id}`
-      : `https://embed.su/embed/tv/${id}/${s}/${e}`,
+      ? `https://www.2embed.cc/embed/${id}`
+      : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    // #3 — VidLink: 4K on some titles, needs sandbox disabled, anime support
+    // #3 — Videasy: verified working
+    id: 'videasy',
+    label: 'Videasy',
+    prio: 'high',
+    note: 'Reliable',
+    domain: 'https://player.videasy.net',
+    types: ['movie', 'tv'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://player.videasy.net/movie/${id}`
+      : `https://player.videasy.net/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #4 — VidLink: 4K on some titles, needs sandbox off, some popups on click
     id: 'vidlink',
     label: 'VidLink',
     prio: 'high',
@@ -43,116 +58,150 @@ export const PROVIDERS = [
       : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
   },
   {
-    // #4 — VidSrc.ru: modern player, watch-progress postMessage, auto-next episode
-    id: 'vidsrcru',
-    label: 'VidSrc.ru',
+    // #5 — VidSrc.to: the original VidSrc — large library, may have X-Frame-Options in Firefox
+    id: 'vidsrcto',
+    label: 'VidSrc',
     prio: 'high',
-    note: 'Auto-next',
-    domain: 'https://vidsrc.ru',
+    note: 'Original · HD',
+    domain: 'https://vidsrc.to',
     types: ['movie', 'tv', 'anime'],
-    noSandbox: true,
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
-      : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
+      ? `https://vidsrc.to/embed/movie/${id}`
+      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #5 — VidSrc CC: wide library, reliable HD
+    // #6 — Embed.su: clean UI, consistent library
+    id: 'embedsu',
+    label: 'Embed.su',
+    prio: 'high',
+    note: 'Clean · Fast',
+    domain: 'https://embed.su',
+    types: ['movie', 'tv', 'anime'],
+    group: 'more',
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://embed.su/embed/movie/${id}`
+      : `https://embed.su/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #7 — Vidfun: fresh provider with postMessage API support
+    id: 'vidfun',
+    label: 'VidFun',
+    prio: 'med',
+    note: 'API player',
+    domain: 'https://vidfun.xyz',
+    types: ['movie', 'tv'],
+    group: 'more',
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidfun.xyz/movie/${id}`
+      : `https://vidfun.xyz/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #8 — VidSrc CC: wide library, reliable HD
     id: 'vidsrc',
     label: 'VidSrc.cc',
-    prio: 'high',
+    prio: 'med',
     note: 'HD · Wide',
     domain: 'https://vidsrc.cc',
     types: ['movie', 'tv', 'anime'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.cc/v2/embed/movie/${id}`
       : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #6 — VidSrc Embed: original vidsrc embed backend, wide library
+    // #9 — VidSrc Embed: original vidsrc embed backend
     id: 'vidsrcembed',
     label: 'VidSrc (Embed)',
-    prio: 'high',
+    prio: 'med',
     note: 'Original backend',
     domain: 'https://vidsrc-embed.ru',
     types: ['movie', 'tv', 'anime'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc-embed.ru/embed/movie?tmdb=${id}`
       : `https://vidsrc-embed.ru/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
-    // #7 — Rive Stream: strong multi-source aggregator, wide library
+    // #10 — Rive Stream: multi-source aggregator
     id: 'rive',
     label: 'Rive',
-    prio: 'high',
+    prio: 'med',
     note: 'Multi-source',
     domain: 'https://rive.stream',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://rive.stream/embed/movie?id=${id}&yt=1`
       : `https://rive.stream/embed/tv?id=${id}&s=${s}&e=${e}&yt=1`,
   },
   {
-    // #8 — Cineby: 4K available on select titles
+    // #11 — Cineby: 4K available on select titles
     id: 'cineby',
     label: 'Cineby',
-    prio: 'high',
+    prio: 'med',
     note: '4K available',
     domain: 'https://www.cineby.app',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://www.cineby.app/movie/${id}`
       : `https://www.cineby.app/tv/${id}/${s}/${e}`,
   },
   {
-    // #8 — VidBinge: solid coverage, clean player
+    // #12 — VidBinge: solid coverage, clean player
     id: 'vidbinge',
     label: 'VidBinge',
     prio: 'med',
     note: 'Clean player',
     domain: 'https://vidbinge.dev',
     types: ['movie', 'tv', 'anime'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidbinge.dev/embed/movie/${id}`
       : `https://vidbinge.dev/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #9 — VidSrc Me: alternate vidsrc backend
+    // #13 — VidSrc Me: alternate vidsrc backend
     id: 'vidsrcme',
     label: 'VidSrc.me',
     prio: 'med',
     note: 'Alt backend',
     domain: 'https://vidsrc.me',
     types: ['movie', 'tv', 'anime'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.me/embed/movie?tmdb=${id}`
       : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
-    // #10 — MoviesAPI: good coverage, minimal ads
+    // #14 — MoviesAPI: good coverage, minimal ads
     id: 'moviesapi',
     label: 'MoviesAPI',
     prio: 'med',
     note: 'Low ads',
     domain: 'https://moviesapi.club',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://moviesapi.club/movie/${id}`
       : `https://moviesapi.club/tv/${id}-${s}-${e}`,
   },
   {
-    // #11 — AutoEmbed: good for recent content
+    // #15 — AutoEmbed: good for recent content
     id: 'autoembed',
     label: 'AutoEmbed',
     prio: 'med',
     note: 'Recent content',
     domain: 'https://player.autoembed.cc',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.autoembed.cc/embed/movie/${id}`
       : `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #12 — MultiEmbed: multi-source, needs sandbox disabled
+    // #16 — MultiEmbed: multi-source, needs sandbox disabled
     id: 'superembed',
     label: 'MultiEmbed',
     prio: 'med',
@@ -160,58 +209,36 @@ export const PROVIDERS = [
     domain: 'https://multiembed.mov',
     types: ['movie', 'tv'],
     noSandbox: true,
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
       : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
   },
   {
-    // #13 — VidSrc Pro: separate library
+    // #17 — VidSrc Pro: separate pro library
     id: 'vidsrcpro',
     label: 'VidSrc Pro',
-    prio: 'med',
+    prio: 'low',
     note: 'Pro library',
     domain: 'https://vidsrc.pro',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.pro/embed/movie/${id}`
       : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #14 — 2Embed: good coverage, needs sandbox disabled
-    id: 'embed2',
-    label: '2Embed',
-    prio: 'med',
-    note: 'Wide coverage',
-    domain: 'https://www.2embed.cc',
-    types: ['movie', 'tv'],
-    noSandbox: true,
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://www.2embed.cc/embed/${id}`
-      : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
-  },
-  {
-    // #15 — Smashy Stream: solid fallback
+    // #18 — Smashy Stream: fallback
     id: 'smashy',
     label: 'SmashyStream',
     prio: 'low',
     note: 'Fallback',
     domain: 'https://player.smashy.stream',
     types: ['movie', 'tv'],
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://player.smashy.stream/movie/${id}`
       : `https://player.smashy.stream/tv/${id}?s=${s}&e=${e}`,
-  },
-  {
-    // #16 — Videasy: last resort fallback
-    id: 'videasy',
-    label: 'Videasy',
-    prio: 'low',
-    note: 'Last resort',
-    domain: 'https://player.videasy.net',
-    types: ['movie', 'tv'],
-    url: (id, t, s, e) => t === 'movie'
-      ? `https://player.videasy.net/movie/${id}`
-      : `https://player.videasy.net/tv/${id}/${s}/${e}`,
   },
 ];
 
@@ -304,20 +331,60 @@ export function buildProviderBar(mediaId, type, season, episode) {
   // Compute whether sandbox is effectively off for the active provider
   const activeSandboxOff = sf === false || (sf === null && active.noSandbox);
 
+  // Split providers: main (shown by default) vs more (hidden under dropdown)
+  // Active provider is always shown in main even if it's in 'more' group
+  const mainList = list.filter(p => !p.group || p.group !== 'more' || p.id === active.id);
+  const moreList = list.filter(p => p.group === 'more' && p.id !== active.id);
+
+  const _provBtn = (p) => {
+    const isActive = active.id === p.id;
+    const sandboxActive = sf !== null ? sf !== false : !p.noSandbox;
+    const noSandboxBadge = !sandboxActive ? `<span class="prov-nosandbox-dot" title="Sandbox off">●</span>` : '';
+    return `<button class="prov-btn${isActive ? ' on' : ''}${p.prio === 'high' ? ' prio-high' : p.prio === 'low' ? ' prio-low' : ''}"
+      data-provider="${p.id}"
+      title="${p.label}${p.note ? ' · ' + p.note : ''}${p.noSandbox ? ' (no sandbox)' : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}${noSandboxBadge}</button>`;
+  };
+
+  const moreToggleHtml = moreList.length
+    ? `<button class="prov-btn prov-more-toggle" id="prov-more-toggle" title="Show ${moreList.length} more sources">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        More (${moreList.length})
+       </button>`
+    : '';
+
   bar.innerHTML =
     `<span class="prov-label">Source</span>` +
     `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg> Next
      </button>` +
     `<button class="prov-btn prov-sandbox${sbClass}" id="prov-sandbox-btn" title="Cycle sandbox mode: Auto → Off → On\nAuto: off for VidLink/MultiEmbed/2Embed/VidSrc.ru, on for others\nOff: removes sandbox for all providers\nOn: forces sandbox on for all providers">${sbIcon} ${sbLabel}</button>` +
-    list.map(p => {
-      const isActive = active.id === p.id;
-      const sandboxActive = sf !== null ? sf !== false : !p.noSandbox;
-      const noSandboxBadge = !sandboxActive ? `<span class="prov-nosandbox-dot" title="Sandbox off">●</span>` : '';
-      return `<button class="prov-btn${isActive ? ' on' : ''}${p.prio === 'high' ? ' prio-high' : p.prio === 'low' ? ' prio-low' : ''}"
-        data-provider="${p.id}"
-        title="${p.label}${p.note ? ' · ' + p.note : ''}${p.noSandbox ? ' (no sandbox)' : ''}">${p.label}${p.note && p.note.includes('4K') ? `<span class="prov-note">4K</span>` : ''}${noSandboxBadge}</button>`;
-    }).join('');
+    mainList.map(_provBtn).join('') +
+    moreToggleHtml;
+
+  // Render "More Sources" panel as a sibling to modal-top-bar (avoids overflow-x clipping)
+  // Remove any stale panel first
+  document.getElementById('prov-more-panel')?.remove();
+  if (moreList.length) {
+    const panel = document.createElement('div');
+    panel.id = 'prov-more-panel';
+    panel.className = 'prov-more-panel';
+    panel.style.display = 'none';
+    panel.innerHTML = moreList.map(_provBtn).join('');
+    const topBar = document.querySelector('.modal-top-bar');
+    if (topBar) topBar.after(panel);
+
+    // Wire toggle
+    setTimeout(() => {
+      const toggle = document.getElementById('prov-more-toggle');
+      if (!toggle) return;
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = panel.style.display !== 'none';
+        panel.style.display = open ? 'none' : '';
+        toggle.classList.toggle('on', !open);
+      });
+    }, 0);
+  }
 
   // ── Sandbox-off warning banner — rendered as a sibling BELOW the top bar ──
   const modal = document.getElementById('modal');

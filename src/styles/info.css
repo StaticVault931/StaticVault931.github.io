@@ -347,15 +347,20 @@
 .pref-keyword-chip.disliked {
   background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.25); color: #f87171;
 }
-.pref-kw-remove {
+.pref-kw-remove,
+.pref-kw-browse {
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; cursor: pointer; padding: 0;
   color: inherit; opacity: .5; border-radius: 50%;
   width: 16px; height: 16px; flex-shrink: 0;
   transition: opacity .12s;
 }
-.pref-kw-remove:hover { opacity: 1; }
-.pref-kw-remove .material-icons-round { font-size: .75rem; }
+.pref-kw-remove:hover,
+.pref-kw-browse:hover { opacity: 1; }
+.pref-kw-remove .material-icons-round,
+.pref-kw-browse .material-icons-round { font-size: .75rem; }
+.pref-kw-browse { opacity: .4; }
+.pref-kw-browse:hover { opacity: 1; color: #60a5fa; }
 .pref-tag-subhead {
   display: flex; align-items: center; gap: .35rem;
   font-size: .72rem; font-weight: 800;

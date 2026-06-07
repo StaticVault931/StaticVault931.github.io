@@ -873,50 +873,60 @@
     <span class="material-icons-round">auto_awesome</span>Your Taste
   </div>
 
-  <!-- Titles I Love (full width) -->
-  <div class="cyf-card cyf-card-love" style="margin-bottom:.75rem">
-    <div class="cyf-card-head">
-      <span class="cyf-card-icon" style="background:rgba(229,9,20,.15);color:#f87171"><span class="material-icons-round">favorite</span></span>
-      <div>
-        <div class="cyf-card-title">Titles I Love</div>
-        <div class="cyf-card-sub">Boosts similar content in your feed</div>
-      </div>
-    </div>
-    <div class="pref-input-wrap">
-      <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-      <div class="pref-ac-drop" id="pref-like-ac"></div>
-    </div>
-    <div class="pref-tag-list" id="pref-likes-list"></div>
-  </div>
+  <!-- Taste 2-col grid: left = liked/disliked titles, right = content rating -->
+  <div class="cyf-taste-2col">
+    <div class="cyf-taste-col-left">
 
-  <!-- Titles I Dislike (full width, below liked) -->
-  <div class="cyf-card cyf-card-dislike" style="margin-bottom:.75rem">
-    <div class="cyf-card-head">
-      <span class="cyf-card-icon" style="background:rgba(99,102,241,.12);color:#a78bfa"><span class="material-icons-round">thumb_down</span></span>
-      <div>
-        <div class="cyf-card-title">Titles I Dislike</div>
-        <div class="cyf-card-sub">Hides similar content from your feed</div>
+      <!-- Titles I Love -->
+      <div class="cyf-card cyf-card-love">
+        <div class="cyf-card-head">
+          <span class="cyf-card-icon" style="background:rgba(229,9,20,.15);color:#f87171"><span class="material-icons-round">favorite</span></span>
+          <div>
+            <div class="cyf-card-title">Titles I Love</div>
+            <div class="cyf-card-sub">Boosts similar content in your feed</div>
+          </div>
+        </div>
+        <div class="pref-input-wrap">
+          <input class="pref-input" id="pref-like-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+          <div class="pref-ac-drop" id="pref-like-ac"></div>
+        </div>
+        <div class="pref-tag-list" id="pref-likes-list"></div>
       </div>
-    </div>
-    <div class="pref-input-wrap">
-      <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
-      <div class="pref-ac-drop" id="pref-dis-ac"></div>
-    </div>
-    <div class="pref-tag-list" id="pref-dislikes-list"></div>
-  </div>
 
-  <!-- Content Rating (full width, prominent) -->
-  <div class="cyf-card cyf-card-full" style="margin-bottom:.75rem">
-    <div class="cyf-card-head">
-      <span class="cyf-card-icon" style="background:rgba(245,158,11,.12);color:#fbbf24"><span class="material-icons-round">child_care</span></span>
-      <div>
-        <div class="cyf-card-title">Content Rating</div>
-        <div class="cyf-card-sub">Maximum rating shown in your feed</div>
+      <!-- Titles I Dislike -->
+      <div class="cyf-card cyf-card-dislike">
+        <div class="cyf-card-head">
+          <span class="cyf-card-icon" style="background:rgba(99,102,241,.12);color:#a78bfa"><span class="material-icons-round">thumb_down</span></span>
+          <div>
+            <div class="cyf-card-title">Titles I Dislike</div>
+            <div class="cyf-card-sub">Hides similar content from your feed</div>
+          </div>
+        </div>
+        <div class="pref-input-wrap">
+          <input class="pref-input" id="pref-dis-input" placeholder="Search for a movie or show…" autocomplete="off"/>
+          <div class="pref-ac-drop" id="pref-dis-ac"></div>
+        </div>
+        <div class="pref-tag-list" id="pref-dislikes-list"></div>
       </div>
-    </div>
-    <div id="pref-age-row" style="margin-top:.6rem"></div>
-    <div class="pref-rating-descs" id="pref-rating-descs"></div>
-  </div>
+
+    </div><!-- /.cyf-taste-col-left -->
+
+    <div class="cyf-taste-col-right">
+      <!-- Content Rating -->
+      <div class="cyf-card cyf-card-full">
+        <div class="cyf-card-head">
+          <span class="cyf-card-icon" style="background:rgba(245,158,11,.12);color:#fbbf24"><span class="material-icons-round">child_care</span></span>
+          <div>
+            <div class="cyf-card-title">Content Rating</div>
+            <div class="cyf-card-sub">Maximum rating shown in your feed</div>
+          </div>
+        </div>
+        <div id="pref-age-row" style="margin-top:.6rem"></div>
+        <div class="pref-rating-descs" id="pref-rating-descs"></div>
+      </div>
+    </div><!-- /.cyf-taste-col-right -->
+
+  </div><!-- /.cyf-taste-2col -->
 
   <!-- ── GENRE & TAGS ───────────────────────────────────────────── -->
   <div class="cyf-section-label" style="margin-top:2rem">

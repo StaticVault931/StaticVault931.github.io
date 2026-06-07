@@ -563,6 +563,30 @@
   vertical-align: middle;
   letter-spacing: .04em;
 }
+/* "More Sources" toggle button */
+.prov-more-toggle {
+  display: flex;
+  align-items: center;
+  gap: .2rem;
+  opacity: .55;
+  flex-shrink: 0;
+}
+.prov-more-toggle:hover,
+.prov-more-toggle.on { opacity: 1; border-color: var(--border3) !important; }
+/* "More Sources" panel — second row below modal top bar */
+.prov-more-panel {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .75rem .35rem 2.4rem;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  animation: fadeIn .18s var(--ease);
+}
+.prov-more-panel::-webkit-scrollbar { display: none; }
 
 /* ── MODAL BODY (3-column) ───────────────────────────────────────── */
 .modal-body {

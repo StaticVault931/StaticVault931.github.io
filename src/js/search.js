@@ -20,6 +20,21 @@ export function getSearchFilters() { return { ..._filters }; }
 export function buildSearchFilters(container) {
   if (!container) return;
   const currentYear = new Date().getFullYear();
+  // Year range: 1900 → current
+  const allYears = Array.from({length: currentYear - 1899}, (_, i) => currentYear - i);
+
+  // Decade quick-select presets
+  const decades = [
+    { label: 'Any Decade', from: '', to: '' },
+    { label: '2020s', from: 2020, to: currentYear },
+    { label: '2010s', from: 2010, to: 2019 },
+    { label: '2000s', from: 2000, to: 2009 },
+    { label: '90s', from: 1990, to: 1999 },
+    { label: '80s', from: 1980, to: 1989 },
+    { label: '70s', from: 1970, to: 1979 },
+    { label: 'Classics', from: 1900, to: 1969 },
+  ];
+
   container.innerHTML = `
     <div class="sf-advanced" id="sf-advanced">
       <div class="sf-filter-row">
@@ -45,6 +60,7 @@ export function buildSearchFilters(container) {
             <option value="7">★ 7+ Great</option>
             <option value="6">★ 6+ Good</option>
             <option value="5">★ 5+ Decent</option>
+            <option value="4">★ 4+ Average</option>
           </select>
         </label>
         <label class="sf-filter-label">Sort By
@@ -52,20 +68,35 @@ export function buildSearchFilters(container) {
             <option value="popularity.desc">Most Popular</option>
             <option value="vote_average.desc">Highest Rated</option>
             <option value="release_date.desc">Newest First</option>
+            <option value="release_date.asc">Oldest First</option>
             <option value="revenue.desc">Highest Grossing</option>
             <option value="vote_count.desc">Most Votes</option>
+          </select>
+        </label>
+        <label class="sf-filter-label">Decade
+          <select class="sf-filter-sel" id="sf-decade">
+            ${decades.map(d => `<option value="${d.from}:${d.to}">${d.label}</option>`).join('')}
           </select>
         </label>
         <label class="sf-filter-label">Year From
           <select class="sf-filter-sel" id="sf-year-from">
             <option value="">Any Year</option>
-            ${Array.from({length: 50}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+            ${allYears.map(y => `<option value="${y}">${y}</option>`).join('')}
           </select>
         </label>
         <label class="sf-filter-label">Year To
           <select class="sf-filter-sel" id="sf-year-to">
             <option value="">Any Year</option>
-            ${Array.from({length: 50}, (_, i) => currentYear - i).map(y => `<option value="${y}">${y}</option>`).join('')}
+            ${allYears.map(y => `<option value="${y}">${y}</option>`).join('')}
+          </select>
+        </label>
+        <label class="sf-filter-label">Runtime
+          <select class="sf-filter-sel" id="sf-runtime">
+            <option value="">Any Length</option>
+            <option value="short">Short (&lt;90 min)</option>
+            <option value="medium">Medium (90–150 min)</option>
+            <option value="long">Long (150–210 min)</option>
+            <option value="epic">Epic (&gt;210 min)</option>
           </select>
         </label>
         <label class="sf-filter-label">Language
@@ -77,6 +108,19 @@ export function buildSearchFilters(container) {
             <option value="es">Spanish</option>
             <option value="fr">French</option>
             <option value="de">German</option>
+            <option value="hi">Hindi</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="zh">Chinese</option>
+          </select>
+        </label>
+        <label class="sf-filter-label" title="Movies: released/upcoming. TV: returning/ended/cancelled">Status
+          <select class="sf-filter-sel" id="sf-status">
+            <option value="">Any Status</option>
+            <option value="released">Released</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="airing">Currently Airing</option>
+            <option value="ended">Ended/Cancelled</option>
           </select>
         </label>
         <button class="sf-filter-clear" id="sf-filter-clear" title="Clear all filters">
@@ -93,7 +137,26 @@ export function buildSearchFilters(container) {
     _filters.yearFrom = document.getElementById('sf-year-from')?.value ? parseInt(document.getElementById('sf-year-from').value) : null;
     _filters.yearTo = document.getElementById('sf-year-to')?.value ? parseInt(document.getElementById('sf-year-to').value) : null;
     _filters.language = document.getElementById('sf-lang')?.value || null;
+    _filters.runtime = document.getElementById('sf-runtime')?.value || null;
+    _filters.status = document.getElementById('sf-status')?.value || null;
   };
+
+  // Decade preset wires year-from and year-to selects
+  document.getElementById('sf-decade')?.addEventListener('change', (e) => {
+    const [from, to] = e.target.value.split(':');
+    const fromSel = document.getElementById('sf-year-from');
+    const toSel   = document.getElementById('sf-year-to');
+    if (fromSel) fromSel.value = from || '';
+    if (toSel)   toSel.value   = to   || '';
+    readFilters();
+    // Also update _filters directly from decade selection
+    _filters.yearFrom = from ? parseInt(from) : null;
+    _filters.yearTo   = to   ? parseInt(to)   : null;
+    const inp = document.getElementById('search-input');
+    const q = inp?.value.trim();
+    if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
+    else browseByFilters();
+  });
 
   container.querySelectorAll('.sf-filter-sel').forEach(sel => {
     sel.addEventListener('change', () => {
@@ -110,11 +173,9 @@ export function buildSearchFilters(container) {
   });
 
   document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
-    _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all' };
+    _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null };
     container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
-    const inp = document.getElementById('search-input');
-    if (inp?.value.trim()) loadSearchDefault();
-    else loadSearchDefault();
+    loadSearchDefault();
   });
 }
 
@@ -133,6 +194,25 @@ async function browseByFilters() {
     if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
     if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
     if (_filters.yearTo && _filters.contentType === 'tv') params['first_air_date.lte'] = `${_filters.yearTo}-12-31`;
+    // Runtime filter (TMDB uses minutes)
+    if (_filters.runtime) {
+      const rtMap = { short: [0, 90], medium: [90, 150], long: [150, 210], epic: [210, 9999] };
+      const [rMin, rMax] = rtMap[_filters.runtime] || [];
+      if (rMin != null) params['with_runtime.gte'] = rMin;
+      if (rMax && rMax < 9999) params['with_runtime.lte'] = rMax;
+    }
+    // Status filter
+    if (_filters.status) {
+      if (_filters.status === 'upcoming' && _filters.contentType !== 'tv') {
+        params['primary_release_date.gte'] = new Date().toISOString().slice(0, 10);
+      } else if (_filters.status === 'released' && _filters.contentType !== 'tv') {
+        params['primary_release_date.lte'] = new Date().toISOString().slice(0, 10);
+      } else if (_filters.status === 'airing') {
+        params['with_status'] = '0'; // TMDB status 0 = Returning Series
+      } else if (_filters.status === 'ended') {
+        params['with_status'] = '2|3|4'; // Ended, Cancelled, In Production
+      }
+    }
 
     let items = [];
     if (_filters.contentType === 'anime') {
@@ -383,27 +463,46 @@ function closeInlineDrop() {
   if (drop) drop.style.display = 'none';
 }
 
-/* ── SEARCH TIPS (rotate randomly in placeholder) ───────────────── */
+/* ── SEARCH TIPS (rotate in placeholder with fade animation) ──────── */
 const SEARCH_TIPS = [
-  'Try "laugh" to find comedy content that might make you smile',
-  'Search "marvel" to find any Marvel movie or show',
-  'Type a year like "2024" to see recent releases',
-  'Search an actor\'s name to find their movies',
-  'Try "anime thriller" to combine genres',
-  'Type a director\'s name to find their work',
-  'Search "award winning" to find critically acclaimed films',
-  'Try "based on book" to find literary adaptations',
-  'Type "sequel" to find part 2s and continuations',
-  'Search "family friendly" to find content for all ages',
-  'Try "animated" for Pixar, Disney, Studio Ghibli and more',
-  'Type a franchise name like "star wars" or "harry potter"',
+  // Regular title/person search examples
+  'Search "The Dark Knight" — direct title search',
+  'Search "Christopher Nolan" — find all their work',
+  'Search "Breaking Bad" — jump straight to a show',
+  'Search "Meryl Streep" — browse an actor\'s filmography',
+  'Search "2001" or "Inception" — any title, any year',
+  // :topic / keyword search (colon syntax)
+  'Try :comedy to browse by topic',
+  'Try :space adventure to discover themed content',
+  'Try :heist to find all the best heist films',
+  'Try :coming of age — use : prefix for topic search',
+  'Try :serial killer for thriller genre deep-dives',
+  'Try :time travel to find all time-travel stories',
+  'Try :based on true story for real-event dramas',
+  'Try :found footage — niche genre topics work too',
+  'Try :superhero for the full Marvel & DC catalogue',
+  // Filter tips
+  'Use Filters → Genre + Decade for precise browsing',
+  'Filter by Runtime to find short or epic-length films',
+  'Filter by Language to discover world cinema',
+  'Filter Highest Rated + 2010s to find decade gems',
+  'Filter Movies Only + ★8+ for critically acclaimed picks',
 ];
 
+let _lastTipIdx = -1;
 export function rotateTip() {
   const inp = document.getElementById('search-input');
   if (!inp || inp.value) return;
-  const tip = SEARCH_TIPS[Math.floor(Math.random() * SEARCH_TIPS.length)];
+  // Pick a different tip each time
+  let idx;
+  do { idx = Math.floor(Math.random() * SEARCH_TIPS.length); } while (idx === _lastTipIdx && SEARCH_TIPS.length > 1);
+  _lastTipIdx = idx;
+  const tip = SEARCH_TIPS[idx];
+  // Fade animation via class toggle
+  inp.classList.remove('tip-fade-in');
+  void inp.offsetWidth; // force reflow to restart animation
   inp.placeholder = tip;
+  inp.classList.add('tip-fade-in');
 }
 
 /* ── DEFAULT STATE (no query) ────────────────────────────────────── */

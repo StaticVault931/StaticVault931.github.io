@@ -228,6 +228,11 @@ const SHORTCUTS = [
   { key: '?',                 desc: 'Show this shortcuts screen',             group: 'Tips' },
 ];
 
+/* ── CARD LOGO OBSERVER (declared here so init() IIFE can access before
+     the observer helpers are defined at module scope below) ─────── */
+let _cardLogoObserver = null;
+let _cardLogoMutObs   = null;
+
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
   // Reset provider fail states every reload so previously-broken providers can be retried
@@ -236,7 +241,6 @@ const SHORTCUTS = [
   injectOverlays();   // inject modals/overlays before anything else
   cleanState();       // remove corrupt null/empty items from all lists
   initProfiles();     // ensure at least one profile exists
-  requestAnimationFrame(() => injectPages()); // defer page injection to after first paint
   initTheme();
   applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
   applyLoadingScreenState();
@@ -260,26 +264,36 @@ const SHORTCUTS = [
   loadGenresUI();
   initCardLogoObserver(); // lazy-load TMDB title treatment logos when setting is on
 
-  // Start home data loading
-  loadHero().catch(() => {});
-  loadHomeRows().catch(() => {});
+  // Inject pages first, then start data loading in the same RAF so row elements
+  // exist when loadHomeRows() tries to put skeletons in them.
+  const _startSp = new URLSearchParams(location.search);
+  const _isDirectWatch = _startSp.get('id') && (_startSp.get('watch') || _startSp.get('type'));
 
-  // Safety retry — if rows are still empty after 4s, try again
-  setTimeout(() => {
-    const trendRow = document.getElementById('row-trending');
-    if (!trendRow?.querySelector('.card')) {
-      loadHomeRows().catch(() => {});
-    }
-  }, 4000);
+  requestAnimationFrame(() => {
+    injectPages(); // create all page/row elements
 
-  // Force refresh feed if NOTHING loads after 12 seconds (network failure, stale state)
-  setTimeout(() => {
-    const hasAnyCard = document.querySelector('#page-home .card');
-    if (!hasAnyCard && state.currentPage === 'home') {
-      console.warn('[SV] No content loaded after 12s — forcing feed refresh');
+    if (!_isDirectWatch) {
+      loadHero().catch(() => {});
       loadHomeRows().catch(() => {});
+
+      // Safety retry — if rows are still empty after 4s, try again
+      setTimeout(() => {
+        const trendRow = document.getElementById('row-trending');
+        if (!trendRow?.querySelector('.card')) {
+          loadHomeRows().catch(() => {});
+        }
+      }, 4000);
+
+      // Force refresh feed if NOTHING loads after 12 seconds (network failure, stale state)
+      setTimeout(() => {
+        const hasAnyCard = document.querySelector('#page-home .card');
+        if (!hasAnyCard && state.currentPage === 'home') {
+          console.warn('[SV] No content loaded after 12s — forcing feed refresh');
+          loadHomeRows().catch(() => {});
+        }
+      }, 12000);
     }
-  }, 12000);
+  });
 
   // Idle cache warming — refresh cache silently when browser is idle
   // so next visit is always instant
@@ -2182,6 +2196,9 @@ function renderTagPrefsSection() {
     `<span class="pref-keyword-chip liked" data-tag-id="${t.id}" data-tag-type="like">
       <span class="material-icons-round" style="font-size:.7rem;color:#4ade80">favorite</span>
       ${esc(t.name)}
+      <button class="pref-kw-browse" data-browse-tag-id="${t.id}" data-browse-tag-name="${esc(t.name)}" title="Browse content with this tag" aria-label="Browse ${esc(t.name)}">
+        <span class="material-icons-round">movie_filter</span>
+      </button>
       <button class="pref-kw-remove" data-remove-tag-like="${t.id}" aria-label="Remove">
         <span class="material-icons-round">close</span>
       </button>
@@ -2192,6 +2209,9 @@ function renderTagPrefsSection() {
     `<span class="pref-keyword-chip disliked" data-tag-id="${t.id}" data-tag-type="dislike">
       <span class="material-icons-round" style="font-size:.7rem;color:#f87171">thumb_down</span>
       ${esc(t.name)}
+      <button class="pref-kw-browse" data-browse-tag-id="${t.id}" data-browse-tag-name="${esc(t.name)}" title="Browse content with this tag" aria-label="Browse ${esc(t.name)}">
+        <span class="material-icons-round">movie_filter</span>
+      </button>
       <button class="pref-kw-remove" data-remove-tag-dislike="${t.id}" aria-label="Remove">
         <span class="material-icons-round">close</span>
       </button>
@@ -2300,6 +2320,24 @@ function renderTagPrefsSection() {
       }, 320);
     });
   }
+
+  // Wire "browse content" buttons — opens search page with :tag topic search
+  sec.querySelectorAll('[data-browse-tag-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tagName = btn.dataset.browseTagName;
+      if (!tagName) return;
+      closeInfoPage?.();
+      goPage('search');
+      setTimeout(() => {
+        const inp = document.getElementById('search-input');
+        if (inp) {
+          inp.value = ':' + tagName;
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, 150);
+    });
+  });
 
   // Wire remove buttons
   sec.querySelectorAll('[data-remove-tag-like]').forEach(btn => {
@@ -2900,7 +2938,7 @@ function initEventDelegation() {
   // Provider bar
   document.addEventListener('click', e => {
     const pBtn = e.target.closest('[data-provider]');
-    if (pBtn && pBtn.closest('#provider-bar')) {
+    if (pBtn && (pBtn.closest('#provider-bar') || pBtn.closest('#prov-more-panel'))) {
       if (!state.currentMedia) return;
       setActiveProvider(pBtn.dataset.provider);
       const { useId, id, type } = state.currentMedia;
@@ -2909,6 +2947,10 @@ function initEventDelegation() {
       const s = sel ? +sel.value : 1;
       const activeEp = document.querySelector('.ep-card.on');
       const ep = activeEp ? +activeEp.dataset.ep : 1;
+      // Close the "more" panel after selecting
+      const morePanel = document.getElementById('prov-more-panel');
+      if (morePanel) morePanel.style.display = 'none';
+      document.getElementById('prov-more-toggle')?.classList.remove('on');
       buildProviderBar(uid, type, s, ep);
       loadPlayer(uid, type, s, ep);
     }
@@ -6437,8 +6479,7 @@ function checkProviderNotification() {
 }
 
 /* ── TMDB TITLE TREATMENT LOGOS (lazy card logo loader) ─────────── */
-let _cardLogoObserver = null;
-let _cardLogoMutObs   = null;
+// _cardLogoObserver and _cardLogoMutObs declared above init() to avoid TDZ crash
 const _logoCache = new Map(); // id → logoUrl | null
 
 async function _loadCardLogo(card) {
