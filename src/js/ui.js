@@ -467,6 +467,36 @@ export function showConfirm(title, msg) {
   });
 }
 
+/* ── CHOICE DIALOG (multi-button confirm) ────────────────────────── */
+// choices = [{ label, value, style }]  style: 'primary' | 'danger' | ''
+export function showChoice(title, msg, choices) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'choice-dyn-overlay';
+    ov.innerHTML = `
+      <div class="choice-dyn-dialog">
+        <div class="confirm-icon"><span class="material-icons-round">help_outline</span></div>
+        <div class="choice-dyn-title">${title}</div>
+        <div class="choice-dyn-msg">${msg}</div>
+        <div class="choice-dyn-btns">${choices.map((c, i) =>
+          `<button class="choice-dyn-btn${c.style ? ' ' + c.style : ''}" data-idx="${i}">${c.label}</button>`
+        ).join('')}</div>
+      </div>`;
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('open'));
+
+    function cleanup(val) {
+      ov.classList.remove('open');
+      setTimeout(() => ov.remove(), 180);
+      resolve(val);
+    }
+    ov.querySelectorAll('.choice-dyn-btn').forEach((btn, i) => {
+      btn.addEventListener('click', () => cleanup(choices[i].value));
+    });
+    ov.addEventListener('click', e => { if (e.target === ov) cleanup(null); });
+  });
+}
+
 /* ── EMPTY STATE ─────────────────────────────────────────────────── */
 export function emptyState(icon, message, actions = []) {
   return `<div class="empty-state">

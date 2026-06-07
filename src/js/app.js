@@ -12,7 +12,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchTasteDive, TVAPI_KEY2 } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
-import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm } from './ui.js';
+import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
 import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
@@ -1726,8 +1726,18 @@ function syncLikedToPrefLikes() {
   if (changed) persist('prefLikes');
 }
 
+function updateCyfStats() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('cyf-stat-wl-n',      state.watchlist?.length ?? 0);
+  set('cyf-stat-liked-n',   state.liked?.length ?? 0);
+  set('cyf-stat-watched-n', state.watched?.length ?? 0);
+  set('cyf-stat-cont-n',    Object.keys(state.continueWatching || {}).length);
+  set('cyf-stat-genres-n',  state.prefGenres?.length ?? 0);
+}
+
 function loadPrefsPage() {
   syncLikedToPrefLikes();
+  updateCyfStats();
   renderPrefLists();
   renderTagPrefsSection();
   buildRatingDescriptions();
@@ -3241,7 +3251,17 @@ function initEventDelegation() {
           toast('Invalid backup file', 'error');
           return;
         }
-        if (!(await showConfirm('Import Data', 'This will merge imported data with your current data. Continue?'))) return;
+
+        const choice = await showChoice(
+          'Import Data',
+          'How would you like to import this backup?',
+          [
+            { label: 'Create New Profile', value: 'new', style: 'primary' },
+            { label: 'Merge into Current Profile', value: 'merge' },
+            { label: 'Cancel', value: 'cancel' },
+          ]
+        );
+        if (!choice || choice === 'cancel') return;
 
         // Merge arrays (avoid duplicates by id)
         const merge = (existing, imported) => {
@@ -3249,24 +3269,51 @@ function initEventDelegation() {
           return [...existing, ...(imported || []).filter(x => !ids.has(x.id))];
         };
 
-        if (data.watchlist)        { state.watchlist = merge(state.watchlist, data.watchlist); persist('watchlist'); }
-        if (data.liked)            { state.liked = merge(state.liked, data.liked); persist('liked'); }
-        if (data.disliked)         { state.disliked = merge(state.disliked, data.disliked); persist('disliked'); }
-        if (data.watched)          { state.watched = merge(state.watched, data.watched); persist('watched'); }
-        if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
-        if (data.prefDislikes)     { state.prefDislikes = merge(state.prefDislikes, data.prefDislikes); persist('prefDislikes'); }
-        if (data.prefGenres)           { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
-        if (data.prefGenreDislikes)    { state.prefGenreDislikes = [...new Set([...state.prefGenreDislikes, ...(data.prefGenreDislikes || [])])]; persist('prefGenreDislikes'); }
-        if (data.prefTagLikes)         { state.prefTagLikes = merge(state.prefTagLikes, data.prefTagLikes); persist('prefTagLikes'); }
-        if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
-        if (data.continueWatching) {
-          Object.assign(state.continueWatching, data.continueWatching);
-          persist('continueWatching');
-        }
-        if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
+        const applyData = () => {
+          if (data.watchlist)        { state.watchlist = merge(state.watchlist, data.watchlist); persist('watchlist'); }
+          if (data.liked)            { state.liked = merge(state.liked, data.liked); persist('liked'); }
+          if (data.disliked)         { state.disliked = merge(state.disliked, data.disliked); persist('disliked'); }
+          if (data.watched)          { state.watched = merge(state.watched, data.watched); persist('watched'); }
+          if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
+          if (data.prefDislikes)     { state.prefDislikes = merge(state.prefDislikes, data.prefDislikes); persist('prefDislikes'); }
+          if (data.prefGenres)           { state.prefGenres = [...new Set([...state.prefGenres, ...(data.prefGenres || [])])]; persist('prefGenres'); }
+          if (data.prefGenreDislikes)    { state.prefGenreDislikes = [...new Set([...state.prefGenreDislikes, ...(data.prefGenreDislikes || [])])]; persist('prefGenreDislikes'); }
+          if (data.prefTagLikes)         { state.prefTagLikes = merge(state.prefTagLikes, data.prefTagLikes); persist('prefTagLikes'); }
+          if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
+          if (data.continueWatching) { Object.assign(state.continueWatching, data.continueWatching); persist('continueWatching'); }
+          if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
+        };
 
-        renderLibrary();
-        toast('Data imported and merged successfully!', 'check_circle');
+        if (choice === 'new') {
+          const profiles = getProfiles();
+          if (profiles.length >= MAX_PROFILES) {
+            toast(`Max ${MAX_PROFILES} profiles reached`, 'error'); return;
+          }
+          // Generate a unique name based on export date
+          const dateStr = data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Imported';
+          const baseName = `Import ${dateStr}`;
+          let newName = baseName;
+          let counter = 2;
+          while (profiles.some(p => p.name === newName)) { newName = `${baseName} (${counter++})`; }
+          const newProf = createProfile(newName);
+          if (!newProf) { toast('Could not create profile', 'error'); return; }
+          switchProfile(newProf.id);
+          updateProfileHeaderBtn();
+          applyAllSettings();
+          applyData();
+          renderLibrary();
+          renderProfilesGrid();
+          // Reload home for new profile
+          _clearRowCache();
+          _homeLoading = false;
+          loadHero().catch(() => {});
+          loadHomeRows().catch(() => {});
+          toast(`Created profile "${newName}" with imported data!`, 'person');
+        } else {
+          applyData();
+          renderLibrary();
+          toast('Data merged into current profile!', 'check_circle');
+        }
       } catch (err) {
         toast(`Import failed: ${err.message || 'Invalid file'}`, 'error');
       }
@@ -4658,20 +4705,30 @@ export async function openProviderPage(providerId, providerName) {
     // Interleave helpers
     const mix = (a, b) => { const out=[]; for(let i=0;i<Math.max(a.length,b.length);i++){if(a[i])out.push(a[i]);if(b[i])out.push(b[i]);} return out; };
 
+    // Deduplicate in render order: each row gets items not yet shown above it
+    const _seen = new Set();
+    const dedup = (arr) => arr.filter(x => { if (_seen.has(x.id)) return false; _seen.add(x.id); return true; });
+
+    const forYouDedup   = dedup(forYou);
+    const origDedup     = dedup(originals);
+    const popularMixed  = dedup(mix(popMovies, popTv));
+    const newMixed      = dedup(mix(newMovies, newTv));
+    const topMixed      = dedup(mix(topMovies, topTv));
+    const actionMixed   = dedup(mix(actionMovies, actionTv));
+    const dramaMixed    = dedup(mix(dramaMovies, dramaTv));
+    const comedyMixed   = dedup(mix(comedyMovies, comedyTv));
+    const moreMixed     = dedup(mix(moreMovies, moreTv));
+
     const rows = [
-      forYou.length         ? makeHomeRow('auto_awesome',          '#a78bfa', `For You on ${providerName}`,              'pv-foryou',     forYou,                      null)    : '',
-      originals.length      ? makeHomeRow('star',                  '#f5c518', `${providerName} Originals & Exclusives`,  'pv-originals',  originals,                   null)    : '',
-      mix(popMovies,popTv).length ? makeHomeRow('local_fire_department','#f97316',`Popular on ${providerName}`,          'pv-trending',   mix(popMovies,popTv),        '')      : '',
-      popMovies.length      ? makeHomeRow('movie',                 '',        'Popular Movies',                          'pv-pop-movies', popMovies,                   'movie') : '',
-      popTv.length          ? makeHomeRow('tv',                    '',        'Popular Shows',                           'pv-pop-tv',     popTv,                       'tv')    : '',
-      mix(newMovies,newTv).length ? makeHomeRow('fiber_new',       '#22c55e', `New on ${providerName}`,                  'pv-new',        mix(newMovies,newTv),        '')      : '',
-      topMovies.length      ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Movies',                        'pv-top-movies', topMovies,                   'movie') : '',
-      topTv.length          ? makeHomeRow('workspace_premium',     '#f5c518', 'Top Rated Shows',                         'pv-top-tv',     topTv,                       'tv')    : '',
-      mix(actionMovies,actionTv).length ? makeHomeRow('bolt',      '#f97316', 'Action & Sci-Fi',                         'pv-action',     mix(actionMovies,actionTv),  '')      : '',
-      mix(dramaMovies,dramaTv).length   ? makeHomeRow('theater_comedy','#a78bfa','Drama',                                'pv-drama',      mix(dramaMovies,dramaTv),    '')      : '',
-      mix(comedyMovies,comedyTv).length ? makeHomeRow('sentiment_very_satisfied','#22c55e','Comedy',                     'pv-comedy',     mix(comedyMovies,comedyTv),  '')      : '',
-      moreMovies.length     ? makeHomeRow('explore',               '',        'More Movies',                             'pv-more-movies',moreMovies,                  'movie') : '',
-      moreTv.length         ? makeHomeRow('explore',               '',        'More Shows',                              'pv-more-tv',    moreTv,                      'tv')    : '',
+      forYouDedup.length    ? makeHomeRow('auto_awesome',                '#a78bfa', `For You on ${providerName}`,              'pv-foryou',     forYouDedup,   null) : '',
+      origDedup.length      ? makeHomeRow('star',                        '#f5c518', `${providerName} Originals`,               'pv-originals',  origDedup,     null) : '',
+      popularMixed.length   ? makeHomeRow('local_fire_department',       '#f97316', `Popular on ${providerName}`,              'pv-trending',   popularMixed,  '')   : '',
+      newMixed.length       ? makeHomeRow('fiber_new',                   '#22c55e', `New on ${providerName}`,                  'pv-new',        newMixed,      '')   : '',
+      topMixed.length       ? makeHomeRow('workspace_premium',           '#f5c518', 'Top Rated',                               'pv-top',        topMixed,      '')   : '',
+      actionMixed.length    ? makeHomeRow('bolt',                        '#f97316', 'Action & Sci-Fi',                         'pv-action',     actionMixed,   '')   : '',
+      dramaMixed.length     ? makeHomeRow('theater_comedy',              '#a78bfa', 'Drama',                                   'pv-drama',      dramaMixed,    '')   : '',
+      comedyMixed.length    ? makeHomeRow('sentiment_very_satisfied',    '#22c55e', 'Comedy',                                  'pv-comedy',     comedyMixed,   '')   : '',
+      moreMixed.length      ? makeHomeRow('explore',                     '',        'More to Explore',                         'pv-more',       moreMixed,     '')   : '',
     ].filter(Boolean);
 
     if (body) {
@@ -6833,8 +6890,8 @@ function positionNetflixCard(card, nc) {
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
 
-  // Card width: at least as wide as the card, capped at 520px
-  const ncW = Math.min(520, Math.max(rect.width, 380));
+  // Card width: always bigger than source card, capped at 520px
+  const ncW = Math.min(520, Math.max(rect.width + 60, 380));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
   nc.style.overflowY = '';
@@ -6864,17 +6921,10 @@ function positionNetflixCard(card, nc) {
   left = Math.max(marginH, Math.min(left, vpW - ncW - marginH));
 
   // ── Vertical positioning ────────────────────────────────────────
-  // Prefer: top-align with card (expand down)
-  let top = rect.top;
+  // Center the hover card over the original card's vertical midpoint
+  let top = rect.top + rect.height / 2 - ncH / 2;
 
-  // If expanding down goes off-screen, try expanding UP from card bottom
-  if (top + ncH > vpH - 8) {
-    top = rect.bottom - ncH;
-  }
-  // If that still clips the top, just pin to a safe vertical position
-  if (top < 70) top = Math.max(70, Math.min(vpH - ncH - 8, rect.top + rect.height / 2 - ncH / 2));
-
-  // Hard clamp — never go off-screen
+  // Hard clamp — keep within viewport (below header, above edge)
   top = Math.max(70, Math.min(top, vpH - ncH - 8));
 
   nc.style.left = `${left}px`;

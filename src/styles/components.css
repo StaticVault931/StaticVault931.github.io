@@ -299,6 +299,10 @@
 }
 
 /* Card skeleton */
+@keyframes sk-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
 .card-sk {
   flex-shrink: 0;
   width: var(--card-w);
@@ -306,9 +310,19 @@
   overflow: hidden;
   background: var(--s2);
 }
-.csk-poster { aspect-ratio: 16/9; width: 100%; border-radius: var(--r); }
+.csk-poster {
+  aspect-ratio: 16/9; width: 100%; border-radius: var(--r);
+  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background-size: 800px 100%;
+  animation: sk-shimmer 1.6s infinite linear;
+}
 .csk-body { display: none; }
-.csk-line { height: 9px; border-radius: 4px; margin-bottom: 4px; }
+.csk-line {
+  height: 9px; border-radius: 4px; margin-bottom: 4px;
+  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background-size: 800px 100%;
+  animation: sk-shimmer 1.6s infinite linear;
+}
 
 /* Genre chips */
 .genre-chip {
@@ -1895,42 +1909,45 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 .vd-test-btn:hover { background: var(--red); border-color: var(--red); color: #fff; }
 
-/* ── PERSON OVERLAY ──────────────────────────────────────────────── */
 /* ── PERSON OVERLAY ─────────────────────────────────────────────── */
 #person-overlay {
   position: fixed; inset: 0;
   /* MUST be above modal(800) AND info(810) so clicking cards from here works */
   z-index: 9100;
-  background: rgba(0,0,0,.92); backdrop-filter: blur(14px);
+  background: rgba(0,0,0,.88); backdrop-filter: blur(20px);
   display: none; overflow-y: auto;
 }
-#person-overlay.open { display: block; }
+#person-overlay.open { display: block; animation: fadeIn .2s var(--ease); }
 
 #person-panel {
-  max-width: 1200px; margin: 1.5rem auto; padding: 1.8rem;
-  background: var(--bg); border-radius: 16px;
-  box-shadow: 0 40px 120px rgba(0,0,0,.98);
-  position: relative;
+  max-width: 1100px; margin: 2rem auto 3rem;
+  padding: 0;
+  background: var(--s1); border-radius: 18px;
+  border: 1px solid var(--border2);
+  box-shadow: 0 40px 120px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.04);
+  position: relative; overflow: hidden;
   animation: modalIn .24s var(--ease);
 }
 
 #person-close {
   position: absolute; top: 1rem; right: 1rem;
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--s3); border: 1.5px solid var(--border2);
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(0,0,0,.6); border: 1px solid var(--border2);
   color: var(--text); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: background .18s, transform .18s; z-index: 2;
+  transition: background .18s, transform .18s; z-index: 10;
+  backdrop-filter: blur(8px);
 }
-#person-close:hover { background: var(--red); transform: rotate(90deg); }
-#person-close .material-icons-round { font-size: .95rem; }
+#person-close:hover { background: var(--red); border-color: var(--red); transform: rotate(90deg); }
+#person-close .material-icons-round { font-size: .9rem; }
 
 /* Two-column layout: sidebar (info) + main content (credits) */
 .person-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 200px 1fr;
   gap: 2rem;
   align-items: start;
+  padding: 1.8rem;
 }
 
 /* LEFT SIDEBAR */
@@ -1976,97 +1993,117 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 /* ── PROFILES / WHO'S WATCHING ───────────────────────────────────── */
 #profiles-overlay, #profile-editor-overlay {
   position: fixed; inset: 0; z-index: 9200;
-  background: rgba(0,0,0,.92); backdrop-filter: blur(20px);
+  background: rgba(0,0,0,.88); backdrop-filter: blur(24px);
   display: none; align-items: center; justify-content: center;
   padding: 1.5rem;
 }
-#profiles-overlay.open, #profile-editor-overlay.open { display: flex; }
+#profiles-overlay.open, #profile-editor-overlay.open { display: flex; animation: fadeIn .18s var(--ease); }
 
-/* Who's Watching panel — Netflix-style big profile grid */
+/* Who's Watching panel */
 #profiles-panel {
-  background: var(--bg); border-radius: 18px; width: 100%; max-width: 800px;
-  padding: 2.5rem 2.5rem 2rem;
-  box-shadow: 0 60px 180px rgba(0,0,0,.98);
-  animation: modalIn .28s var(--ease);
+  background: var(--s1); border-radius: 20px; width: 100%; max-width: 600px;
+  border: 1px solid var(--border2);
+  box-shadow: 0 40px 120px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.04);
+  animation: modalIn .24s var(--ease);
+  overflow: hidden;
 }
 .profiles-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 2.5rem;
+  padding: 1.4rem 1.5rem 1.2rem;
+  background: linear-gradient(180deg, var(--s2) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
 }
 .profiles-header h2 {
   font-family: 'Bebas Neue', Impact, sans-serif;
-  font-size: 2.4rem; letter-spacing: .06em; text-transform: uppercase;
+  font-size: 1.6rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text);
 }
 #profiles-close {
-  width: 36px; height: 36px; border-radius: 50%; background: var(--s3);
-  border: 1.5px solid var(--border2); color: var(--text); cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%; background: var(--s3);
+  border: 1px solid var(--border2); color: var(--text); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .18s, transform .18s;
 }
 #profiles-close:hover { background: var(--red); transform: rotate(90deg); }
-#profiles-close .material-icons-round { font-size: 1rem; }
+#profiles-close .material-icons-round { font-size: .95rem; }
 
-/* Profile grid — larger cards, cinematic feel */
+/* Profile grid */
 .profiles-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 1.4rem; margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  padding: 1.5rem 1.5rem 1rem;
 }
 .profile-card {
-  display: flex; flex-direction: column; align-items: center; gap: .65rem;
-  padding: 1.5rem .75rem 1.2rem; border-radius: 14px; cursor: pointer;
-  background: var(--s2); border: 2.5px solid transparent;
-  transition: border-color .2s, background .2s, transform .2s, box-shadow .2s;
+  display: flex; flex-direction: column; align-items: center; gap: .5rem;
+  padding: 1.1rem .6rem 1rem; border-radius: 14px; cursor: pointer;
+  background: var(--s2); border: 2px solid transparent;
+  transition: border-color .2s, background .2s, transform .18s, box-shadow .2s;
   position: relative; text-align: center;
 }
 .profile-card:hover {
   background: var(--s3); border-color: var(--border3);
-  transform: translateY(-4px) scale(1.03);
-  box-shadow: 0 16px 48px rgba(0,0,0,.5);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 12px 32px rgba(0,0,0,.55);
 }
-.profile-card.active { border-color: var(--red); box-shadow: 0 0 0 3px rgba(229,9,20,.25); }
+.profile-card.active {
+  border-color: var(--red);
+  background: rgba(229,9,20,.07);
+  box-shadow: 0 0 0 3px rgba(229,9,20,.2);
+}
 .profile-card.active:hover { border-color: var(--red); }
 
 .profile-avatar-circle {
-  width: 88px; height: 88px; border-radius: 14px;
+  width: 72px; height: 72px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; flex-shrink: 0;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
   transition: transform .2s;
 }
-.profile-card:hover .profile-avatar-circle { transform: scale(1.05); }
-.profile-avatar-circle .material-icons-round { font-size: 2.8rem; color: rgba(255,255,255,.85); }
+.profile-card:hover .profile-avatar-circle { transform: scale(1.06); }
+.profile-avatar-circle .material-icons-round { font-size: 2.2rem; color: rgba(255,255,255,.85); }
 .profile-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 
-.profile-card-name { font-size: .9rem; font-weight: 900; letter-spacing: -.01em; }
+.profile-card-name {
+  font-size: .82rem; font-weight: 800; letter-spacing: -.01em;
+  color: var(--text); line-height: 1.2; max-width: 100px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .profile-card-active-badge {
-  font-size: .6rem; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--red); margin-top: -.2rem;
+  font-size: .58rem; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--red); margin-top: -.15rem;
 }
 
-/* Edit button — pencil icon, cleaner */
+/* Edit button */
 .profile-card-edit-btn {
-  position: absolute; top: 8px; right: 8px;
-  width: 26px; height: 26px; border-radius: 8px;
-  background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.15);
+  position: absolute; top: 7px; right: 7px;
+  width: 24px; height: 24px; border-radius: 7px;
+  background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.12);
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity .18s, background .18s; color: #fff;
   backdrop-filter: blur(4px);
 }
 .profile-card:hover .profile-card-edit-btn { opacity: 1; }
 .profile-card-edit-btn:hover { background: var(--red); border-color: var(--red); opacity: 1; }
-.profile-card-edit-btn .material-icons-round { font-size: .85rem; }
+.profile-card-edit-btn .material-icons-round { font-size: .8rem; }
 
-.profiles-add-btn {
-  display: flex; align-items: center; gap: .5rem;
-  background: none; border: 2px dashed var(--border3); border-radius: 14px;
-  color: var(--muted); font-size: .85rem; font-weight: 800;
-  padding: 1.5rem .75rem; cursor: pointer; width: 100%;
-  justify-content: center; transition: all .2s; flex-direction: column;
-  min-height: 155px;
+/* Actions bar at bottom */
+.profiles-actions {
+  padding: .75rem 1.5rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,.15);
+  display: flex; gap: .6rem; align-items: center;
 }
-.profiles-add-btn:hover { border-color: var(--red); color: var(--red); background: rgba(229,9,20,.05); }
-.profiles-add-btn .material-icons-round { font-size: 2rem; margin-bottom: .25rem; }
+.profiles-add-btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: var(--s2); border: 1.5px solid var(--border2); border-radius: 10px;
+  color: var(--muted); font-size: .8rem; font-weight: 800;
+  padding: .5rem 1rem; cursor: pointer;
+  transition: all .18s; flex-direction: row;
+  min-height: unset;
+}
+.profiles-add-btn:hover { border-color: var(--red); color: var(--red); background: rgba(229,9,20,.06); }
+.profiles-add-btn .material-icons-round { font-size: 1rem; margin-bottom: 0; }
 
 /* ── Profile Editor ──────────────────────────────────────────────── */
 .profile-editor-panel {

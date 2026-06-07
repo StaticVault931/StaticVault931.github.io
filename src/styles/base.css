@@ -265,3 +265,40 @@ a { text-decoration: none; color: inherit; }
   transition: all .18s;
 }
 .confirm-btn-cancel:hover { background: var(--s4); color: var(--text); border-color: var(--border3); }
+
+/* ── CHOICE DIALOG (dynamic, multi-button) ───────────────────────── */
+.choice-dyn-overlay {
+  position: fixed; inset: 0; z-index: 10100;
+  background: rgba(0,0,0,.82); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+  opacity: 0; transition: opacity .18s var(--ease);
+}
+.choice-dyn-overlay.open { opacity: 1; }
+.choice-dyn-dialog {
+  background: var(--s2); border: 1px solid var(--border3);
+  border-radius: 12px; padding: 2rem 2.4rem 1.6rem;
+  max-width: 440px; width: 100%; text-align: center;
+  box-shadow: 0 40px 120px rgba(0,0,0,.9);
+  animation: modalIn .22s var(--ease);
+}
+.choice-dyn-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.55rem;
+  letter-spacing: .04em; margin-bottom: .5rem;
+}
+.choice-dyn-msg { color: var(--muted); font-size: .88rem; line-height: 1.65; margin-bottom: 1.4rem; }
+.choice-dyn-btns { display: flex; flex-direction: column; gap: .55rem; }
+.choice-dyn-btn {
+  padding: .62rem 1.4rem; border-radius: 8px;
+  border: 1px solid var(--border2); background: var(--s3);
+  color: var(--text); font-weight: 700; font-size: .88rem;
+  cursor: pointer; transition: all .18s; width: 100%;
+}
+.choice-dyn-btn:hover { background: var(--s4); border-color: var(--border3); }
+.choice-dyn-btn.primary {
+  background: var(--red); border-color: var(--red); color: #fff; font-weight: 800;
+}
+.choice-dyn-btn.primary:hover { opacity: .88; transform: scale(1.02); }
+.choice-dyn-btn.danger {
+  background: transparent; border-color: var(--red); color: var(--red);
+}
+.choice-dyn-btn.danger:hover { background: rgba(229,9,20,.12); }
