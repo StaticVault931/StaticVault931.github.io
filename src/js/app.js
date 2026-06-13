@@ -165,7 +165,7 @@ const SV_SETTINGS = [
   { id: 'disableSandbox',    label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.',   default: false, icon: 'security',         group: 'Playback' },
   // Display
   { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: true,  icon: 'star',             group: 'Display' },
-  { id: 'useTitleLogos',     label: 'Title Treatment Images', desc: 'Show Netflix-style title logo images on cards instead of text (lazy-loads from TMDB)', default: false, icon: 'title', group: 'Display' },
+  { id: 'useTitleLogos',     label: 'Title Treatment Images', desc: 'Show Netflix-style title logo images on cards instead of text (lazy-loads from TMDB)', default: true, icon: 'title', group: 'Display' },
   { id: 'compactMode',       label: 'Compact Grid Mode',      desc: 'Show content as a grid (no horizontal scroll)',               default: false, icon: 'grid_view',        group: 'Display' },
   { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
   { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
@@ -329,7 +329,7 @@ let _cardLogoMutObs   = null;
     // Has ?id= but it's not a valid number (NaN, empty, text)
     if (watchId && (isNaN(+watchId) || +watchId <= 0)) return true;
     // Has ?page= but it's not a known page
-    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall'].includes(pageParam)) return true;
+    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider'].includes(pageParam)) return true;
     // Has no useful params but also has garbage (avoid 404ing clean URLs)
     return false;
   };
@@ -362,6 +362,10 @@ let _cardLogoMutObs   = null;
         // Otherwise just stay on home page
       }
     }, 400);
+  } else if (pageParam === 'provider' && sp.get('id') && sp.get('name')) {
+    const pid = +sp.get('id');
+    const pname = decodeURIComponent(sp.get('name'));
+    if (pid > 0) setTimeout(() => openProviderPage(pid, pname), 200);
   } else if (pageParam) {
     setTimeout(() => goPage(pageParam), 100);
   } else if (searchParam) {
@@ -531,17 +535,56 @@ function registerAllLoaders() {
 }
 
 function registerAllSeeAll() {
-  registerSeeAll('trending', p => tmdb('/trending/all/week', { page: p }));
-  registerSeeAll('movies-popular', p => tmdb('/movie/popular', { page: p }));
-  registerSeeAll('movies-top', p => tmdb('/movie/top_rated', { page: p }));
-  registerSeeAll('movies-new', p => tmdb('/movie/now_playing', { page: p }));
-  registerSeeAll('movies-upcoming', p => tmdb('/movie/upcoming', { page: p }));
-  registerSeeAll('tv-popular', p => tmdb('/tv/popular', { page: p }));
-  registerSeeAll('tv-top', p => tmdb('/tv/top_rated', { page: p }));
-  registerSeeAll('tv-airing', p => tmdb('/tv/airing_today', { page: p }));
-  registerSeeAll('anime-trending', p => aniQuery(`query($p:Int){Page(page:$p,perPage:20){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`, { p }).then(d => ({ results: (d?.data?.Page?.media || []).map(normalizeAnime) })));
+  const tagTv = d => ({ ...d, results: (d.results || []).map(m => ({ ...m, media_type: m.media_type || 'tv' })) });
 
-  // Genre see-alls are registered dynamically
+  // Movie see-alls
+  registerSeeAll('trending',        p => tmdb('/trending/all/week', { page: p }));
+  registerSeeAll('movies-popular',  p => tmdb('/movie/popular',   { page: p }));
+  registerSeeAll('movies-top',      p => tmdb('/movie/top_rated', { page: p }));
+  registerSeeAll('movies-new',      p => tmdb('/movie/now_playing', { page: p }));
+  registerSeeAll('movies-upcoming', p => tmdb('/movie/upcoming',  { page: p }));
+  registerSeeAll('movies-2024',     p => tmdb('/discover/movie',  { primary_release_year: new Date().getFullYear() - 1, sort_by: 'popularity.desc', page: p }));
+  registerSeeAll('movies-2010s',    p => tmdb('/discover/movie',  { 'primary_release_date.gte': '2010-01-01', 'primary_release_date.lte': '2019-12-31', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: p }));
+  registerSeeAll('movies-foreign',  p => tmdb('/discover/movie',  { without_original_language: 'en', sort_by: 'vote_average.desc', 'vote_count.gte': 200, page: p }));
+
+  // TV see-alls — tag each item with media_type:'tv' so they open as TV titles
+  registerSeeAll('tv-popular',  p => tmdb('/tv/popular',     { page: p }).then(tagTv));
+  registerSeeAll('tv-top',      p => tmdb('/tv/top_rated',   { page: p }).then(tagTv));
+  registerSeeAll('tv-airing',   p => tmdb('/tv/airing_today', { page: p }).then(tagTv));
+  registerSeeAll('tv-scifi',    p => tmdb('/discover/tv', { with_genres: '10765', sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-thriller', p => tmdb('/discover/tv', { with_genres: '53',    sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-kdrama',   p => tmdb('/discover/tv', { with_original_language: 'ko', sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-mystery',  p => tmdb('/discover/tv', { with_genres: '9648',  sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-reality',  p => tmdb('/discover/tv', { with_genres: '10764', sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-animated', p => tmdb('/discover/tv', { with_genres: '16',    sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-limited',  p => tmdb('/discover/tv', { with_type: '3',       sort_by: 'vote_average.desc', 'vote_count.gte': 50, page: p }).then(tagTv));
+  registerSeeAll('tv-comedy',   p => tmdb('/discover/tv', { with_genres: '35',    sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-family',   p => tmdb('/discover/tv', { with_genres: '10751', sort_by: 'popularity.desc', page: p }).then(tagTv));
+  // genre-35-tv is the Comedy TV see-all key used in pages.js
+  registerSeeAll('genre-35-tv', p => tmdb('/discover/tv', { with_genres: '35',    sort_by: 'popularity.desc', page: p }).then(tagTv));
+  registerSeeAll('tv-crime',    p => tmdb('/discover/tv', { with_genres: '80',    sort_by: 'popularity.desc', page: p }).then(tagTv));
+
+  // Anime see-alls via AniList
+  const AQ = (sort, extra = {}) => p => {
+    const vars = { sort, p, ...extra };
+    return aniQuery(
+      `query($p:Int,$sort:[MediaSort],$status:MediaStatus,$genre:String,$format:MediaFormat){Page(page:$p,perPage:20){media(type:ANIME,sort:$sort,status:$status,isAdult:false,genre:$genre,format:$format){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`,
+      vars
+    ).then(d => ({ results: (d?.data?.Page?.media || []).map(normalizeAnime), total_pages: 10 }));
+  };
+  registerSeeAll('anime-trending', AQ(['TRENDING_DESC']));
+  registerSeeAll('anime-top',      AQ(['SCORE_DESC']));
+  registerSeeAll('anime-airing',   AQ(['POPULARITY_DESC'], { status: 'RELEASING' }));
+  registerSeeAll('anime-action',   AQ(['POPULARITY_DESC'], { genre: 'Action' }));
+  registerSeeAll('anime-romance',  AQ(['POPULARITY_DESC'], { genre: 'Romance' }));
+  registerSeeAll('anime-isekai',   AQ(['POPULARITY_DESC'], { genre: 'Isekai' }));
+  registerSeeAll('anime-sports',   AQ(['POPULARITY_DESC'], { genre: 'Sports' }));
+  registerSeeAll('anime-comedy',   AQ(['POPULARITY_DESC'], { genre: 'Comedy' }));
+  registerSeeAll('anime-horror',   AQ(['SCORE_DESC'],      { genre: 'Horror' }));
+  registerSeeAll('anime-mecha',    AQ(['POPULARITY_DESC'], { genre: 'Mecha' }));
+  registerSeeAll('anime-movies',   AQ(['POPULARITY_DESC'], { format: 'MOVIE' }));
+
+  // Genre see-alls (movies)
   GENRES.forEach(g => {
     registerSeeAll('genre-' + g.id, p => tmdb('/discover/movie', { with_genres: g.id, sort_by: 'popularity.desc', page: p }));
   });
@@ -1620,7 +1663,7 @@ async function loadMoviesPage() {
     tmdb('/discover/movie', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-animated', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-animated')),
     tmdb('/discover/movie', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-crime',    (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-crime')),
     tmdb('/discover/movie', { with_genres:'99',    sort_by:'vote_average.desc', 'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-docs',     (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-docs')),
-    tmdb('/discover/movie', { primary_release_year:2024, sort_by:'popularity.desc' }).then(d=>renderRow('row-movies-2024',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2024')),
+    tmdb('/discover/movie', { primary_release_year: new Date().getFullYear() - 1, sort_by:'popularity.desc' }).then(d=>renderRow('row-movies-2024',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2024')),
     tmdb('/discover/movie', { primary_release_date_gte:'2010-01-01', primary_release_date_lte:'2019-12-31', sort_by:'vote_average.desc','vote_count.gte':300 }).then(d=>renderRow('row-movies-2010s',(d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2010s')),
     tmdb('/discover/movie', { without_original_language:'en', sort_by:'vote_average.desc','vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-foreign', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-foreign')),
   ]);
@@ -3229,11 +3272,14 @@ function initEventDelegation() {
     }
   };
 
-  document.getElementById('btn-clear-watchlist')?.addEventListener('click', () => confirmClear('watchlist', 'watchlist', 'Watchlist'));
-  document.getElementById('btn-clear-liked')?.addEventListener('click', () => confirmClear('liked', 'liked', 'Liked Titles'));
-  document.getElementById('btn-clear-disliked')?.addEventListener('click', () => confirmClear('disliked', 'disliked', 'Disliked Titles'));
-  document.getElementById('btn-clear-recent')?.addEventListener('click', () => confirmClear('recent', 'recentlyViewed', 'Recently Viewed'));
-  document.getElementById('btn-clear-continue')?.addEventListener('click', () => confirmClear('continue', 'continueWatching', 'Continue Watching'));
+  // Use querySelectorAll to wire ALL matching buttons (some IDs are duplicated between
+  // the per-section quick-clear buttons and the Data & Privacy section)
+  const bindAll = (id, fn) => document.querySelectorAll(`[id="${id}"]`).forEach(el => el.addEventListener('click', fn));
+  bindAll('btn-clear-watchlist', () => confirmClear('watchlist', 'watchlist', 'Watchlist'));
+  bindAll('btn-clear-liked',     () => confirmClear('liked', 'liked', 'Liked Titles'));
+  bindAll('btn-clear-disliked',  () => confirmClear('disliked', 'disliked', 'Disliked Titles'));
+  bindAll('btn-clear-recent',    () => confirmClear('recent', 'recentlyViewed', 'Recently Viewed'));
+  bindAll('btn-clear-continue',  () => confirmClear('continue', 'continueWatching', 'Continue Watching'));
 
   document.getElementById('btn-clear-watched')?.addEventListener('click', async () => {
     if (await showConfirm('Clear Watched', 'Remove all watched marks? Content may reappear in recommendations.')) {

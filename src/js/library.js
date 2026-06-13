@@ -166,7 +166,7 @@ export async function loadMoreSeeAll() {
 
     if (grid) {
       results.forEach(m => {
-        const t = seeAll.type || (m.media_type === 'tv' ? 'tv' : 'movie');
+        const t = seeAll.type || (m.media_type === 'tv' ? 'tv' : m._anime ? 'anime' : 'movie');
         grid.insertAdjacentHTML('beforeend', makeCard(m, t));
       });
     }

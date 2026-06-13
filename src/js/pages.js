@@ -83,7 +83,7 @@ function _buildMoviesPage() {
   ${_section('sec-movies-top',      'Top Rated Movies',        'workspace_premium',   'row-movies-top',      'movies-top',       'Top Rated Movies',     '#f5c518')}
   ${_section('sec-movies-new',      'Now Playing',             'fiber_new',           'row-movies-new',      'movies-new',       'Now Playing',          '#22c55e')}
   ${_section('sec-movies-up',       'Coming Soon',             'upcoming',            'row-movies-up',       'movies-upcoming',  'Upcoming Movies',      '#06b6d4')}
-  ${_section('sec-movies-2024',     'Best of 2024',            'calendar_today',      'row-movies-2024',     'movies-2024',      'Best of 2024',         '#a78bfa')}
+  ${_section('sec-movies-2024',     `Best of ${new Date().getFullYear() - 1}`, 'calendar_today', 'row-movies-2024', 'movies-2024', `Best of ${new Date().getFullYear() - 1}`, '#a78bfa')}
   ${_section('sec-movies-action',   'Action Movies',           'sports_martial_arts', 'row-movies-action',   'genre-28',         'Action Movies',        '')}
   ${_section('sec-movies-comedy',   'Comedy Movies',           'sentiment_very_satisfied','row-movies-comedy','genre-35',        'Comedy Movies',        '#f59e0b')}
   ${_section('sec-movies-horror',   'Horror Movies',           'dark_mode',           'row-movies-horror',   'genre-27',         'Horror Movies',        '#ef4444')}
@@ -132,7 +132,7 @@ function _buildTvPage() {
   ${_section('sec-tv-popular',  'Popular TV Shows',       'tv',               'row-tv-popular',  'tv-popular',   'Popular TV Shows',      '')}
   ${_section('sec-tv-top',      'Top Rated TV',           'workspace_premium','row-tv-top',      'tv-top',       'Top Rated TV',          '#f5c518')}
   ${_section('sec-tv-air',      'Airing Today',           'live_tv',          'row-tv-air',      'tv-airing',    'Airing Today',          '#22c55e')}
-  ${_section('sec-tv-crime',    'Crime &amp; Drama',      'policy',           'row-tv-crime',    'genre-80',     'Crime &amp; Drama',     '')}
+  ${_section('sec-tv-crime',    'Crime &amp; Drama',      'policy',           'row-tv-crime',    'tv-crime',     'Crime &amp; Drama',     '')}
   ${_section('sec-tv-scifi',    'Sci-Fi &amp; Fantasy',   'rocket_launch',    'row-tv-scifi',    'tv-scifi',     'Sci-Fi &amp; Fantasy',  '#6366f1')}
   ${_section('sec-tv-thriller', 'Thriller Series',        'visibility',       'row-tv-thriller', 'tv-thriller',  'Thriller Series',       '')}
   ${_section('sec-tv-comedy',   'Comedy Shows',           'sentiment_very_satisfied','row-tv-comedy','genre-35-tv','Comedy Shows',         '#f59e0b')}

@@ -938,9 +938,10 @@ async function fetchSearchPage(q, page) {
   else if (_sfActive === 'anime') all = anime;
   else if (_sfActive === 'top') all = all.filter(x => (x.vote_average || 0) >= 7.5);
   else if (_sfActive === 'recent') {
+    const cutoff = new Date().getFullYear() - 2;
     all = all.filter(x => {
       const y = parseInt(String(x.release_date || x.first_air_date || '0').slice(0, 4));
-      return y >= 2022;
+      return y >= cutoff;
     });
   }
 

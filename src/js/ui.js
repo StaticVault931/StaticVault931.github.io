@@ -37,7 +37,11 @@ export function makeCard(m, type, opts = {}) {
 
   const { numbered, showProgress = true, compact = false } = opts;
 
-  const title = m.title || m.name || m.romaji || '';
+  const baseTitle = m.title || m.name || m.romaji || '';
+  // Disambiguate UK remakes (e.g. "The Office (UK)" vs "The Office")
+  const _oc = m.origin_country || [];
+  const countryTag = type === 'tv' && _oc.includes('GB') && !_oc.includes('US') ? ' (UK)' : '';
+  const title = baseTitle + countryTag;
   const id = m.id;
   const year = String(m.release_date || m.first_air_date || m.startDate_year || '').slice(0, 4);
   const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);

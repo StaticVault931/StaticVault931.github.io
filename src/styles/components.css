@@ -70,49 +70,53 @@
   -webkit-box-orient: vertical;
 }
 
-/* Netflix-style title overlay on card image */
+/* Title overlay on card image */
 .card-img-title {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  padding: 2rem .6rem .5rem;
-  background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.88) 60%, rgba(0,0,0,.96) 100%);
+  padding: 3rem .65rem .55rem;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.7) 45%, rgba(0,0,0,.97) 100%);
   z-index: 2;
   pointer-events: none;
 }
 .card-img-title-name {
   display: block;
-  font-size: .78rem;
+  font-size: .8rem;
   font-weight: 900;
   color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 6px rgba(0,0,0,.8);
+  text-shadow: 0 1px 8px rgba(0,0,0,.95);
   line-height: 1.2;
-  padding-right: 50px; /* room for rating badge on right */
+  padding-right: 50px;
 }
 .card-img-title-year {
   display: block;
-  font-size: .58rem;
-  color: rgba(255,255,255,.48);
-  margin-top: 2px;
+  font-size: .6rem;
+  color: rgba(255,255,255,.5);
+  margin-top: 3px;
 }
-/* When card has a top-10 number, indent title so they don't overlap */
 .card:has(.card-num-overlay) .card-img-title-name { padding-left: 3rem; }
 .card:has(.card-num-overlay) .card-img-title-year { padding-left: 3rem; }
 
-/* TMDB title-treatment logo image (replaces text title when available) */
+/* TMDB title-treatment logo — horizontal text image */
 .card-logo-img {
   display: block;
-  max-height: 44px;
-  max-width: calc(100% - 54px); /* leave room for rating badge */
+  max-height: 52px;
+  max-width: calc(100% - 58px);
   width: auto;
   object-fit: contain;
   object-position: left bottom;
-  filter: drop-shadow(0 1px 6px rgba(0,0,0,.9));
-  margin-bottom: 2px;
+  filter: drop-shadow(0 1px 8px rgba(0,0,0,1)) drop-shadow(0 2px 16px rgba(0,0,0,.8));
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity .3s ease;
 }
-/* When logo is showing, hide text title */
+.card-logo-img.loaded {
+  opacity: 1;
+}
+/* When logo is showing, hide the plain text title */
 .card-logo-img.loaded ~ .card-img-title-name,
 .card-logo-img.loaded ~ .card-img-title-year { display: none; }
 
