@@ -378,55 +378,16 @@ export async function fetchTvApiBoxOffice() {
   return data;
 }
 
-/* ── DAILYMOTION — Trailer search (strict: must be official trailer) ─ */
-export async function fetchDailymotionTrailer(titleQuery) {
-  if (!titleQuery) return null;
-  const key = cacheKey('dm_trailer_v3_' + titleQuery, {});
-  const cached = cacheGet(key);
-  if (cached) return cached;
-  try {
-    const q = encodeURIComponent(`${titleQuery} official trailer`);
-    const r = await fetch(
-      `https://api.dailymotion.com/videos?search=${q}&fields=id,title,embed_url,thumbnail_url&limit=10&language=en`
-    );
-    if (!r.ok) return null;
-    const data = await r.json();
-    const list = data.list || [];
-    if (!list.length) return null;
+/* ── DAILYMOTION REMOVED ────────────────────────────────────────── */
 
-    const titleLower = titleQuery.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
-    const titleWords = titleLower.split(' ').filter(w => w.length > 3);
-
-    // Level 1: strict — title words AND trailer keyword
-    let video = list.find(v => {
-      const vt = (v.title||'').toLowerCase();
-      const titleMatch = titleWords.length > 0 && titleWords.some(w => vt.includes(w));
-      const isTrailer  = vt.includes('trailer') || vt.includes('official') || vt.includes('teaser');
-      return titleMatch && isTrailer;
-    });
-
-    // Level 2: any video with a trailer keyword (still filtered by search query)
-    if (!video) video = list.find(v => {
-      const vt = (v.title||'').toLowerCase();
-      return vt.includes('trailer') || vt.includes('teaser') || vt.includes('official');
-    });
-
-    // Level 3: just use the first result (search was already specific)
-    if (!video) video = list[0];
-
-    if (!video?.embed_url) return null;
-    cacheSet(key, video);
-    return video;
-  } catch { return null; }
-}
-
-/* ── VIDSRC-EMBED.RU — latest feeds (Recently Added rows) ───────── */
-const VIDSRC_BASE = 'https://vidsrc-embed.ru';
+/* ── VIDSRC.RU — latest feeds (Recently Added rows) ───────── */
+const VIDSRC_BASE = 'https://vidsrc.ru';
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 async function _vidsrcFetch(url) {
   try {
-    // Try direct fetch first, then with no-cors mode as fallback
-    const r = await fetch(url, { mode: 'cors' });
+    // VidSrc dropped CORS headers, so we use a public proxy for the JSON feeds
+    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
     if (!r.ok) return null;
     const data = await r.json();
     return Array.isArray(data) ? data : data?.result || data?.items || null;
@@ -733,13 +694,7 @@ export async function testAllAPIs() {
     results.push({ name: 'TV-API (IMDB)', status: 'error', note: 'Request failed' });
   }
 
-  // Dailymotion
-  try {
-    const r = await fetch('https://api.dailymotion.com/videos?fields=id&limit=1');
-    results.push({ name: 'Dailymotion', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Trailer fallback — working' : 'Failed' });
-  } catch {
-    results.push({ name: 'Dailymotion', status: 'error', note: 'Request failed' });
-  }
+  // Dailymotion Removed
 
   // Logo.dev
   try {

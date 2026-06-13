@@ -96,9 +96,7 @@ export function injectOverlays() {
   nc.innerHTML = `
   <div class="nc-video">
     <iframe id="nc-frame"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
       allow="autoplay; fullscreen"
-      referrerpolicy="no-referrer"
       title="Trailer preview">
     </iframe>
     <img class="nc-backdrop" id="nc-backdrop" alt="">
@@ -265,9 +263,7 @@ export function injectOverlays() {
             <div class="info-section-label">Trailer</div>
             <div class="info-trailer-inner">
               <iframe id="info-trailer-frame"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
                 allow="autoplay; fullscreen"
-                referrerpolicy="no-referrer"
                 title="Trailer">
               </iframe>
               <div class="info-trailer-fallback" id="info-trailer-fallback" style="display:none">

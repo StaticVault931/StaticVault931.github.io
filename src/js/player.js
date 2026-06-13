@@ -7,20 +7,45 @@ import { state, persist } from './state.js';
 // group: 'more' = collapsed under "More Sources" by default
 export const PROVIDERS = [
   {
-    // #1 — VidSrc.ru: verified working, no popups, auto-next episode
+    // #1 - VidSrc.to: The original vidsrc (no popups when sandboxed)
+    id: 'vidsrcto',
+    label: 'VidSrc.to',
+    prio: 'high',
+    note: 'Original HD',
+    domain: 'https://vidsrc.to',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrc.to/embed/movie/${id}`
+      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    // #2 - VidSrcMe.ru: Official vidsrc.me mirror (no popups when sandboxed)
+    id: 'vidsrcme',
+    label: 'VidSrc.me',
+    prio: 'high',
+    note: 'Original mirror',
+    domain: 'https://vidsrcme.ru',
+    types: ['movie', 'tv', 'anime'],
+    url: (id, t, s, e) => t === 'movie'
+      ? `https://vidsrcme.ru/embed/movie?tmdb=${id}`
+      : `https://vidsrcme.ru/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+  },
+  {
+    // #3 - VidSrc.ru: verified working, but requires noSandbox (has popups)
     id: 'vidsrcru',
     label: 'VidSrc.ru',
-    prio: 'high',
-    note: 'Auto-next · HD',
+    prio: 'med',
+    note: 'Auto-next HD (Popups)',
     domain: 'https://vidsrc.ru',
     types: ['movie', 'tv', 'anime'],
     noSandbox: true,
+    group: 'more',
     url: (id, t, s, e) => t === 'movie'
       ? `https://vidsrc.ru/movie/${id}?autoplay=true&colour=e50914&pausescreen=true`
       : `https://vidsrc.ru/tv/${id}/${s}/${e}?autoplay=true&colour=e50914&autonextepisode=true&pausescreen=true`,
   },
   {
-    // #2 — 2Embed: verified working, wide coverage
+    // #4 — 2Embed: verified working, wide coverage
     id: 'embed2',
     label: '2Embed',
     prio: 'high',
@@ -33,7 +58,7 @@ export const PROVIDERS = [
       : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
   },
   {
-    // #3 — Videasy: verified working
+    // #5 — Videasy: verified working
     id: 'videasy',
     label: 'Videasy',
     prio: 'high',
@@ -45,7 +70,7 @@ export const PROVIDERS = [
       : `https://player.videasy.net/tv/${id}/${s}/${e}`,
   },
   {
-    // #4 — VidLink: 4K on some titles, needs sandbox off, some popups on click
+    // #6 — VidLink: 4K on some titles, needs sandbox off, some popups on click
     id: 'vidlink',
     label: 'VidLink',
     prio: 'high',
@@ -58,20 +83,20 @@ export const PROVIDERS = [
       : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914`,
   },
   {
-    // #5 — VidSrc.to: the original VidSrc — large library, may have X-Frame-Options in Firefox
-    id: 'vidsrcto',
-    label: 'VidSrc',
-    prio: 'high',
-    note: 'Original · HD',
-    domain: 'https://vidsrc.to',
+    // #7 - VidSrc.in: may have X-Frame-Options in Firefox
+    id: 'vidsrcin',
+    label: 'VidSrc.in',
+    prio: 'med',
+    note: 'Alternative HD',
+    domain: 'https://vidsrc.in',
     types: ['movie', 'tv', 'anime'],
     group: 'more',
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.to/embed/movie/${id}`
-      : `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+      ? `https://vidsrc.in/embed/movie/${id}`
+      : `https://vidsrc.in/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #6 — Embed.su: clean UI, consistent library
+    // #8 — Embed.su: clean UI, consistent library
     id: 'embedsu',
     label: 'Embed.su',
     prio: 'high',
@@ -84,7 +109,7 @@ export const PROVIDERS = [
       : `https://embed.su/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #7 — Vidfun: fresh provider with postMessage API support
+    // #9 — Vidfun: fresh provider with postMessage API support
     id: 'vidfun',
     label: 'VidFun',
     prio: 'med',
@@ -97,7 +122,7 @@ export const PROVIDERS = [
       : `https://vidfun.xyz/tv/${id}/${s}/${e}`,
   },
   {
-    // #8 — VidSrc CC: wide library, reliable HD
+    // #10 — VidSrc CC: wide library, reliable HD
     id: 'vidsrc',
     label: 'VidSrc.cc',
     prio: 'med',
@@ -110,7 +135,7 @@ export const PROVIDERS = [
       : `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #9 — VidSrc Embed: original vidsrc embed backend
+    // #11 — VidSrc Embed: original vidsrc embed backend
     id: 'vidsrcembed',
     label: 'VidSrc (Embed)',
     prio: 'med',
@@ -123,7 +148,7 @@ export const PROVIDERS = [
       : `https://vidsrc-embed.ru/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
-    // #10 — Rive Stream: multi-source aggregator
+    // #12 — Rive Stream: multi-source aggregator
     id: 'rive',
     label: 'Rive',
     prio: 'med',
@@ -136,7 +161,7 @@ export const PROVIDERS = [
       : `https://rive.stream/embed/tv?id=${id}&s=${s}&e=${e}&yt=1`,
   },
   {
-    // #11 — Cineby: 4K available on select titles
+    // #13 — Cineby: 4K available on select titles
     id: 'cineby',
     label: 'Cineby',
     prio: 'med',
@@ -149,7 +174,7 @@ export const PROVIDERS = [
       : `https://www.cineby.app/tv/${id}/${s}/${e}`,
   },
   {
-    // #12 — VidBinge: solid coverage, clean player
+    // #14 — VidBinge: solid coverage, clean player
     id: 'vidbinge',
     label: 'VidBinge',
     prio: 'med',
@@ -162,17 +187,17 @@ export const PROVIDERS = [
       : `https://vidbinge.dev/embed/tv/${id}/${s}/${e}`,
   },
   {
-    // #13 — VidSrc Me: alternate vidsrc backend
-    id: 'vidsrcme',
-    label: 'VidSrc.me',
+    // #15 - VidSrc.pm: alternate vidsrc backend
+    id: 'vidsrcpm',
+    label: 'VidSrc.pm',
     prio: 'med',
     note: 'Alt backend',
-    domain: 'https://vidsrc.me',
+    domain: 'https://vidsrc.pm',
     types: ['movie', 'tv', 'anime'],
     group: 'more',
     url: (id, t, s, e) => t === 'movie'
-      ? `https://vidsrc.me/embed/movie?tmdb=${id}`
-      : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+      ? `https://vidsrc.pm/embed/movie?tmdb=${id}`
+      : `https://vidsrc.pm/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
   },
   {
     // #14 — MoviesAPI: good coverage, minimal ads

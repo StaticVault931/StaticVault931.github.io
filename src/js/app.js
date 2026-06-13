@@ -7,7 +7,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
   getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS, TASTEDIVE_KEY,
   fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
-  fetchDailymotionTrailer, wikidataSPARQL, getFilmAwards,
+  wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
   fetchTasteDive, TVAPI_KEY2 } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
@@ -4207,79 +4207,67 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    // DM from TMDB videos (preferred — no X-Frame-Options block)
-    const dmFromTmdb =
-      videos.find(v => v.site === 'Dailymotion' && v.type === 'Trailer' && v.official) ||
-      videos.find(v => v.site === 'Dailymotion' && v.type === 'Trailer') ||
-      videos.find(v => v.site === 'Dailymotion');
-
-    // Info page trailer: DM (TMDB) → DM (search) → YouTube → tv-api → backdrop
+    // Info page trailer: YouTube → tv-api → backdrop
     const trailerWrap = document.getElementById('info-trailer-wrap');
     const posterImg = details.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
       : details.poster_path ? `https://image.tmdb.org/t/p/w780${details.poster_path}` : null;
 
-    if ((trailerKey || dmFromTmdb) && trailerWrap) {
+    if (trailerKey && trailerWrap) {
       trailerWrap.style.cursor = 'default';
       if (trailerFallback) trailerFallback.style.display = 'none';
       const _trailerToken = id;
-      const _searchQuery = `${title} ${String(details.release_date || details.first_air_date || '').slice(0,4)}`;
 
-      if (dmFromTmdb && trailerFrame) {
-        // ── Dailymotion from TMDB (best option — no embedding restrictions) ──
+      if (trailerFrame) {
         trailerFrame.style.display = '';
-        trailerFrame.src = `https://www.dailymotion.com/embed/video/${dmFromTmdb.key}?autoplay=1&mute=0&controls=1&ui-start-screen-info=0&endscreen-enable=0&sharing-enable=0`;
-      } else if (trailerKey && trailerFrame) {
-        // ── YouTube as initial display while we race a DM search ──
-        trailerFrame.style.display = '';
-        trailerFrame.src = `https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
-        // Race a Dailymotion search in background — swap within 4s if found
-        const _dmRaceTimer = setTimeout(async () => {
+        const playYouTubeInfo = (vidKey, isFallback = false) => {
           if (state.currentInfoMedia?.id !== _trailerToken) return;
-          try {
-            const dmVid = await fetchDailymotionTrailer(_searchQuery);
-            if (dmVid?.embed_url && trailerFrame && state.currentInfoMedia?.id === _trailerToken) {
-              trailerFrame.src = dmVid.embed_url;
-              return; // switched to DM — no further fallback needed
-            }
-          } catch {}
-        }, 800);
+          trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
 
-        // Detect YouTube Error 153 / embedding disabled
-        const infoMsgHandler = (e) => {
-          if (e.origin !== 'https://www.youtube.com') return;
-          try {
-            const d = JSON.parse(e.data);
-            if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
-              window.removeEventListener('message', infoMsgHandler);
-              clearTimeout(infoTrailerTimer);
-              clearTimeout(_dmRaceTimer);
-              if (state.currentInfoMedia?.id === _trailerToken)
-                _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-            }
-          } catch {}
-        };
-        window.addEventListener('message', infoMsgHandler);
-        const infoTrailerTimer = setTimeout(async () => {
-          window.removeEventListener('message', infoMsgHandler);
-          if (state.currentInfoMedia?.id !== _trailerToken) return;
-          if (trailerFallback?.style.display !== '' && trailerFrame?.src) {
-            // YouTube failed — try tv-api.com
-            const imdbIdForTrailer = details.imdb_id ||
-              (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
-            if (imdbIdForTrailer) {
-              const ytData = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
-              if (ytData?.videoId && state.currentInfoMedia?.id === _trailerToken && trailerFrame) {
-                trailerFrame.src = `https://www.youtube.com/embed/${ytData.videoId}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-                return;
+          const infoMsgHandler = (e) => {
+            if (e.origin !== 'https://www.youtube.com') return;
+            try {
+              const d = JSON.parse(e.data);
+              if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+                window.removeEventListener('message', infoMsgHandler);
+                clearTimeout(infoTrailerTimer);
+                
+                if (!isFallback && state.currentInfoMedia?.id === _trailerToken) {
+                  // Try TV-API YouTube fallback
+                  (async () => {
+                    const imdbIdForTrailer = details.imdb_id || (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
+                    if (imdbIdForTrailer) {
+                      const tvApiYt = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
+                      if (tvApiYt?.videoId && tvApiYt.videoId !== vidKey && state.currentInfoMedia?.id === _trailerToken) {
+                        playYouTubeInfo(tvApiYt.videoId, true);
+                        return;
+                      }
+                    }
+                    if (state.currentInfoMedia?.id === _trailerToken)
+                      _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+                  })();
+                } else if (state.currentInfoMedia?.id === _trailerToken) {
+                  _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+                }
               }
-            }
-            if (state.currentInfoMedia?.id === _trailerToken)
+            } catch {}
+          };
+          window.addEventListener('message', infoMsgHandler);
+          const infoTrailerTimer = setTimeout(() => {
+            window.removeEventListener('message', infoMsgHandler);
+            if (state.currentInfoMedia?.id === _trailerToken && trailerFallback?.style.display !== '' && trailerFrame?.src) {
               _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-          }
-        }, 7000);
-      } // end else if (trailerKey)
+            }
+          }, 7000);
+        };
+
+        if (trailerKey && trailerKey !== '__none__') {
+          playYouTubeInfo(trailerKey, false);
+        } else {
+          _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
+        }
+      } // end if (trailerFrame)
     } else {
       if (trailerFrame) { trailerFrame.removeAttribute('src'); trailerFrame.style.display = 'none'; }
       if (trailerFallback) {
@@ -5626,13 +5614,13 @@ function _tryTrailerKey(keys, idx, ytLink, posterImg, vimeoKeys) {
 
   // Try youtube-nocookie first (some Error 153 videos work there), then regular YouTube
   const isEven = idx % 2 === 0;
-  const ytBase = isEven ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+  const ytBase = 'https://www.youtube.com';
   frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
   let resolved = false;
 
   const msgHandler = (e) => {
-    if (e.origin !== 'https://www.youtube.com' && e.origin !== 'https://www.youtube-nocookie.com') return;
+    if (e.origin !== 'https://www.youtube.com') return;
     try {
       const d = JSON.parse(e.data);
 
@@ -6829,34 +6817,52 @@ async function showNetflixCard(card) {
     frame.style.display = '';
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
 
-    if (trailerKey.startsWith('dm:')) {
-      // ── Dailymotion (preferred — no X-Frame-Options blocking) ──
-      const dmId = trailerKey.slice(3);
-      frame.src = `https://www.dailymotion.com/embed/video/${dmId}?autoplay=1&mute=1&controls=0&ui-start-screen-info=0&endscreen-enable=0&sharing-enable=0&queue-enable=0`;
-      // Dailymotion doesn't support reliable postMessage, just fade after delay
-      setTimeout(() => {
-        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
-      }, 2500);
-    } else {
-      // ── YouTube (last resort) ──
-      frame.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-      const ytFadeTimer = setTimeout(() => {
-        if (_hoverCurrentCard === card && _hoverActive && backdrop) backdrop.style.opacity = '0';
-      }, 2000);
+    const playYouTube = (vidKey, isFallback = false) => {
+      if (!_hoverActive || _hoverCurrentCard !== card) return;
+      frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+      
+      // Failsafe: reveal the iframe after 3 seconds even if JS API fails
+      const failsafeTimer = setTimeout(() => {
+        if (_hoverCurrentCard === card && _hoverActive && backdrop) {
+          backdrop.style.opacity = '0';
+        }
+      }, 3000);
+
       const ytHandler = (e) => {
         if (e.origin !== 'https://www.youtube.com') return;
         try {
           const d = JSON.parse(e.data);
           if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
-            clearTimeout(ytFadeTimer);
+            clearTimeout(failsafeTimer);
             if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
             window.removeEventListener('message', ytHandler);
+          } else if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+            window.removeEventListener('message', ytHandler);
+            if (!isFallback) {
+              // Try TV-API YouTube fallback!
+              (async () => {
+                const details = await detailsPromise.catch(() => ({}));
+                let imdbId = details?.imdb_id;
+                if (!imdbId) {
+                  const ext = await tmdb(`/${type}/${id}/external_ids`).catch(() => null);
+                  imdbId = ext?.imdb_id;
+                }
+                if (imdbId) {
+                  const tvApiYt = await fetchTvApiYouTubeTrailer(imdbId).catch(() => null);
+                  if (tvApiYt?.videoId && tvApiYt.videoId !== vidKey && _hoverCurrentCard === card && _hoverActive) {
+                    playYouTube(tvApiYt.videoId, true);
+                  }
+                }
+              })();
+            }
           }
         } catch {}
       };
       window.addEventListener('message', ytHandler);
       setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
-    }
+    };
+
+    playYouTube(trailerKey, false);
 
   } else {
     frame.removeAttribute('src');
@@ -6938,26 +6944,13 @@ async function fetchTrailerKey(id, type, title = '', year = '') {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
     const data = await tmdb(`/${endpoint}/videos`);
     const vids = data.results || [];
-    // Dailymotion preferred — no X-Frame-Options blocking; YouTube is last resort
-    const dm = vids.find(v => v.site === 'Dailymotion' && v.type === 'Trailer' && v.official) ||
-               vids.find(v => v.site === 'Dailymotion' && v.type === 'Trailer') ||
-               vids.find(v => v.site === 'Dailymotion' && v.type === 'Teaser') ||
-               vids.find(v => v.site === 'Dailymotion');
+    // Use YouTube built-in trailers
     const yt = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
                vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
                vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
                vids.find(v => v.site === 'YouTube');
-    if (dm) {
-      key = `dm:${dm.key}`;
-    } else if (yt) {
-      key = yt.key; // Use YouTube for now; race a DM search to upgrade cache
-      // Background DM search — updates cache if found (next hover will use DM)
-      if (title) {
-        const searchQuery = `${title} ${year}`.trim();
-        fetchDailymotionTrailer(searchQuery).then(dmVid => {
-          if (dmVid?.id) _hoverTrailerCache.set(id, `dm:${dmVid.id}`);
-        }).catch(() => {});
-      }
+    if (yt) {
+      key = yt.key;
     } else {
       key = '__none__';
     }
