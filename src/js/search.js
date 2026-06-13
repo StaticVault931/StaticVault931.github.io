@@ -625,13 +625,18 @@ export async function doSearch(q) {
     if (!topic) return;
     area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
     try {
-      // Search TMDB keywords
-      const kwRes = await tmdb('/search/keyword', { query: topic });
-      const keywords = (kwRes.results || []).slice(0, 5);
-      
+      // Run keyword + company searches in parallel for best coverage
+      const [kwRes, coRes] = await Promise.allSettled([
+        tmdb('/search/keyword', { query: topic }),
+        tmdb('/search/company', { query: topic }),
+      ]);
+      const keywords = (kwRes.status === 'fulfilled' ? kwRes.value.results : []).slice(0, 5);
+      const companies = (coRes.status === 'fulfilled' ? coRes.value.results : []).slice(0, 3);
+
       let allItems = [];
       const existIds = new Set();
-      
+
+      // Keyword-based discover
       for (const kw of keywords) {
         const [mv, tv] = await Promise.allSettled([
           tmdb('/discover/movie', { with_keywords: kw.id, sort_by: 'popularity.desc', 'vote_count.gte': 30 }),
@@ -640,7 +645,17 @@ export async function doSearch(q) {
         if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'movie', _keyword: kw.name}); existIds.add(m.id); }});
         if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'tv', _keyword: kw.name}); existIds.add(m.id); }});
       }
-      
+
+      // Company-based discover (e.g., searching ":Marvel" finds Marvel Studios)
+      for (const co of companies.slice(0, 2)) {
+        const [mv, tv] = await Promise.allSettled([
+          tmdb('/discover/movie', { with_companies: co.id, sort_by: 'popularity.desc', 'vote_count.gte': 50 }),
+          tmdb('/discover/tv', { with_companies: co.id, sort_by: 'popularity.desc' }),
+        ]);
+        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'movie'}); existIds.add(m.id); }});
+        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'tv'}); existIds.add(m.id); }});
+      }
+
       allItems.sort((a,b) => (b.popularity||0) - (a.popularity||0));
       
       if (!allItems.length) {
@@ -648,11 +663,13 @@ export async function doSearch(q) {
         return;
       }
       
-      const matched = keywords.map(k => k.name).filter(Boolean).join(', ');
+      const matchedKw = keywords.map(k => k.name).filter(Boolean);
+      const matchedCo = companies.map(c => c.name).filter(Boolean);
+      const matchedAll = [...matchedKw, ...matchedCo].slice(0, 4).join(', ');
       area.innerHTML = `
         <div class="search-did-you-mean" style="border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.08);color:#a78bfa">
           <span class="material-icons-round">tag</span>
-          <span>Topic search: matching <strong>${esc(matched)}</strong></span>
+          <span>Topic search${matchedAll ? `: <strong>${esc(matchedAll)}</strong>` : ''}</span>
           <span style="font-size:.72rem;color:var(--dim);margin-left:auto">Tip: Use : prefix to search by topic</span>
         </div>
         <div class="search-section-title"><span class="material-icons-round">auto_awesome</span> "${esc(topic)}" — ${allItems.length} results</div>

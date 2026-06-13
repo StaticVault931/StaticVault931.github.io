@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<!-- Redirect ?page=home → / so both don't get indexed separately -->
+<script>(function(){var p=new URLSearchParams(location.search);if(p.get('page')==='home')history.replaceState(null,'',location.pathname);}());</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-KG898X9EJK"></script>
 <script>
@@ -111,6 +113,7 @@
     <div class="nav-tab" data-page="movies" role="button" tabindex="0">Movies</div>
     <div class="nav-tab" data-page="tv" role="button" tabindex="0">TV Shows</div>
     <div class="nav-tab" data-page="anime" role="button" tabindex="0">Anime</div>
+    <div class="nav-tab" data-page="trailers" role="button" tabindex="0">Trailers</div>
     <div class="nav-sep" aria-hidden="true"></div>
     <div class="nav-tab" data-page="library" role="button" tabindex="0">Library</div>
     <div class="nav-tab" data-page="prefs" role="button" tabindex="0">Customize Feed</div>
@@ -1078,6 +1081,7 @@
         <a role="button" tabindex="0" data-page="movies">Movies</a>
         <a role="button" tabindex="0" data-page="tv">TV Shows</a>
         <a role="button" tabindex="0" data-page="anime">Anime</a>
+        <a role="button" tabindex="0" data-page="trailers">Trailers</a>
       </div>
       <div class="footer-col">
         <h4>My Space</h4>

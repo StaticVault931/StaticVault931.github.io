@@ -136,6 +136,31 @@ export async function tmdb(path, params = {}) {
   return data;
 }
 
+/* ── TMDB: Best English backdrop (title-card image with text) ──────── */
+// Prefers iso_639_1='en' backdrops (have title text), sorted by vote_average
+// Falls back to null-language backdrops if no English ones exist
+export async function fetchBestBackdrop(id, type) {
+  const mediaType = type === 'anime' ? 'tv' : type;
+  const key = cacheKey(`best_backdrop_${mediaType}_${id}`, {});
+  const cached = cacheGet(key);
+  if (cached !== undefined) return cached;
+  try {
+    // Fetch without language filter to get all language variants
+    const u = new URL(`${TMDB_BASE}/${mediaType}/${id}/images`);
+    const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
+    if (!r.ok) { cacheSet(key, null); return null; }
+    const data = await r.json();
+    const bds = data.backdrops || [];
+    const rank = (b) => (b.vote_average || 0) * 100 + (b.vote_count || 0) * 0.01;
+    const enBds = bds.filter(b => b.iso_639_1 === 'en').sort((a, b) => rank(b) - rank(a));
+    const nullBds = bds.filter(b => !b.iso_639_1).sort((a, b) => rank(b) - rank(a));
+    const best = enBds[0] || nullBds[0] || null;
+    const result = best ? { file_path: best.file_path, hasText: !!enBds[0] } : null;
+    cacheSet(key, result);
+    return result;
+  } catch { cacheSet(key, null); return null; }
+}
+
 /* ── ANILIST ─────────────────────────────────────────────────────── */
 export async function aniQuery(query, variables = {}) {
   const key = cacheKey('ani_' + query.slice(0, 40), variables);

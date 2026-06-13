@@ -101,6 +101,7 @@ export function injectOverlays() {
     </iframe>
     <img class="nc-backdrop" id="nc-backdrop" alt="">
     <div class="nc-video-gradient"></div>
+    <div class="nc-yt-mask"></div>
   </div>
   <div class="nc-info">
     <div class="nc-title-row">

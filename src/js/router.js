@@ -9,7 +9,19 @@ const PAGE_META = {
   search:  { title: 'Search Movies & Shows — StaticVault931',                     desc: 'Search movies, TV shows, and anime. Find anything — all content free and unblocked.' },
   library: { title: 'My Library — StaticVault931',                                desc: 'Your personal watchlist, liked titles, and viewing history.' },
   prefs:   { title: 'Customize Your Feed — StaticVault931',                       desc: 'Set preferred genres, content ratings, and titles to personalize your recommendations.' },
-  seeall:  { title: 'Browse All Content — StaticVault931',                        desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
+  seeall:   { title: 'Browse All Content — StaticVault931',                       desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
+  trailers: { title: 'Watch Trailers — StaticVault931',                           desc: 'Scroll through the latest movie and TV show trailers. Find your next watch.' },
+};
+
+const PAGE_BREADCRUMBS = {
+  home:    [],
+  movies:  [{ name: 'Movies',       url: 'https://staticvault931.github.io/?page=movies' }],
+  tv:      [{ name: 'TV Shows',     url: 'https://staticvault931.github.io/?page=tv' }],
+  anime:   [{ name: 'Anime',        url: 'https://staticvault931.github.io/?page=anime' }],
+  search:  [{ name: 'Search',       url: 'https://staticvault931.github.io/?page=search' }],
+  library: [{ name: 'My Library',   url: 'https://staticvault931.github.io/?page=library' }],
+  prefs:    [{ name: 'Customize Feed', url: 'https://staticvault931.github.io/?page=prefs' }],
+  trailers: [{ name: 'Trailers',       url: 'https://staticvault931.github.io/?page=trailers' }],
 };
 
 function updatePageMeta(p) {
@@ -29,9 +41,24 @@ function updatePageMeta(p) {
   document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', siteImg);
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', pageUrl);
 
-  // Clear dynamic JSON-LD when returning to a standard page
+  // Inject BreadcrumbList JSON-LD per page
   const ldEl = document.getElementById('jsonld-media');
-  if (ldEl) ldEl.textContent = '';
+  if (ldEl) {
+    const crumbs = PAGE_BREADCRUMBS[p] || [];
+    if (crumbs.length) {
+      const items = [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: base },
+        ...crumbs.map((c, i) => ({ '@type': 'ListItem', position: i + 2, name: c.name, item: c.url })),
+      ];
+      ldEl.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: items,
+      });
+    } else {
+      ldEl.textContent = '';
+    }
+  }
 }
 
 /* ── PAGE LOADERS registry ───────────────────────────────────────── */

@@ -1,5 +1,6 @@
 /* ── CARD ────────────────────────────────────────────────────────── */
 .card {
+  display: block; /* ensures <a> cards behave as block-level elements */
   flex-shrink: 0;
   width: var(--card-w);
   /* scroll-snap-align removed — caused row drift */
@@ -1658,6 +1659,15 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   inset: 0;
   transition: opacity .5s;
 }
+/* Covers YouTube's info bar / watch-on-YouTube button at the top of the frame */
+.nc-yt-mask {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 42px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.85) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
 .nc-video-gradient {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -2461,3 +2471,190 @@ img[alt]::after {
   width: max(var(--card-w, 380px), 380px);
   max-width: 520px;
 }
+
+/* ── TRAILERS FEED (YouTube Shorts style) ───────────────────────── */
+#page-trailers {
+  padding: 0;
+  overflow: hidden;
+}
+#page-trailers.active {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.trailers-feed {
+  flex: 1;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  height: 100%;
+  background: #000;
+}
+.trailers-feed::-webkit-scrollbar { display: none; }
+
+.trailer-slide {
+  height: 100vh;
+  scroll-snap-align: start;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.trailer-slide-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity .5s;
+}
+.trailer-slide-iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  z-index: 1;
+}
+.trailer-slide-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(0,0,0,.85) 0%, rgba(0,0,0,.1) 50%, rgba(0,0,0,.3) 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+.trailer-slide-content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 1.5rem 1rem 5.5rem;
+  gap: 1rem;
+}
+.trailer-slide-left {
+  flex: 1;
+  min-width: 0;
+}
+.trailer-slide-title {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: 1.9rem;
+  letter-spacing: .04em;
+  color: #fff;
+  margin: 0 0 .3rem;
+  line-height: 1.05;
+  text-shadow: 0 1px 8px rgba(0,0,0,.7);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.trailer-slide-meta {
+  color: rgba(255,255,255,.75);
+  font-size: .82rem;
+  margin-bottom: .8rem;
+  letter-spacing: .02em;
+}
+.trailer-slide-btn-row {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.trailer-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .45rem 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 600;
+  transition: opacity .15s, transform .1s;
+}
+.trailer-cta:active { transform: scale(.95); }
+.trailer-cta-watch {
+  background: #fff;
+  color: #000;
+}
+.trailer-cta-info {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,.25);
+}
+.trailer-cta .material-icons-round { font-size: 1.1rem; }
+
+.trailer-slide-right {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  align-items: center;
+}
+.trailer-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,.18);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, transform .1s;
+  flex-shrink: 0;
+}
+.trailer-icon-btn:hover { background: rgba(255,255,255,.3); }
+.trailer-icon-btn:active { transform: scale(.9); }
+.trailer-icon-btn.on { background: var(--red); }
+.trailer-icon-btn .material-icons-round { font-size: 1.25rem; }
+
+.trailers-spinner {
+  position: fixed;
+  bottom: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+}
+.trailers-spinner-dot {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255,255,255,.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.trailers-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--muted);
+  gap: .75rem;
+}
+.trailer-type-pill {
+  display: inline-block;
+  padding: .15rem .5rem;
+  border-radius: 3px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: .4rem;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+.trailer-type-pill.movie { background: var(--red); }
+.trailer-type-pill.tv    { background: #1a56db; }
+.trailer-type-pill.anime { background: #7c3aed; }

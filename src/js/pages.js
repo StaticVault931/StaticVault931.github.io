@@ -12,6 +12,7 @@ export function injectPages() {
     _buildTvPage(),
     _buildAnimePage(),
     _buildSeeAllPage(),
+    _buildTrailersPage(),
   ];
 
   pages.forEach(el => footer.before(el));
@@ -132,6 +133,24 @@ function _buildAnimePage() {
   ${_section('sec-anime-movie',   'Anime Movies',            'movie',                'row-anime-movie',   'anime-movies',   'Anime Movies',             '')}
 
   <div style="height:3rem"></div>`;
+  return el;
+}
+
+/* ── PAGE: TRAILERS ─────────────────────────────────────────────── */
+function _buildTrailersPage() {
+  const el = document.createElement('main');
+  el.className = 'page';
+  el.id = 'page-trailers';
+  el.innerHTML = `
+  <div id="trailers-feed" class="trailers-feed" aria-label="Trailer feed">
+    <div class="trailers-empty" id="trailers-empty" style="display:none">
+      <span class="material-icons-round" style="font-size:3rem;color:var(--muted)">videocam_off</span>
+      <p>No trailers found</p>
+    </div>
+  </div>
+  <div id="trailers-spinner" class="trailers-spinner" style="display:none">
+    <div class="trailers-spinner-dot"></div>
+  </div>`;
   return el;
 }
 

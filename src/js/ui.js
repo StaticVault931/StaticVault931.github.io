@@ -77,7 +77,11 @@ export function makeCard(m, type, opts = {}) {
   // Always show rating as image overlay now that card-body is hidden
   const showOverlayRating = true;
 
-  return `<div class="card${compact ? ' card-compact' : ''}"
+  // Use <a> so Google can crawl and index individual titles via ?watch= deep links
+  const cardHref = `?watch=${type}&id=${id}`;
+
+  return `<a class="card${compact ? ' card-compact' : ''}"
+    href="${cardHref}"
     data-id="${id}"
     data-type="${type}"
     data-title="${esc(title)}"
@@ -85,8 +89,6 @@ export function makeCard(m, type, opts = {}) {
     data-rating="${esc(rating)}"
     data-poster="${esc(poster || '')}"
     data-backdrop="${esc(m.backdrop_path || '')}"
-    role="button"
-    tabindex="0"
     aria-label="${esc(title)} (${typeLabel})">
     <div class="card-poster">
       ${imgSrc
@@ -128,7 +130,7 @@ export function makeCard(m, type, opts = {}) {
         ${rating ? `<span class="card-sub-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</span>` : ''}
       </div>
     </div>
-  </div>`;
+  </a>`;
 }
 
 /* ── ROW RENDER ──────────────────────────────────────────────────── */

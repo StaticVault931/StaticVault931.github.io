@@ -9,7 +9,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
   wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
-  fetchTasteDive, TVAPI_KEY2 } from './api.js';
+  fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
@@ -526,6 +526,7 @@ function registerAllLoaders() {
     }
   });
   registerLoader('seeall', renderSeeAll);
+  registerLoader('trailers', initTrailersFeed);
 }
 
 function registerAllSeeAll() {
@@ -2743,6 +2744,9 @@ function initEventDelegation() {
     // Don't trigger card click if it's a button inside
     if (e.target.closest('button')) return;
 
+    // Prevent <a> card from navigating — we handle it via JS
+    e.preventDefault();
+
     const itemId = +card.dataset.id;
     const itemType = card.dataset.type;
     if (itemId && itemType) {
@@ -2760,9 +2764,9 @@ function initEventDelegation() {
     }
   });
 
-  // Keyboard on cards
+  // Keyboard on cards — Space only (<a> cards fire click on Enter natively)
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.key !== ' ') return;
     const card = e.target.closest('[data-id][data-type]');
     if (!card || e.target.closest('button')) return;
     e.preventDefault();
@@ -2778,7 +2782,15 @@ function initEventDelegation() {
     const pageEl = e.target.closest('[data-page]');
     if (!pageEl) return;
     if (pageEl.closest('[data-id]')) return; // skip card internals
-    goPage(pageEl.dataset.page);
+    const targetPage = pageEl.dataset.page;
+    // Pause all trailer iframes when leaving the trailers page
+    if (state.currentPage === 'trailers' && targetPage !== 'trailers') {
+      document.querySelectorAll('.trailer-slide-iframe').forEach(f => {
+        if (f.src) { f.removeAttribute('src'); f.style.opacity = '0'; }
+      });
+      document.querySelectorAll('.trailer-slide-poster').forEach(p => { p.style.opacity = '1'; });
+    }
+    goPage(targetPage);
   });
 
   // Shortcuts button in footer
@@ -2944,6 +2956,17 @@ function initEventDelegation() {
     if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
   });
   document.getElementById('warn-back-btn')?.addEventListener('click', closeModal);
+
+  // Close "More Sources" panel when clicking outside provider bar or panel
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#provider-bar') && !e.target.closest('#prov-more-panel') && !e.target.closest('#prov-more-toggle')) {
+      const panel = document.getElementById('prov-more-panel');
+      if (panel && panel.style.display !== 'none') {
+        panel.style.display = 'none';
+        document.getElementById('prov-more-toggle')?.classList.remove('on');
+      }
+    }
+  }, true);
 
   // Provider bar
   document.addEventListener('click', e => {
@@ -4223,7 +4246,7 @@ export async function openInfoPage(id, type, hint = {}) {
 
         const playYouTubeInfo = (vidKey, isFallback = false) => {
           if (state.currentInfoMedia?.id !== _trailerToken) return;
-          trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+          trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&iv_load_policy=3&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
 
           const infoMsgHandler = (e) => {
             if (e.origin !== 'https://www.youtube.com') return;
@@ -4300,16 +4323,15 @@ export async function openInfoPage(id, type, hint = {}) {
       }).join('');
     }
 
-    // Always collapse overview to 4 lines; click to expand
+    // Start expanded; click to collapse to 4 lines
     if (ovEl) {
-      ovEl.classList.add('info-overview-collapsible');
-      ovEl.classList.remove('expanded');
-      ovEl.title = 'Click to expand';
+      ovEl.classList.add('info-overview-collapsible', 'expanded');
+      ovEl.title = 'Click to minimize';
       if (!ovEl._clickWired) {
         ovEl._clickWired = true;
         ovEl.addEventListener('click', function() {
           this.classList.toggle('expanded');
-          this.title = this.classList.contains('expanded') ? 'Click to collapse' : 'Click to expand';
+          this.title = this.classList.contains('expanded') ? 'Click to minimize' : 'Click to expand';
         });
       }
     }
@@ -4452,6 +4474,7 @@ export async function openProviderPage(providerId, providerName) {
     ov.addEventListener('click', e => {
       const card = e.target.closest('.card[data-id][data-type]');
       if (!card || e.target.closest('button')) return;
+      e.preventDefault(); // card is now an <a>
       ov.classList.remove('open'); document.body.style.overflow = '';
       setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
     });
@@ -4730,10 +4753,11 @@ export async function openProviderPage(providerId, providerName) {
         });
       });
 
-      // Wire card clicks
+      // Wire card clicks (cards are <a> elements — prevent default navigation)
       body.querySelectorAll('.card[data-id][data-type]').forEach(cardEl => {
         cardEl.addEventListener('click', e => {
           if (e.target.closest('button')) return;
+          e.preventDefault();
           openMedia(+cardEl.dataset.id, cardEl.dataset.type, {
             title: cardEl.dataset.title,
             poster_path: cardEl.dataset.poster,
@@ -4848,7 +4872,8 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     // Card clicks → close overlay first
     ov.addEventListener('click', e => {
       const card = e.target.closest('.card[data-id][data-type]');
-      if (!card || e.target.closest('button, a')) return;
+      if (!card || e.target.closest('button')) return;
+      e.preventDefault(); // card is now an <a>
       ov.classList.remove('open'); document.body.style.overflow = '';
       setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
     });
@@ -5615,7 +5640,7 @@ function _tryTrailerKey(keys, idx, ytLink, posterImg, vimeoKeys) {
   // Try youtube-nocookie first (some Error 153 videos work there), then regular YouTube
   const isEven = idx % 2 === 0;
   const ytBase = 'https://www.youtube.com';
-  frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+  frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&iv_load_policy=3&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
   let resolved = false;
 
@@ -6759,6 +6784,9 @@ async function showNetflixCard(card) {
 
   if (titleEl) titleEl.textContent = title;
   if (typePill) typePill.textContent = typeLabel;
+  // Always show title row initially; hidden only if English backdrop resolves
+  const ncTitleRowEl = document.querySelector('.nc-title-row');
+  if (ncTitleRowEl) ncTitleRowEl.style.display = '';
   if (metaEl) {
     const rVal = parseFloat(rating);
     const rColor = rVal >= 9 ? '#22c55e' : rVal >= 7 ? '#f5c518' : rVal >= 5 ? '#f97316' : rVal > 0 ? '#f87171' : '';
@@ -6798,12 +6826,23 @@ async function showNetflixCard(card) {
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
 
-  // ── STEP 1: Fetch trailer key from TMDB (fast) and rich details in parallel ──
+  // ── STEP 1: Fetch trailer key, rich details, and best backdrop in parallel ──
   const detailsPromise = _genreCache.has(id)
     ? Promise.resolve(_genreCache.get(id))
     : fetchRichDetails(id, type);
 
-  // ── STEP 2: Fetch trailer — DM preferred, YouTube fallback ──────────
+  // Upgrade backdrop in background — prefer English TMDB backdrop (has title text baked in)
+  fetchBestBackdrop(id, type).then(best => {
+    if (!_hoverActive || _hoverCurrentCard !== card) return;
+    if (best?.file_path && backdrop) {
+      backdrop.src = `https://image.tmdb.org/t/p/w780${best.file_path}`;
+    }
+    // English backdrops already have the title text in the image — hide the text title
+    const ncTitleRow = document.querySelector('.nc-title-row');
+    if (ncTitleRow) ncTitleRow.style.display = best?.hasText ? 'none' : '';
+  }).catch(() => {});
+
+  // ── STEP 2: Fetch trailer ──────────────────────────────────────────
   if (!frame) return;
   if (backdrop) { backdrop.style.display = ''; backdrop.style.opacity = '1'; }
 
@@ -6819,7 +6858,7 @@ async function showNetflixCard(card) {
 
     const playYouTube = (vidKey, isFallback = false) => {
       if (!_hoverActive || _hoverCurrentCard !== card) return;
-      frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+      frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&fs=0&iv_load_policy=3&disablekb=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
       
       // Failsafe: reveal the iframe after 3 seconds even if JS API fails
       const failsafeTimer = setTimeout(() => {
@@ -6935,6 +6974,258 @@ function positionNetflixCard(card, nc) {
 
   nc.style.left = `${left}px`;
   nc.style.top  = `${top}px`;
+}
+
+/* ── TRAILERS FEED ───────────────────────────────────────────────── */
+let _trailersMuted = true;
+let _trailersObserver = null;
+let _trailersPage = 1;
+let _trailersLoading = false;
+let _trailersLoaded = false;
+let _trailersItems = [];
+
+async function initTrailersFeed() {
+  const feed = document.getElementById('trailers-feed');
+  const spinner = document.getElementById('trailers-spinner');
+  if (!feed) return;
+
+  // On return visit — re-trigger playback of visible slide without reloading
+  if (_trailersLoaded && feed.querySelector('.trailer-slide')) {
+    requestAnimationFrame(() => {
+      feed.querySelectorAll('.trailer-slide').forEach(sl => {
+        const rect = sl.getBoundingClientRect();
+        const inView = rect.top < window.innerHeight && rect.bottom > 0;
+        if (inView) _playTrailerSlide(sl);
+      });
+    });
+    return;
+  }
+
+  _trailersLoaded = true;
+  _trailersPage = 1;
+  _trailersItems = [];
+
+  // Disconnect previous observer if any
+  if (_trailersObserver) { _trailersObserver.disconnect(); _trailersObserver = null; }
+
+  // Clear old slides (but not empty/spinner elements)
+  feed.querySelectorAll('.trailer-slide').forEach(el => el.remove());
+
+  if (spinner) spinner.style.display = '';
+  try {
+    await _loadMoreTrailers();
+  } finally {
+    if (spinner) spinner.style.display = 'none';
+  }
+
+  // Setup IntersectionObserver for autoplay and infinite load
+  _trailersObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const slide = entry.target;
+      if (entry.isIntersecting) {
+        _playTrailerSlide(slide);
+      } else {
+        _pauseTrailerSlide(slide);
+      }
+    });
+  }, { threshold: 0.55 });
+
+  feed.querySelectorAll('.trailer-slide').forEach(sl => _trailersObserver.observe(sl));
+
+  // Infinite scroll — load more when near last slide
+  let _scrollObserver = null;
+  function _rewatchLastSlide() {
+    if (_scrollObserver) _scrollObserver.disconnect();
+    _scrollObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !_trailersLoading) {
+        _loadMoreTrailers().then(() => {
+          // Observe newly added slides
+          feed.querySelectorAll('.trailer-slide:not([data-observed])').forEach(sl => {
+            sl.dataset.observed = '1';
+            _trailersObserver?.observe(sl);
+          });
+          _rewatchLastSlide();
+        });
+      }
+    }, { threshold: 0.1 });
+    const lastSlide = feed.querySelector('.trailer-slide:last-child');
+    if (lastSlide) _scrollObserver.observe(lastSlide);
+  }
+  _rewatchLastSlide();
+
+  // Observe first slide for initial autoplay
+  const firstSlide = feed.querySelector('.trailer-slide');
+  if (firstSlide) {
+    firstSlide.dataset.observed = '1';
+    _trailersObserver.observe(firstSlide);
+    setTimeout(() => _playTrailerSlide(firstSlide), 300);
+  }
+  feed.querySelectorAll('.trailer-slide').forEach(sl => {
+    if (!sl.dataset.observed) { sl.dataset.observed = '1'; _trailersObserver.observe(sl); }
+  });
+}
+
+async function _loadMoreTrailers() {
+  if (_trailersLoading) return;
+  _trailersLoading = true;
+  const feed = document.getElementById('trailers-feed');
+  const spinner = document.getElementById('trailers-spinner');
+  if (spinner) spinner.style.display = '';
+  try {
+    const [r1, r2] = await Promise.allSettled([
+      tmdb('/trending/movie/week', { page: _trailersPage }),
+      tmdb('/trending/tv/week',    { page: _trailersPage }),
+    ]);
+    const movies = (r1.status === 'fulfilled' ? r1.value.results || [] : []).map(m => ({ ...m, _type: 'movie' }));
+    const shows  = (r2.status === 'fulfilled' ? r2.value.results || [] : []).map(m => ({ ...m, _type: 'tv' }));
+
+    // Interleave movies and shows
+    const combined = [];
+    const maxLen = Math.max(movies.length, shows.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (movies[i]) combined.push(movies[i]);
+      if (shows[i])  combined.push(shows[i]);
+    }
+
+    // Deduplicate against already-loaded items
+    const existIds = new Set(_trailersItems.map(i => `${i._type}-${i.id}`));
+    const fresh = combined.filter(i => !existIds.has(`${i._type}-${i.id}`));
+    _trailersItems.push(...fresh);
+    _trailersPage++;
+
+    if (feed) {
+      fresh.forEach(item => {
+        const slide = _buildTrailerSlide(item);
+        feed.appendChild(slide);
+      });
+    }
+  } finally {
+    _trailersLoading = false;
+    if (spinner) spinner.style.display = 'none';
+  }
+}
+
+function _buildTrailerSlide(item) {
+  const id = item.id;
+  const type = item._type || 'movie';
+  const title = item.title || item.name || '';
+  const year = (item.release_date || item.first_air_date || '').slice(0, 4);
+  const rating = item.vote_average ? item.vote_average.toFixed(1) : '';
+  const backdropPath = item.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : '';
+  const typeLabel = type === 'tv' ? 'TV Show' : 'Movie';
+
+  const slide = document.createElement('div');
+  slide.className = 'trailer-slide';
+  slide.dataset.id = id;
+  slide.dataset.type = type;
+  slide.dataset.title = title;
+  slide.dataset.year = year;
+
+  slide.innerHTML = `
+    ${backdropPath ? `<img class="trailer-slide-poster" src="${backdropPath}" alt="${esc(title)}" loading="lazy">` : ''}
+    <iframe class="trailer-slide-iframe" allow="autoplay; fullscreen; encrypted-media" allowfullscreen title="${esc(title)} trailer" style="opacity:0;transition:opacity .4s"></iframe>
+    <div class="trailer-slide-gradient"></div>
+    <div class="trailer-slide-content">
+      <div class="trailer-slide-left">
+        <div class="trailer-type-pill ${type}">${typeLabel}</div>
+        <h2 class="trailer-slide-title">${esc(title)}</h2>
+        <div class="trailer-slide-meta">${[year, rating ? '★ ' + rating : ''].filter(Boolean).join(' · ')}</div>
+        <div class="trailer-slide-btn-row">
+          <button class="trailer-cta trailer-cta-watch" data-action="watch">
+            <span class="material-icons-round">play_arrow</span> Watch
+          </button>
+          <button class="trailer-cta trailer-cta-info" data-action="info">
+            <span class="material-icons-round">info_outline</span> More Info
+          </button>
+        </div>
+      </div>
+      <div class="trailer-slide-right">
+        <button class="trailer-icon-btn" data-action="mute" title="Toggle mute" aria-label="Toggle mute">
+          <span class="material-icons-round">${_trailersMuted ? 'volume_off' : 'volume_up'}</span>
+        </button>
+        <button class="trailer-icon-btn" data-action="like" title="Like" aria-label="Like">
+          <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
+        </button>
+        <button class="trailer-icon-btn" data-action="wl" title="Add to watchlist" aria-label="Add to watchlist">
+          <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
+        </button>
+      </div>
+    </div>`;
+
+  // Button handlers
+  slide.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'watch') {
+      openMedia(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
+    } else if (action === 'info') {
+      openInfoPage(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
+    } else if (action === 'mute') {
+      _trailersMuted = !_trailersMuted;
+      // Update mute icon on ALL slides
+      document.querySelectorAll('.trailer-slide [data-action="mute"] .material-icons-round').forEach(ic => {
+        ic.textContent = _trailersMuted ? 'volume_off' : 'volume_up';
+      });
+      // Reload active iframe with new mute state
+      const iframe = slide.querySelector('.trailer-slide-iframe');
+      if (iframe?.src) {
+        iframe.src = iframe.src.replace(/mute=[01]/, `mute=${_trailersMuted ? 1 : 0}`);
+      }
+    } else if (action === 'like') {
+      const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
+      toggleLike(likeItem);
+      const icon = btn.querySelector('.material-icons-round');
+      if (icon) icon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+      btn.classList.toggle('on', isLiked(id));
+    } else if (action === 'wl') {
+      const wlItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
+      toggleWatchlist(wlItem);
+      const icon = btn.querySelector('.material-icons-round');
+      if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
+      btn.classList.toggle('on', isInWatchlist(id));
+    }
+  });
+
+  return slide;
+}
+
+async function _playTrailerSlide(slide) {
+  const id = +slide.dataset.id;
+  const type = slide.dataset.type;
+  const title = slide.dataset.title || '';
+  const year = slide.dataset.year || '';
+  const iframe = slide.querySelector('.trailer-slide-iframe');
+  if (!iframe) return;
+
+  // Already playing
+  if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
+
+  const key = await fetchTrailerKey(id, type, title, year);
+  if (!key || key === '__none__') return;
+  // Check if still visible (user may have scrolled away during async fetch)
+  if (!slide.isConnected) return;
+  if (iframe.src && iframe.src.includes(key)) return; // already loaded
+
+  const mute = _trailersMuted ? 1 : 0;
+  iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1`;
+
+  iframe.addEventListener('load', () => {
+    iframe.style.opacity = '1';
+    const poster = slide.querySelector('.trailer-slide-poster');
+    if (poster) poster.style.opacity = '0';
+  }, { once: true });
+}
+
+function _pauseTrailerSlide(slide) {
+  const iframe = slide.querySelector('.trailer-slide-iframe');
+  if (iframe && iframe.src) {
+    iframe.style.opacity = '0';
+    iframe.removeAttribute('src');
+    // Restore poster
+    const poster = slide.querySelector('.trailer-slide-poster');
+    if (poster) poster.style.opacity = '1';
+  }
 }
 
 async function fetchTrailerKey(id, type, title = '', year = '') {
