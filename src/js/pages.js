@@ -18,6 +18,13 @@ export function injectPages() {
   pages.forEach(el => footer.before(el));
 }
 
+/* ── Sub-nav builder ────────────────────────────────────────────── */
+function _subNav(tabs) {
+  return `<nav class="page-subnav" aria-label="Page sections">
+    ${tabs.map((t, i) => `<button class="page-subnav-btn${i === 0 ? ' on' : ''}" data-subnav-target="${t.target}" aria-pressed="${i === 0}">${t.label}</button>`).join('')}
+  </nav>`;
+}
+
 /* ── Shared row helpers ─────────────────────────────────────────── */
 function _row(rowId, scrollDir = true) {
   const arrows = scrollDir ? `
@@ -50,6 +57,20 @@ function _buildMoviesPage() {
   el.id = 'page-movies';
   el.innerHTML = `
   <div style="padding-top:74px"></div>
+
+  ${_subNav([
+    { label: 'For You',    target: 'sec-movies-foryou' },
+    { label: 'Popular',   target: 'sec-movies-pop' },
+    { label: 'Top Rated', target: 'sec-movies-top' },
+    { label: 'New',       target: 'sec-movies-new' },
+    { label: 'Action',    target: 'sec-movies-action' },
+    { label: 'Comedy',    target: 'sec-movies-comedy' },
+    { label: 'Horror',    target: 'sec-movies-horror' },
+    { label: 'Sci-Fi',    target: 'sec-movies-scifi' },
+    { label: 'Romance',   target: 'sec-movies-romance' },
+    { label: 'Animated',  target: 'sec-movies-animated' },
+    { label: 'Docs',      target: 'sec-movies-docs' },
+  ])}
 
   <div class="section" id="sec-movies-foryou">
     <div class="sec-header">
@@ -87,6 +108,20 @@ function _buildTvPage() {
   el.innerHTML = `
   <div style="padding-top:74px"></div>
 
+  ${_subNav([
+    { label: 'For You',   target: 'sec-tv-foryou' },
+    { label: 'Popular',   target: 'sec-tv-popular' },
+    { label: 'Top Rated', target: 'sec-tv-top' },
+    { label: 'Airing',    target: 'sec-tv-air' },
+    { label: 'Crime',     target: 'sec-tv-crime' },
+    { label: 'Sci-Fi',    target: 'sec-tv-scifi' },
+    { label: 'Comedy',    target: 'sec-tv-comedy' },
+    { label: 'K-Drama',   target: 'sec-tv-kdrama' },
+    { label: 'Thriller',  target: 'sec-tv-thriller' },
+    { label: 'Animation', target: 'sec-tv-animated' },
+    { label: 'Reality',   target: 'sec-tv-reality' },
+  ])}
+
   <div class="section" id="sec-tv-foryou">
     <div class="sec-header">
       <div class="sec-title"><span class="material-icons-round sec-icon" style="color:var(--red)">auto_awesome</span>TV Shows For You</div>
@@ -119,6 +154,20 @@ function _buildAnimePage() {
   el.id = 'page-anime';
   el.innerHTML = `
   <div style="padding-top:74px"></div>
+
+  ${_subNav([
+    { label: 'Trending',  target: 'sec-anime-trend' },
+    { label: 'Top Rated', target: 'sec-anime-top' },
+    { label: 'Airing',    target: 'sec-anime-airing' },
+    { label: 'Action',    target: 'sec-anime-action' },
+    { label: 'Romance',   target: 'sec-anime-romance' },
+    { label: 'Fantasy',   target: 'sec-anime-isekai' },
+    { label: 'Sports',    target: 'sec-anime-sports' },
+    { label: 'Comedy',    target: 'sec-anime-comedy' },
+    { label: 'Horror',    target: 'sec-anime-horror' },
+    { label: 'Mecha',     target: 'sec-anime-mecha' },
+    { label: 'Movies',    target: 'sec-anime-movie' },
+  ])}
 
   ${_section('sec-anime-trend',   'Trending Anime',          'local_fire_department','row-anime-trend',   'anime-trending', 'Trending Anime',           '#f97316')}
   ${_section('sec-anime-top',     'Top Rated Anime',         'workspace_premium',    'row-anime-top',     'anime-top',      'Top Rated Anime',          '#f5c518')}

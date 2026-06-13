@@ -8,12 +8,21 @@ let _searchState = { query: '', page: 1, results: [], loading: false, done: fals
 
 // Advanced filters
 let _filters = {
-  genre: null,       // TMDB genre id
+  genre: null,
   yearFrom: null,
   yearTo: null,
-  minRating: null,   // 0–10
-  contentType: 'all', // all / movie / tv / anime
+  minRating: null,
+  contentType: 'all',
 };
+
+// Provider filter state
+let _providerFilter = null; // { id, name } | null
+
+// Everything browse state
+let _everythingSort = 'popularity.desc';
+let _everythingPage = 1;
+let _everythingLoading = false;
+let _everythingType = 'all'; // all | movie | tv
 
 export function getSearchFilters() { return { ..._filters }; }
 
@@ -127,6 +136,19 @@ export function buildSearchFilters(container) {
           <span class="material-icons-round">filter_alt_off</span> Clear
         </button>
       </div>
+      <!-- Provider filter row -->
+      <div class="sf-filter-row sf-provider-row">
+        <span class="sf-filter-label" style="font-size:.75rem;font-weight:700;color:var(--dim);align-self:center">Filter by Provider:</span>
+        <button class="sf-prov-chip${!_providerFilter ? ' on' : ''}" data-prov-id="" data-prov-name="">Any Provider</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 8 ? ' on' : ''}" data-prov-id="8" data-prov-name="Netflix">Netflix</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 337 ? ' on' : ''}" data-prov-id="337" data-prov-name="Disney+">Disney+</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 9 ? ' on' : ''}" data-prov-id="9" data-prov-name="Amazon">Amazon</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 384 ? ' on' : ''}" data-prov-id="384" data-prov-name="HBO Max">Max</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 15 ? ' on' : ''}" data-prov-id="15" data-prov-name="Hulu">Hulu</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 350 ? ' on' : ''}" data-prov-id="350" data-prov-name="Apple TV+">Apple TV+</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 531 ? ' on' : ''}" data-prov-id="531" data-prov-name="Paramount+">Paramount+</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 283 ? ' on' : ''}" data-prov-id="283" data-prov-name="Crunchyroll">Crunchyroll</button>
+      </div>
     </div>`;
 
   const readFilters = () => {
@@ -174,8 +196,25 @@ export function buildSearchFilters(container) {
 
   document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
     _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null };
+    _providerFilter = null;
     container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
+    container.querySelectorAll('.sf-prov-chip').forEach((c, i) => c.classList.toggle('on', i === 0));
     loadSearchDefault();
+  });
+
+  // Provider chips
+  container.querySelectorAll('.sf-prov-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.provId ? +chip.dataset.provId : null;
+      const name = chip.dataset.provName || null;
+      _providerFilter = id ? { id, name } : null;
+      container.querySelectorAll('.sf-prov-chip').forEach(c => c.classList.toggle('on', c === chip));
+      const inp = document.getElementById('search-input');
+      const q = inp?.value.trim();
+      if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
+      else if (_sfActive === 'everything') loadEverything();
+      else browseByFilters();
+    });
   });
 }
 
@@ -190,6 +229,7 @@ async function browseByFilters() {
     if (_filters.genre) params.with_genres = _filters.genre;
     if (_filters.minRating) params['vote_average.gte'] = _filters.minRating;
     if (_filters.language) params.with_original_language = _filters.language;
+    if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
     if (_filters.yearFrom && _filters.contentType !== 'tv') params['primary_release_date.gte'] = `${_filters.yearFrom}-01-01`;
     if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
     if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
@@ -365,8 +405,13 @@ export function initSearch() {
       _sfActive = chip.dataset.f;
       document.querySelectorAll('.sf-chip').forEach(c => c.classList.toggle('on', c.dataset.f === _sfActive));
       const q = inp.value.trim();
-      if (q) doSearch(q);
-      else loadSearchDefault();
+      if (_sfActive === 'everything') {
+        loadEverything(true);
+      } else if (q) {
+        doSearch(q);
+      } else {
+        loadSearchDefault();
+      }
     });
   });
 
@@ -503,6 +548,127 @@ export function rotateTip() {
   void inp.offsetWidth; // force reflow to restart animation
   inp.placeholder = tip;
   inp.classList.add('tip-fade-in');
+}
+
+/* ── EVERYTHING BROWSE ───────────────────────────────────────────── */
+const EVERYTHING_SORTS = [
+  { value: 'popularity.desc',    label: 'Popularity',    icon: 'local_fire_department' },
+  { value: 'original_title.asc', label: 'A – Z',         icon: 'sort_by_alpha' },
+  { value: 'release_date.desc',  label: 'Release Date',  icon: 'calendar_today' },
+  { value: 'vote_average.desc',  label: 'Top Rated',     icon: 'star' },
+  { value: 'release_date.asc',   label: 'Oldest First',  icon: 'history' },
+  { value: 'vote_count.desc',    label: 'Most Voted',    icon: 'how_to_vote' },
+];
+
+export async function loadEverything(reset = true) {
+  const area = document.getElementById('search-results-area');
+  if (!area) return;
+  if (reset) {
+    _everythingPage = 1;
+    _everythingLoading = false;
+    const provLabel = _providerFilter ? ` on ${_providerFilter.name}` : '';
+    area.innerHTML = `
+      <div class="everything-header">
+        <div class="everything-title">
+          <span class="material-icons-round">apps</span>
+          Browse Everything${provLabel}
+        </div>
+        <div class="everything-sort-row" role="group" aria-label="Sort order">
+          ${EVERYTHING_SORTS.map(s => `
+            <button class="everything-sort-btn${s.value === _everythingSort ? ' on' : ''}" data-sort="${esc(s.value)}" aria-pressed="${s.value === _everythingSort}">
+              <span class="material-icons-round">${s.icon}</span>${s.label}
+            </button>`).join('')}
+        </div>
+        <div class="everything-type-row" role="group" aria-label="Content type">
+          <button class="everything-type-btn${_everythingType === 'all' ? ' on' : ''}" data-type="all">All</button>
+          <button class="everything-type-btn${_everythingType === 'movie' ? ' on' : ''}" data-type="movie">Movies</button>
+          <button class="everything-type-btn${_everythingType === 'tv' ? ' on' : ''}" data-type="tv">TV Shows</button>
+        </div>
+      </div>
+      <div class="search-grid" id="everything-grid"></div>
+      <div id="everything-sentinel" style="height:1px"></div>`;
+
+    // Wire sort buttons
+    area.querySelectorAll('.everything-sort-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _everythingSort = btn.dataset.sort;
+        area.querySelectorAll('.everything-sort-btn').forEach(b => {
+          b.classList.toggle('on', b === btn);
+          b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+        });
+        loadEverything(true);
+      });
+    });
+
+    // Wire type buttons
+    area.querySelectorAll('.everything-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _everythingType = btn.dataset.type;
+        area.querySelectorAll('.everything-type-btn').forEach(b => b.classList.toggle('on', b === btn));
+        loadEverything(true);
+      });
+    });
+
+    // Infinite scroll sentinel
+    const sentinel = document.getElementById('everything-sentinel');
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !_everythingLoading) loadEverything(false);
+    }, { rootMargin: '300px' });
+    if (sentinel) obs.observe(sentinel);
+  }
+
+  if (_everythingLoading) return;
+  _everythingLoading = true;
+
+  const grid = document.getElementById('everything-grid');
+  if (!grid) { _everythingLoading = false; return; }
+
+  // Show skeletons on first page
+  if (_everythingPage === 1) grid.innerHTML = skelCards(20);
+
+  const params = {
+    sort_by: _everythingSort,
+    page: _everythingPage,
+    'vote_count.gte': _everythingSort.startsWith('vote_average') ? 200 : 10,
+  };
+  if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
+
+  try {
+    let items = [];
+    if (_everythingType === 'movie') {
+      const d = await tmdb('/discover/movie', params);
+      items = (d.results || []).map(m => ({ ...m, _type: 'movie' }));
+    } else if (_everythingType === 'tv') {
+      const d = await tmdb('/discover/tv', params);
+      items = (d.results || []).map(m => ({ ...m, _type: 'tv' }));
+    } else {
+      const tvParams = { ...params };
+      // TV uses first_air_date for date sorting
+      if (params.sort_by === 'release_date.desc') tvParams.sort_by = 'first_air_date.desc';
+      if (params.sort_by === 'release_date.asc') tvParams.sort_by = 'first_air_date.asc';
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', params),
+        tmdb('/discover/tv', tvParams),
+      ]);
+      const movies = mv.status === 'fulfilled' ? (mv.value.results || []).map(m => ({ ...m, _type: 'movie' })) : [];
+      const shows  = tv.status === 'fulfilled' ? (tv.value.results || []).map(m => ({ ...m, _type: 'tv' })) : [];
+      // Interleave by popularity
+      items = [...movies, ...shows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    }
+
+    if (_everythingPage === 1) grid.innerHTML = '';
+    items.forEach(item => {
+      grid.insertAdjacentHTML('beforeend', makeCard(item, item._type));
+    });
+    if (items.length === 0 && _everythingPage === 1) {
+      grid.innerHTML = `<p class="muted-note" style="padding:2rem 0">No results found.</p>`;
+    }
+    _everythingPage++;
+  } catch (err) {
+    if (_everythingPage === 1) grid.innerHTML = `<p class="muted-note">Could not load content.</p>`;
+  } finally {
+    _everythingLoading = false;
+  }
 }
 
 /* ── DEFAULT STATE (no query) ────────────────────────────────────── */

@@ -330,6 +330,12 @@ export function injectOverlays() {
             <div class="info-section-label">More Like This</div>
             <div class="info-related-grid" id="info-related-grid"></div>
           </div>
+
+          <!-- More with this Cast -->
+          <div class="info-section" id="info-cast-also-section" style="display:none">
+            <div class="info-section-label">More with this Cast</div>
+            <div class="info-related-grid" id="info-cast-also-grid"></div>
+          </div>
         </div>
       </div>
 

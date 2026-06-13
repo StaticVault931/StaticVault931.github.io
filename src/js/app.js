@@ -14,7 +14,7 @@ import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from '
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
-import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
+import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 
@@ -177,7 +177,7 @@ const SV_SETTINGS = [
   { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
   { id: 'defaultInfoMode',   label: 'Info Page by Default',   desc: 'Open full info screen instead of player',                     default: false, icon: 'info',             group: 'Content' },
   // Performance
-  { id: 'reducedMotion',     label: 'Reduce Animations',      desc: 'Minimize transitions for performance',                        default: false, icon: 'motion_photos_off', group: 'Performance' },
+  { id: 'motionLevel',       label: 'Animation Level',         desc: 'Control how much animation the site uses',                   default: 'default', icon: 'motion_photos_off', group: 'Performance', type: 'slider3', options: ['none','minimal','default'], optLabels: ['None','Minimal','Default'] },
   { id: 'hdFirst',           label: 'Prefer HD Sources',      desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)',     default: true,  icon: 'hd',               group: 'Performance' },
   { id: 'skipRecap',         label: 'Skip Intros',            desc: 'Remember to skip intro/recap (manual reminder)',               default: false, icon: 'skip_next',        group: 'Performance' },
   // Account
@@ -248,6 +248,7 @@ let _cardLogoMutObs   = null;
   initKeyboard();
   initHeader();
   initHoverTrailer();
+  initA11y();
   initModalPanelToggles();
   initShortcutsModal();
   initTestMode();
@@ -1979,7 +1980,12 @@ function applySetting(id, val) {
     }
     keys.forEach(k => sessionStorage.removeItem(k));
   }
-  if (id === 'reducedMotion') document.body.classList.toggle('sv-reduced-motion', val);
+  if (id === 'motionLevel') {
+    document.body.classList.toggle('sv-reduced-motion', val === 'minimal');
+    document.body.classList.toggle('sv-no-motion', val === 'none');
+  }
+  // Legacy compat: reducedMotion was a boolean previously — migrate if still stored
+  if (id === 'reducedMotion') { setSetting('motionLevel', val ? 'minimal' : 'default'); }
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
   if (id === 'streamMode') {
     document.body.classList.toggle('sv-stream-mode', val);
@@ -2116,6 +2122,30 @@ function buildSettingsUI() {
   const renderSetting = s => {
     const val = getSetting(s.id);
 
+    // 3-position slider (e.g. animation level)
+    if (s.type === 'slider3' && s.options?.length === 3) {
+      const idx = s.options.indexOf(val);
+      const cur = idx < 0 ? 2 : idx; // default to last (right-most)
+      return `<div class="sv-setting-row sv-setting-slider3" title="${esc(s.desc)}" data-setting="${esc(s.id)}">
+        <span class="material-icons-round sv-setting-icon">${s.icon}</span>
+        <div class="sv-setting-info">
+          <span class="sv-setting-label">${esc(s.label)}</span>
+          <span class="sv-setting-desc sv-slider3-desc">${esc(s.optLabels?.[cur] || s.options[cur])}: ${esc(s.desc)}</span>
+        </div>
+        <div class="sv-slider3-wrap">
+          <div class="sv-slider3-labels" aria-hidden="true">
+            ${s.optLabels ? s.optLabels.map(l => `<span>${esc(l)}</span>`).join('') : s.options.map(o => `<span>${esc(o)}</span>`).join('')}
+          </div>
+          <input type="range" class="sv-slider3-input" min="0" max="2" step="1" value="${cur}"
+            data-setting="${esc(s.id)}" data-options="${esc(JSON.stringify(s.options))}"
+            aria-label="${esc(s.label)}" aria-valuetext="${esc(s.optLabels?.[cur] || s.options[cur])}">
+          <div class="sv-slider3-track" aria-hidden="true">
+            ${[0,1,2].map(i => `<div class="sv-slider3-notch${i === cur ? ' active' : ''}"></div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    }
+
     // Select-type setting
     if (s.type === 'select' && s.options) {
       const opts = s.options.map((o, i) =>
@@ -2166,6 +2196,27 @@ function buildSettingsUI() {
     sel.addEventListener('change', () => {
       setSetting(sel.dataset.setting, sel.value);
     });
+  });
+
+  grid.querySelectorAll('.sv-slider3-input').forEach(input => {
+    const update = () => {
+      const opts = JSON.parse(input.dataset.options || '[]');
+      const idx = +input.value;
+      const val = opts[idx] ?? opts[opts.length - 1];
+      const id = input.dataset.setting;
+      setSetting(id, val);
+      // Update label text and aria
+      const s = SV_SETTINGS.find(x => x.id === id);
+      const labelText = s?.optLabels?.[idx] || val;
+      input.setAttribute('aria-valuetext', labelText);
+      const descEl = input.closest('.sv-setting-slider3')?.querySelector('.sv-slider3-desc');
+      if (descEl) descEl.textContent = `${labelText}: ${s?.desc || ''}`;
+      // Update notch states
+      input.closest('.sv-slider3-wrap')?.querySelectorAll('.sv-slider3-notch').forEach((n, i) => {
+        n.classList.toggle('active', i === idx);
+      });
+    };
+    input.addEventListener('input', update);
   });
 }
 
@@ -2791,6 +2842,44 @@ function initEventDelegation() {
       document.querySelectorAll('.trailer-slide-poster').forEach(p => { p.style.opacity = '1'; });
     }
     goPage(targetPage);
+  });
+
+  // Sub-nav scrolling (Movies / TV / Anime page category tabs)
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.page-subnav-btn[data-subnav-target]');
+    if (!btn) return;
+    const target = document.getElementById(btn.dataset.subnavTarget);
+    if (!target) return;
+    // Update active state
+    btn.closest('.page-subnav')?.querySelectorAll('.page-subnav-btn').forEach(b => {
+      b.classList.toggle('on', b === btn);
+      b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+    });
+    // Scroll the section into view below the sticky header + subnav (≈128px)
+    const offset = target.getBoundingClientRect().top + window.scrollY - 128;
+    window.scrollTo({ top: offset, behavior: 'smooth' });
+  });
+
+  // Update sub-nav active state on scroll via IntersectionObserver
+  document.querySelectorAll('.page-subnav').forEach(nav => {
+    const targets = [...nav.querySelectorAll('.page-subnav-btn[data-subnav-target]')]
+      .map(b => document.getElementById(b.dataset.subnavTarget))
+      .filter(Boolean);
+
+    const sectionObs = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          nav.querySelectorAll('.page-subnav-btn').forEach(b => {
+            const active = b.dataset.subnavTarget === id;
+            b.classList.toggle('on', active);
+            if (active) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          });
+        }
+      });
+    }, { rootMargin: '-64px 0px -60% 0px', threshold: 0 });
+
+    targets.forEach(t => sectionObs.observe(t));
   });
 
   // Shortcuts button in footer
@@ -4248,16 +4337,19 @@ export async function openInfoPage(id, type, hint = {}) {
           if (state.currentInfoMedia?.id !== _trailerToken) return;
           trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&iv_load_policy=3&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
 
+          let _trailerStarted = false;
           const infoMsgHandler = (e) => {
             if (e.origin !== 'https://www.youtube.com') return;
             try {
               const d = JSON.parse(e.data);
+              // Mark as started when buffering or playing
+              if (d.info?.playerState === 3 || d.info?.playerState === 1) {
+                _trailerStarted = true;
+              }
               if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
                 window.removeEventListener('message', infoMsgHandler);
                 clearTimeout(infoTrailerTimer);
-                
                 if (!isFallback && state.currentInfoMedia?.id === _trailerToken) {
-                  // Try TV-API YouTube fallback
                   (async () => {
                     const imdbIdForTrailer = details.imdb_id || (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
                     if (imdbIdForTrailer) {
@@ -4277,12 +4369,13 @@ export async function openInfoPage(id, type, hint = {}) {
             } catch {}
           };
           window.addEventListener('message', infoMsgHandler);
+          // Timeout only fires fallback if video never started buffering/playing
           const infoTrailerTimer = setTimeout(() => {
             window.removeEventListener('message', infoMsgHandler);
-            if (state.currentInfoMedia?.id === _trailerToken && trailerFallback?.style.display !== '' && trailerFrame?.src) {
+            if (!_trailerStarted && state.currentInfoMedia?.id === _trailerToken && trailerFrame?.src) {
               _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
             }
-          }, 7000);
+          }, 9000);
         };
 
         if (trailerKey && trailerKey !== '__none__') {
@@ -4358,6 +4451,55 @@ export async function openInfoPage(id, type, hint = {}) {
         const relItems = (relData.results || []).slice(0, 8);
         relGrid.innerHTML = relItems.map(m => makeCard(m, type, { compact: true })).join('');
       } catch { relGrid.innerHTML = ''; }
+    }
+
+    // "More with this Cast" — find works where multiple cast members appear together
+    const castSection = document.getElementById('info-cast-also-section');
+    const castAlsoGrid = document.getElementById('info-cast-also-grid');
+    if (castSection && castAlsoGrid && cast.length >= 2) {
+      const topCast = cast.slice(0, 4); // top 4 billed cast
+      const mediaType = type === 'anime' ? 'tv' : type;
+      try {
+        // Fetch filmographies for top cast in parallel
+        const creditResults = await Promise.allSettled(
+          topCast.map(p => tmdb(`/person/${p.id}/combined_credits`))
+        );
+        // Build frequency map: mediaId → { item, count, actors }
+        const freq = new Map();
+        creditResults.forEach((r, actorIdx) => {
+          if (r.status !== 'fulfilled') return;
+          const actor = topCast[actorIdx];
+          const credits = [...(r.value.cast || [])].filter(c =>
+            c.id !== id && // exclude current item
+            (c.media_type === 'movie' || c.media_type === 'tv') &&
+            (c.vote_average || 0) >= 6.5 &&
+            (c.vote_count || 0) >= 100
+          );
+          credits.slice(0, 20).forEach(c => {
+            const key = `${c.media_type}-${c.id}`;
+            if (!freq.has(key)) freq.set(key, { item: c, count: 0, actors: [] });
+            const entry = freq.get(key);
+            entry.count++;
+            entry.actors.push(actor.name);
+          });
+        });
+        // Sort by: actors in common (desc), then popularity (desc)
+        const ranked = [...freq.values()]
+          .filter(e => e.count >= 2) // only show if 2+ cast members appear together
+          .sort((a, b) => b.count - a.count || (b.item.popularity || 0) - (a.item.popularity || 0))
+          .slice(0, 8);
+
+        if (ranked.length >= 2) {
+          castSection.style.display = '';
+          castAlsoGrid.innerHTML = ranked.map(e => {
+            const m = e.item;
+            const mType = m.media_type === 'tv' ? 'tv' : 'movie';
+            return makeCard(m, mType, { compact: true });
+          }).join('');
+        } else {
+          castSection.style.display = 'none';
+        }
+      } catch { castSection.style.display = 'none'; }
     }
 
     // Reviews — now at the bottom of the page in their own full-width section
@@ -4455,35 +4597,9 @@ async function getTmdbWatchProviders() {
 
 /* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
 export async function openProviderPage(providerId, providerName) {
-  const ov = document.getElementById('company-overlay');
-  if (!ov) return;
-  ov.classList.add('open');
-  document.body.style.overflow = 'hidden';
-
-  const nameEl   = ov.querySelector('.company-name');
-  const descEl   = ov.querySelector('#company-desc');
-  const gridEl   = ov.querySelector('#company-grid');
-  const logoEl   = ov.querySelector('#company-logo');
-  const parentEl = ov.querySelector('#company-parent');
-  const heroEl   = ov.querySelector('.company-hero');
-
-  if (!ov._wired) {
-    ov._wired = true;
-    ov.querySelector('#company-close')?.addEventListener('click', () => { ov.classList.remove('open'); document.body.style.overflow = ''; });
-    ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); document.body.style.overflow = ''; } });
-    ov.addEventListener('click', e => {
-      const card = e.target.closest('.card[data-id][data-type]');
-      if (!card || e.target.closest('button')) return;
-      e.preventDefault(); // card is now an <a>
-      ov.classList.remove('open'); document.body.style.overflow = '';
-      setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
-    });
-  }
-
   clearHoverTrailer();
 
   // TMDB network IDs for "Originals & Exclusives" rows
-  // Using network IDs is the most accurate way to find originals on TMDB
   const PROVIDER_NETWORK_IDS = {
     8:    213,   // Netflix
     337:  2739,  // Disney+
@@ -4496,19 +4612,18 @@ export async function openProviderPage(providerId, providerName) {
     531:  4330,  // Paramount+
     386:  3353,  // Peacock
     283:  1655,  // Crunchyroll
-    8:    213,   // Netflix
     37:   2,     // Showtime
     43:   67,    // Starz
     123:  318,   // Shudder
     39:   174,   // AMC
     11:   174,   // AMC (alt)
   };
-  const networkId  = PROVIDER_NETWORK_IDS[providerId];
-  // Prefer TMDB logo over logo.dev (TMDB logos are already cached from the dynamic list)
-  const _cachedProviders = _tmdbWatchProviders || [];
-  const _tmdbMatch = _cachedProviders.find(p => p.provider_id === providerId);
-  const logoUrl = _tmdbMatch?.logo_path
-    ? `https://image.tmdb.org/t/p/w92${_tmdbMatch.logo_path}`
+  const networkId = PROVIDER_NETWORK_IDS[providerId];
+  // Ensure TMDB provider list is loaded before computing logo
+  const allProviders = await getTmdbWatchProviders();
+  const tmdbMatch = allProviders.find(p => p.provider_id === providerId);
+  const logoUrl = tmdbMatch?.logo_path
+    ? `https://image.tmdb.org/t/p/w92${tmdbMatch.logo_path}`
     : getProviderLogoUrl(providerName, 48);
   const base       = { with_watch_providers: providerId, watch_region: 'US' };
   const provPageId = 'page-provider';
@@ -4591,12 +4706,19 @@ export async function openProviderPage(providerId, providerName) {
     provTab.setAttribute('tabindex','0');
     provTab.dataset.page = 'provider';
     document.getElementById('nav-tabs')?.appendChild(provTab);
+    // Close button removes the provider tab and returns to previous page
+    provTab.addEventListener('click', e => {
+      if (!e.target.closest('.provider-tab-close')) return;
+      e.stopPropagation();
+      provTab.remove();
+      goPage(state._prevPage || 'home');
+    });
   }
-  // Set tab label with logo
+  // Set tab label with logo and close button
   const tabLogoHtml = logoUrl
-    ? `<img src="${logoUrl}" style="height:18px;border-radius:3px;vertical-align:middle;margin-right:.3rem" onerror="this.style.display='none'">`
+    ? `<img src="${logoUrl}" class="provider-tab-logo" onerror="this.style.display='none'" alt="${esc(providerName)}">`
     : '';
-  provTab.innerHTML = `${tabLogoHtml}<span>${esc(providerName)}</span>`;
+  provTab.innerHTML = `${tabLogoHtml}<span class="provider-tab-name">${esc(providerName)}</span><span class="provider-tab-close" title="Close" aria-label="Close provider tab">×</span>`;
 
   // ── Update page header ──
   const hdrLogo  = document.getElementById('provider-page-logo');
@@ -4773,11 +4895,17 @@ export async function openProviderPage(providerId, providerName) {
 
 /* ── PROVIDER SVG LOGOS ──────────────────────────────────────────── */
 function _getProviderSVG(name) {
-  // Use logo.dev for real brand logos, fall back to text badge
-  const logoUrl = getProviderLogoUrl(name, 32);
+  // Prefer TMDB logo (already cached from provider list) over logo.dev
+  const tmdbProv = (_tmdbWatchProviders || []).find(p =>
+    p.provider_name === name ||
+    p.provider_name.replace(/\s+/g,'').toLowerCase() === (name||'').replace(/\s+/g,'').toLowerCase()
+  );
+  const logoUrl = tmdbProv?.logo_path
+    ? `https://image.tmdb.org/t/p/w92${tmdbProv.logo_path}`
+    : getProviderLogoUrl(name, 32);
+  const fallback = `<span style="display:none;width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.1);align-items:center;justify-content:center;font-size:.6rem;font-weight:900">${(name||'?').slice(0,2).toUpperCase()}</span>`;
   if (logoUrl) {
-    return `<img src="${logoUrl}" width="28" height="28" style="border-radius:5px;object-fit:contain;background:rgba(255,255,255,.05)" alt="${name}" onerror="this.style.display='none';this.nextSibling.style.display='flex'">` +
-      `<span style="display:none;width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.1);align-items:center;justify-content:center;font-size:.6rem;font-weight:900">${(name||'?').slice(0,2).toUpperCase()}</span>`;
+    return `<img src="${logoUrl}" width="28" height="28" style="border-radius:5px;object-fit:cover;background:rgba(255,255,255,.05)" alt="${name}" onerror="this.style.display='none';this.nextSibling.style.display='flex'">` + fallback;
   }
   // Generic badge for unknown providers
   return `<span style="display:inline-flex;width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.1);align-items:center;justify-content:center;font-size:.6rem;font-weight:900">${(name||'?').slice(0,2).toUpperCase()}</span>`;
@@ -6626,6 +6754,141 @@ function initCardLogoObserver() {
   _cardLogoMutObs.observe(document.body, { childList: true, subtree: true });
 }
 
+/* ── ACCESSIBILITY ───────────────────────────────────────────────── */
+function initA11y() {
+  // ── Focus trap helper ──────────────────────────────────────────
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable]';
+
+  function trapFocus(el, e) {
+    const focusable = [...el.querySelectorAll(FOCUSABLE)].filter(f => f.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
+  // ── Watch overlays for open/close to manage focus ────────────────
+  const overlayIds = ['modal-overlay', 'info-overlay', 'person-overlay', 'company-overlay', 'shortcuts-overlay'];
+  let _prevFocus = null;
+  let _activeTrapEl = null;
+
+  const _tabHandler = e => { if (e.key === 'Tab' && _activeTrapEl) trapFocus(_activeTrapEl, e); };
+  document.addEventListener('keydown', _tabHandler);
+
+  function onOverlayOpen(el) {
+    _prevFocus = document.activeElement;
+    _activeTrapEl = el;
+    // Move focus to first focusable child or the container itself
+    requestAnimationFrame(() => {
+      const first = el.querySelector(FOCUSABLE + ', [autofocus]');
+      if (first) first.focus();
+      else el.focus?.();
+    });
+  }
+
+  function onOverlayClose() {
+    _activeTrapEl = null;
+    if (_prevFocus && document.body.contains(_prevFocus)) {
+      requestAnimationFrame(() => _prevFocus?.focus());
+    }
+    _prevFocus = null;
+  }
+
+  const overlayObs = new MutationObserver(mutations => {
+    mutations.forEach(m => {
+      if (m.type !== 'attributes' || m.attributeName !== 'class') return;
+      const el = m.target;
+      const isOpen = el.classList.contains('open');
+      if (isOpen) onOverlayOpen(el);
+      else if (_activeTrapEl === el) onOverlayClose();
+    });
+  });
+
+  overlayIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) overlayObs.observe(el, { attributes: true });
+  });
+
+  // ── Page navigation announcer ─────────────────────────────────────
+  const announcer = document.getElementById('sr-page-announce');
+  const pageTitles = {
+    home: 'Home', movies: 'Movies', tv: 'TV Shows', anime: 'Anime',
+    trailers: 'Trailers', search: 'Search', library: 'Library',
+    prefs: 'Customize Feed', seeall: 'Browse All',
+  };
+  document.addEventListener('click', e => {
+    const pageEl = e.target.closest('[data-page]');
+    if (!pageEl || pageEl.closest('[data-id]')) return;
+    const p = pageEl.dataset.page;
+    if (announcer && pageTitles[p]) {
+      announcer.textContent = '';
+      requestAnimationFrame(() => { announcer.textContent = `Navigated to ${pageTitles[p]}`; });
+    }
+    // Move focus to the new page's main content
+    setTimeout(() => {
+      const pg = document.getElementById('page-' + p);
+      if (pg) { pg.setAttribute('tabindex', '-1'); pg.focus({ preventScroll: true }); }
+    }, 50);
+  }, { capture: false });
+
+  // ── Nav tabs: aria-selected ────────────────────────────────────────
+  // Update aria-selected on nav tabs whenever goPage is called
+  const navObs = new MutationObserver(() => {
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.setAttribute('aria-selected', tab.classList.contains('on') ? 'true' : 'false');
+    });
+  });
+  const navTabs = document.getElementById('nav-tabs');
+  if (navTabs) navObs.observe(navTabs, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+  // Set initial aria-selected
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', tab.classList.contains('on') ? 'true' : 'false');
+  });
+  navTabs?.setAttribute('role', 'tablist');
+
+  // ── Button aria-expanded for toggleable panels ────────────────────
+  const expandableMap = {
+    'prov-more-toggle': 'prov-more-panel',
+    'left-panel-toggle': 'modal-left-panel',
+    'right-panel-toggle': 'modal-right-panel',
+  };
+  Object.entries(expandableMap).forEach(([btnId, panelId]) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-controls', panelId);
+    btn.addEventListener('click', () => {
+      const panel = document.getElementById(panelId);
+      const expanded = panel?.style.display !== 'none' && panel?.classList.contains('open') || panel?.style.display === '';
+      btn.setAttribute('aria-expanded', String(!expanded));
+    });
+  });
+
+  // ── Video iframes: descriptive title attribute ────────────────────
+  // The player iframe title is set dynamically when the source is loaded
+  document.addEventListener('sv:player-loaded', e => {
+    const iframe = document.querySelector('#modal-player iframe, #modal iframe');
+    if (iframe && e.detail?.title) iframe.setAttribute('title', `${e.detail.title} — video player`);
+  });
+
+  // ── Keyboard: Escape closes top-most overlay ──────────────────────
+  // (ESC handling already done in initKeyboard — ensure it fires for all overlays)
+  // This is already handled in the existing keyboard handler.
+
+  // ── prefers-reduced-motion sync ───────────────────────────────────
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const syncMotionPref = () => {
+    if (mq.matches && getSetting('motionLevel') === 'default') {
+      // Respect OS preference if user hasn't explicitly chosen default
+      document.body.classList.add('sv-reduced-motion');
+    }
+  };
+  syncMotionPref();
+  mq.addEventListener('change', syncMotionPref);
+}
+
 /* ── NETFLIX-STYLE HOVER CARD ────────────────────────────────────── */
 const _hoverTrailerCache = new Map();
 let _hoverTimer = null;
@@ -6645,8 +6908,8 @@ function initHoverTrailer() {
     // Entered the netflix card itself — keep it open
     if (ncCard) return;
 
-    // Don't trigger if hovering over a button or interactive element inside the card
-    if (e.target.closest('button, .card-like-btn, .card-wl-btn, .card-watched-btn, a')) return;
+    // Don't trigger if hovering over a button inside the card (cards are <a> so skip that check)
+    if (e.target.closest('button, .card-like-btn, .card-wl-btn, .card-watched-btn')) return;
 
     // Left all cards
     if (!card) {

@@ -82,6 +82,11 @@
 </head>
 <body>
 
+<!-- Skip-to-content for keyboard/screen reader users -->
+<a class="skip-to-content" href="#main-content">Skip to content</a>
+<!-- Screen reader page-change announcer -->
+<div id="sr-page-announce" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
+
 <!-- ════ LOADING SCREEN ════ -->
 <div id="loading-screen" role="status" aria-label="Loading StaticVault931">
   <div class="ls-logo" aria-hidden="true">
@@ -145,7 +150,7 @@
 <!-- ════════════════════════════════════════════════════════════════
      PAGE: HOME
 ════════════════════════════════════════════════════════════════ -->
-<main class="page active" id="page-home">
+<main class="page active" id="page-home" tabindex="-1">
 
   <!-- Hero -->
   <section id="hero" aria-label="Featured content">
@@ -708,6 +713,7 @@
       <button class="sf-chip" data-f="anime">Anime</button>
       <button class="sf-chip" data-f="top">★ Top Rated</button>
       <button class="sf-chip" data-f="recent">New Releases</button>
+      <button class="sf-chip" data-f="everything"><span class="material-icons-round" style="font-size:.85rem;vertical-align:middle">apps</span> Everything</button>
       <button class="sf-chip sf-shuffle" id="sf-shuffle-btn" title="Shuffle/discover random">
         <span class="material-icons-round">shuffle</span>Mix
       </button>
