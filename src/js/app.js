@@ -6,7 +6,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
   getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS, TASTEDIVE_KEY,
-  fetchTvApiTrailer, fetchTvApiYouTubeTrailer, fetchTvApiAwards, fetchTvApiBoxOffice, fetchTvApiTop250Movies,
+  fetchTvApiBoxOffice,
   wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
   fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop } from './api.js';
@@ -3088,9 +3088,9 @@ function initEventDelegation() {
     }
   });
 
-  // Library providers tab — navigate to search/everything with provider filter
+  // Library provider buttons (both old tab cards and new inline row) → filter search
   document.getElementById('page-library')?.addEventListener('click', e => {
-    const card = e.target.closest('.lib-prov-card');
+    const card = e.target.closest('.lib-prov-card, .lib-qp-btn');
     if (!card) return;
     const id = +card.dataset.provId;
     const name = card.dataset.provName || '';
@@ -4401,7 +4401,7 @@ export async function openInfoPage(id, type, hint = {}) {
       videos.find(v => v.site === 'YouTube' && v.type === 'Teaser')
     )?.key;
 
-    // Info page trailer: YouTube → tv-api → backdrop
+    // Info page trailer: YouTube → backdrop fallback
     const trailerWrap = document.getElementById('info-trailer-wrap');
     const posterImg = details.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
@@ -4428,25 +4428,11 @@ export async function openInfoPage(id, type, hint = {}) {
               if (d.info?.playerState === 3 || d.info?.playerState === 1) {
                 _trailerStarted = true;
               }
-              if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+              if (d.event === 'onError') {
                 window.removeEventListener('message', infoMsgHandler);
                 clearTimeout(infoTrailerTimer);
-                if (!isFallback && state.currentInfoMedia?.id === _trailerToken) {
-                  (async () => {
-                    const imdbIdForTrailer = details.imdb_id || (await tmdb(`/${type}/${id}/external_ids`).catch(() => ({}))).imdb_id;
-                    if (imdbIdForTrailer) {
-                      const tvApiYt = await fetchTvApiYouTubeTrailer(imdbIdForTrailer).catch(() => null);
-                      if (tvApiYt?.videoId && tvApiYt.videoId !== vidKey && state.currentInfoMedia?.id === _trailerToken) {
-                        playYouTubeInfo(tvApiYt.videoId, true);
-                        return;
-                      }
-                    }
-                    if (state.currentInfoMedia?.id === _trailerToken)
-                      _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-                  })();
-                } else if (state.currentInfoMedia?.id === _trailerToken) {
+                if (state.currentInfoMedia?.id === _trailerToken)
                   _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
-                }
               }
             } catch {}
           };
@@ -7205,10 +7191,11 @@ async function showNetflixCard(card) {
     frame.style.display = '';
     if (backdrop) { backdrop.style.opacity = '1'; backdrop.style.transition = 'opacity .5s'; }
 
-    const playYouTube = (vidKey, isFallback = false) => {
+    const playYouTube = (vidKey) => {
       if (!_hoverActive || _hoverCurrentCard !== card) return;
-      const hoverMute = getSetting('automuteHoverTrailer') ? 1 : 0;
-      frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=${hoverMute}&controls=0&rel=0&modestbranding=1&fs=0&iv_load_policy=3&disablekb=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+      // Always mute for reliable browser autoplay; setting controls whether to unmute after load
+      const startMuted = 1;
+      frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=${startMuted}&controls=0&rel=0&modestbranding=1&fs=0&iv_load_policy=3&disablekb=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
       
       // Failsafe: reveal the iframe after 3 seconds even if JS API fails
       const failsafeTimer = setTimeout(() => {
@@ -7225,25 +7212,10 @@ async function showNetflixCard(card) {
             clearTimeout(failsafeTimer);
             if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
             window.removeEventListener('message', ytHandler);
-          } else if (d.event === 'onError' || (d.info?.playerState === -1 && d.info?.error)) {
+          } else if (d.event === 'onError') {
+            // Trailer error — fall back to showing the backdrop image
             window.removeEventListener('message', ytHandler);
-            if (!isFallback) {
-              // Try TV-API YouTube fallback!
-              (async () => {
-                const details = await detailsPromise.catch(() => ({}));
-                let imdbId = details?.imdb_id;
-                if (!imdbId) {
-                  const ext = await tmdb(`/${type}/${id}/external_ids`).catch(() => null);
-                  imdbId = ext?.imdb_id;
-                }
-                if (imdbId) {
-                  const tvApiYt = await fetchTvApiYouTubeTrailer(imdbId).catch(() => null);
-                  if (tvApiYt?.videoId && tvApiYt.videoId !== vidKey && _hoverCurrentCard === card && _hoverActive) {
-                    playYouTube(tvApiYt.videoId, true);
-                  }
-                }
-              })();
-            }
+            if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '1';
           }
         } catch {}
       };
@@ -7251,7 +7223,7 @@ async function showNetflixCard(card) {
       setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
     };
 
-    playYouTube(trailerKey, false);
+    playYouTube(trailerKey);
 
   } else {
     frame.removeAttribute('src');
@@ -7285,8 +7257,9 @@ function positionNetflixCard(card, nc) {
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
 
-  // Card width: always bigger than source card, capped at 520px
-  const ncW = Math.min(520, Math.max(rect.width + 60, 380));
+  // Card width: always bigger than source card; larger cap on search page (bigger cards)
+  const onSearch = state.currentPage === 'search';
+  const ncW = Math.min(onSearch ? 660 : 580, Math.max(rect.width + 60, onSearch ? 460 : 380));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
   nc.style.overflowY = '';
@@ -7358,18 +7331,22 @@ function _scoreClipItem(item) {
   return score;
 }
 
-// Show tutorial overlay every time Clips page loads
+// Show tutorial as first in-feed slide (max 2 times total)
 function _maybeShowClipsTutorial(feed) {
-  feed.querySelector('.clips-tutorial-panel')?.remove();
+  feed.querySelector('.clips-tutorial-slide')?.remove();
 
-  const panel = document.createElement('div');
-  panel.className = 'clips-tutorial-panel';
-  panel.innerHTML = `
-    <div class="clips-tutorial-inner">
-      <button class="clips-tutorial-close" aria-label="Dismiss"><span class="material-icons-round">close</span></button>
+  const count = +(localStorage.getItem('sv_clips_tut_v2') || 0);
+  if (count >= 2) return;
+  localStorage.setItem('sv_clips_tut_v2', String(count + 1));
+
+  const slide = document.createElement('div');
+  slide.className = 'trailer-slide clips-tutorial-slide';
+  slide.innerHTML = `
+    <div class="clips-tut-bg"></div>
+    <div class="clips-tut-content">
       <div class="clips-tut-icon"><span class="material-icons-round">play_circle</span></div>
       <h3 class="clips-tut-title">Discover with Clips</h3>
-      <p class="clips-tut-desc">Your personal discovery feed — scroll through trailers for movies &amp; TV shows tailored to your taste. Find your next binge.</p>
+      <p class="clips-tut-desc">Your personal discovery feed — scroll trailers for movies &amp; TV shows tailored to your taste. Find your next binge.</p>
       <div class="clips-tut-shortcuts">
         <div class="clips-tut-sc-row"><kbd>↓ / S</kbd><span>Next clip</span></div>
         <div class="clips-tut-sc-row"><kbd>↑ / W</kbd><span>Previous clip</span></div>
@@ -7381,45 +7358,42 @@ function _maybeShowClipsTutorial(feed) {
         <div class="clips-tut-sc-row"><kbd>B</kbd><span>Bookmark</span></div>
         <div class="clips-tut-sc-row"><kbd>X</kbd><span>Not Interested</span></div>
       </div>
-      <p class="clips-tut-hint"><span class="material-icons-round">swipe_up</span> Scroll or tap to start</p>
+      <div class="clips-tut-scroll-hint">
+        <span class="material-icons-round">expand_more</span>
+        Scroll down to start
+      </div>
     </div>`;
 
-  feed.appendChild(panel);
-
-  const dismiss = () => {
-    panel.classList.add('clips-tutorial-out');
-    setTimeout(() => panel.remove(), 400);
-    feed.removeEventListener('scroll', onScroll);
-  };
-  const onScroll = () => dismiss();
-  panel.querySelector('.clips-tutorial-close').addEventListener('click', e => { e.stopPropagation(); dismiss(); });
-  feed.addEventListener('scroll', onScroll, { once: true });
-  setTimeout(dismiss, 14000);
+  feed.insertBefore(slide, feed.firstChild);
+  feed.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-// Get the clip slide currently most visible in the feed
+// Get the clip slide currently most visible in the feed (by scrollTop index)
 function _getActiveClipSlide() {
   const feed = document.getElementById('clips-feed');
   if (!feed) return null;
-  const slides = [...feed.querySelectorAll('.trailer-slide')];
-  if (!slides.length) return null;
-  const feedTop = feed.getBoundingClientRect().top;
-  let best = null, bestDist = Infinity;
-  slides.forEach(sl => {
-    const dist = Math.abs(sl.getBoundingClientRect().top - feedTop);
-    if (dist < bestDist) { bestDist = dist; best = sl; }
-  });
-  return best;
+  const allSlides = [...feed.querySelectorAll('.trailer-slide')];
+  if (!allSlides.length) return null;
+  const slideH = feed.clientHeight || window.innerHeight;
+  const idx = Math.round(feed.scrollTop / slideH);
+  const slide = allSlides[Math.min(idx, allSlides.length - 1)] || allSlides[0];
+  // If landed on the tutorial slide, return the first real clip instead
+  if (slide.classList.contains('clips-tutorial-slide')) {
+    return allSlides.find(s => !s.classList.contains('clips-tutorial-slide')) || null;
+  }
+  return slide;
 }
 
-// Snap to next (+1) or previous (-1) clip slide
+// Snap to next (+1) or previous (-1) clip slide using feed.scrollTo
 function _clipsNavSlide(dir) {
-  const current = _getActiveClipSlide();
-  if (!current) return;
-  const target = dir > 0 ? current.nextElementSibling : current.previousElementSibling;
-  if (target?.classList.contains('trailer-slide')) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  const feed = document.getElementById('clips-feed');
+  if (!feed) return;
+  const slides = [...feed.querySelectorAll('.trailer-slide')];
+  if (!slides.length) return;
+  const slideH = feed.clientHeight || window.innerHeight;
+  const currentIdx = Math.round(feed.scrollTop / slideH);
+  const targetIdx = Math.max(0, Math.min(slides.length - 1, currentIdx + dir));
+  feed.scrollTo({ top: targetIdx * slideH, behavior: 'smooth' });
 }
 
 // Pause all clips (called on page switch or tab hide)
@@ -7446,10 +7420,8 @@ async function initTrailersFeed() {
   // On return visit — re-trigger playback of visible slide without reloading
   if (_trailersLoaded && feed.querySelector('.trailer-slide')) {
     requestAnimationFrame(() => {
-      feed.querySelectorAll('.trailer-slide').forEach(sl => {
-        const rect = sl.getBoundingClientRect();
-        if (rect.top < window.innerHeight && rect.bottom > 0) _playTrailerSlide(sl);
-      });
+      const active = _getActiveClipSlide();
+      if (active) _playTrailerSlide(active);
     });
     _maybeShowClipsTutorial(feed);
     return;
@@ -7475,6 +7447,7 @@ async function initTrailersFeed() {
   _trailersObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       const slide = entry.target;
+      if (slide.classList.contains('clips-tutorial-slide')) return; // skip tutorial slide
       const id = +slide.dataset.id;
       const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
 
@@ -7483,7 +7456,7 @@ async function initTrailersFeed() {
         _playTrailerSlide(slide);
         // Preload next slide's trailer key
         const next = slide.nextElementSibling;
-        if (next?.classList.contains('trailer-slide')) {
+        if (next?.classList.contains('trailer-slide') && !next.classList.contains('clips-tutorial-slide')) {
           fetchTrailerKey(+next.dataset.id, next.dataset.type, next.dataset.title || '', next.dataset.year || '');
         }
       } else {
@@ -7505,7 +7478,7 @@ async function initTrailersFeed() {
     });
   }, { threshold: 0.55 });
 
-  feed.querySelectorAll('.trailer-slide').forEach(sl => { sl.dataset.observed = '1'; _trailersObserver.observe(sl); });
+  feed.querySelectorAll('.trailer-slide:not(.clips-tutorial-slide)').forEach(sl => { sl.dataset.observed = '1'; _trailersObserver.observe(sl); });
 
   // Infinite scroll
   let _scrollObserver = null;
@@ -7522,16 +7495,22 @@ async function initTrailersFeed() {
         });
       }
     }, { threshold: 0.1 });
-    const lastSlide = feed.querySelector('.trailer-slide:last-child');
+    const allSlides = [...feed.querySelectorAll('.trailer-slide:not(.clips-tutorial-slide)')];
+    const lastSlide = allSlides[allSlides.length - 1];
     if (lastSlide) _scrollObserver.observe(lastSlide);
   }
   _rewatchLastSlide();
 
-  const firstSlide = feed.querySelector('.trailer-slide');
-  if (firstSlide) {
-    firstSlide.dataset.observed = '1';
-    _trailersObserver.observe(firstSlide);
-    setTimeout(() => _playTrailerSlide(firstSlide), 300);
+  // Show tutorial first (may prepend a tutorial slide), then autoplay first real clip
+  _maybeShowClipsTutorial(feed);
+
+  const firstRealSlide = feed.querySelector('.trailer-slide:not(.clips-tutorial-slide)');
+  if (firstRealSlide) {
+    firstRealSlide.dataset.observed = '1';
+    _trailersObserver.observe(firstRealSlide);
+    // Only autoplay if no tutorial is shown (tutorial is at top, clips start below)
+    const hasTutorial = !!feed.querySelector('.clips-tutorial-slide');
+    if (!hasTutorial) setTimeout(() => _playTrailerSlide(firstRealSlide), 300);
   }
 
   // Wheel snap — convert wheel delta to slide navigation so snap feels crisp
@@ -7543,8 +7522,6 @@ async function initTrailersFeed() {
     _wheelDebounce = now;
     _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
   }, { passive: false });
-
-  _maybeShowClipsTutorial(feed);
 }
 
 async function _loadMoreTrailers() {
@@ -7616,7 +7593,7 @@ function _buildTrailerSlide(item) {
     <div class="trailer-slide-content">
       <div class="trailer-slide-left">
         <div class="trailer-type-pill ${type}">${typeLabel}</div>
-        <img class="trailer-slide-logo" src="" alt="${esc(title)} logo" style="display:none" loading="lazy">
+        <img class="trailer-slide-logo" alt="${esc(title)} logo" style="display:none">
         <h2 class="trailer-slide-title">${esc(title)}</h2>
         <div class="trailer-slide-meta">${[year, rating ? '★ ' + rating : ''].filter(Boolean).join(' · ')}</div>
         <div class="trailer-slide-btn-row">

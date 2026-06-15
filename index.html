@@ -802,12 +802,26 @@
   </div>
 
   <div class="lib-tabs">
-    <button class="lib-tab on" data-lib-tab="library">My Library</button>
-    <button class="lib-tab" data-lib-tab="providers">Providers</button>
-    <button class="lib-tab" data-lib-tab="prefs">Settings</button>
+    <button class="lib-tab on" data-lib-tab="library"><span class="material-icons-round">video_library</span>My Library</button>
+    <button class="lib-tab" data-lib-tab="prefs"><span class="material-icons-round">favorite</span>Titles</button>
   </div>
 
   <div id="lib-tab-library">
+
+  <!-- Quick Provider Filter -->
+  <div class="lib-quick-providers">
+    <span class="lib-qp-label">Browse by service</span>
+    <div class="lib-qp-row">
+      <button class="lib-qp-btn" data-prov-id="8"   data-prov-name="Netflix"      aria-label="Browse Netflix"       style="--prov-bg:#e50914">N</button>
+      <button class="lib-qp-btn" data-prov-id="337"  data-prov-name="Disney+"      aria-label="Browse Disney+"       style="--prov-bg:#0f3b84">D+</button>
+      <button class="lib-qp-btn" data-prov-id="9"    data-prov-name="Amazon"       aria-label="Browse Prime Video"   style="--prov-bg:#00a8e0">a</button>
+      <button class="lib-qp-btn" data-prov-id="384"  data-prov-name="HBO Max"      aria-label="Browse Max"           style="--prov-bg:#002be0">Max</button>
+      <button class="lib-qp-btn" data-prov-id="15"   data-prov-name="Hulu"         aria-label="Browse Hulu"          style="--prov-bg:#1ce783;color:#000">H</button>
+      <button class="lib-qp-btn" data-prov-id="350"  data-prov-name="Apple TV+"    aria-label="Browse Apple TV+"     style="--prov-bg:#555"></button>
+      <button class="lib-qp-btn" data-prov-id="531"  data-prov-name="Paramount+"   aria-label="Browse Paramount+"    style="--prov-bg:#0064ff">P+</button>
+      <button class="lib-qp-btn" data-prov-id="283"  data-prov-name="Crunchyroll"  aria-label="Browse Crunchyroll"   style="--prov-bg:#f47521">CR</button>
+    </div>
+  </div>
 
   <!-- Continue Watching -->
   <div class="lib-section" id="lib-continue-sec">
@@ -1063,8 +1077,8 @@
         <div class="pref-tag-list" id="pref-dislikes-list"></div>
       </div>
 
-      <!-- Spacer so left column matches right column height -->
-      <div class="cyf-pref-spacer sk" aria-hidden="true"></div>
+      <!-- Spacer so left column matches right column height (no animation) -->
+      <div class="cyf-pref-spacer" aria-hidden="true"></div>
 
     </div><!-- /.cyf-taste-col-left -->
 

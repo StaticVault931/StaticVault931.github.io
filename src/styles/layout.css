@@ -1024,7 +1024,9 @@
   margin-bottom: 1rem;
 }
 .cyf-taste-col-left { display: flex; flex-direction: column; gap: .75rem; }
-.cyf-pref-spacer { flex: 1; min-height: 24px; border-radius: 12px; opacity: .3; }
+.cyf-card-love,
+.cyf-card-dislike { flex: 1; }
+.cyf-pref-spacer { flex: 0; display: none; }
 .cyf-taste-col-right {
   display: flex; flex-direction: column; gap: .75rem;
   position: sticky; top: 80px;
@@ -1381,18 +1383,30 @@
 /* Library tabs */
 .lib-tabs {
   display: flex;
-  gap: .4rem;
+  gap: .25rem;
   margin-bottom: 1.8rem;
   border-bottom: 1px solid var(--border);
 }
 .lib-tab {
-  padding: .52rem 1.2rem; border-radius: var(--r) var(--r) 0 0;
-  font-size: .86rem; font-weight: 700; cursor: pointer;
-  background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--muted); transition: all .18s; margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: .38rem;
+  padding: .55rem 1.25rem;
+  border-radius: var(--r) var(--r) 0 0;
+  font-size: .84rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  transition: color .15s, background .15s;
+  margin-bottom: -1px;
 }
-.lib-tab:hover { color: var(--text); }
-.lib-tab.on { color: var(--text); border-bottom-color: var(--red); }
+.lib-tab .material-icons-round { font-size: .95rem; }
+.lib-tab:hover { color: var(--text); background: rgba(255,255,255,.04); }
+.lib-tab.on { color: var(--text); border-bottom-color: var(--red); background: rgba(255,255,255,.03); }
+.lib-tab.on .material-icons-round { color: var(--red); }
 
 /* ── CYF SETTINGS ──────────────────────────────────────────────── */
 .sv-settings-grid {
@@ -1563,6 +1577,68 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
 }
 .page-subnav-btn:hover { color: var(--text); }
 .page-subnav-btn.on { color: var(--text); border-bottom-color: var(--red); }
+
+/* ── LIBRARY QUICK PROVIDER ROW ─────────────────────────────────── */
+.lib-quick-providers {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem 0 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+.lib-qp-label {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+.lib-qp-row {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.lib-qp-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,.1);
+  background: var(--prov-bg, var(--s2));
+  color: inherit;
+  font-size: .78rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.lib-qp-btn:hover {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  border-color: rgba(255,255,255,.3);
+}
+.lib-qp-btn:hover::after {
+  content: attr(data-prov-name);
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .6rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── LIBRARY COMPACT RECENTLY VIEWED GRID ────────────────────────── */
+.lib-grid-compact {
+  --card-w: 140px;
+}
 
 /* ── LIBRARY PROVIDERS GRID ─────────────────────────────────────── */
 .lib-providers-grid {

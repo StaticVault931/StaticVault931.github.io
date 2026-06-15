@@ -2506,103 +2506,83 @@ img[alt]::after {
 }
 .trailers-feed::-webkit-scrollbar { display: none; }
 
-/* Clips tutorial overlay panel */
-.clips-tutorial-panel {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(0,0,0,.78);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: fadeInUp .35s ease;
-}
-.clips-tutorial-out { animation: fadeOut .35s forwards !important; }
-.clips-tutorial-inner {
-  background: rgba(16,16,16,.97);
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 18px;
-  padding: 1.75rem 2rem 1.5rem;
-  max-width: 400px;
-  width: 90vw;
+/* Clips tutorial in-feed slide */
+.clips-tutorial-slide {
   position: relative;
-  text-align: center;
-  box-shadow: 0 28px 90px rgba(0,0,0,.8);
-}
-.clips-tutorial-close {
-  position: absolute;
-  top: .7rem;
-  right: .7rem;
-  background: rgba(255,255,255,.1);
-  border: none;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
+  background: linear-gradient(160deg, #0a0a1a 0%, #12001f 55%, #001a0d 100%) !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,.65);
-  cursor: pointer;
-  transition: background .15s;
 }
-.clips-tutorial-close:hover { background: rgba(255,255,255,.22); }
-.clips-tutorial-close .material-icons-round { font-size: 1rem; }
-.clips-tut-icon { margin-bottom: .65rem; }
-.clips-tut-icon .material-icons-round { font-size: 2.8rem; color: var(--red); }
+.clips-tut-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, rgba(229,9,20,.12) 0%, transparent 65%);
+  pointer-events: none;
+}
+.clips-tut-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 360px;
+  width: 100%;
+}
+.clips-tut-icon { margin-bottom: .75rem; }
+.clips-tut-icon .material-icons-round { font-size: 3rem; color: var(--red); }
 .clips-tut-title {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 800;
   color: #fff;
-  margin: 0 0 .45rem;
+  margin: 0 0 .5rem;
+  letter-spacing: .01em;
 }
 .clips-tut-desc {
   font-size: .82rem;
-  color: rgba(255,255,255,.65);
-  line-height: 1.55;
-  margin: 0 0 1rem;
+  color: rgba(255,255,255,.62);
+  line-height: 1.58;
+  margin: 0 0 1.1rem;
 }
 .clips-tut-shortcuts {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: .3rem .6rem;
-  margin-bottom: 1rem;
+  gap: .28rem .55rem;
+  margin-bottom: 1.2rem;
   text-align: left;
 }
 .clips-tut-sc-row {
   display: flex;
   align-items: center;
-  gap: .45rem;
-  font-size: .76rem;
-  color: rgba(255,255,255,.7);
+  gap: .4rem;
+  font-size: .75rem;
+  color: rgba(255,255,255,.65);
 }
 .clips-tut-sc-row kbd {
   background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.2);
+  border: 1px solid rgba(255,255,255,.18);
   border-radius: 4px;
-  padding: .12rem .38rem;
-  font-size: .68rem;
+  padding: .1rem .35rem;
+  font-size: .67rem;
   font-family: monospace;
   color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
-  min-width: 36px;
+  min-width: 34px;
   text-align: center;
 }
-.clips-tut-hint {
-  font-size: .73rem;
-  color: rgba(255,255,255,.38);
+.clips-tut-scroll-hint {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: .3rem;
-  margin: 0;
+  gap: .2rem;
+  font-size: .72rem;
+  color: rgba(255,255,255,.35);
+  animation: clipsHintBounce 1.8s ease-in-out infinite;
 }
-.clips-tut-hint .material-icons-round { font-size: .85rem; }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+.clips-tut-scroll-hint .material-icons-round { font-size: 1.4rem; }
+@keyframes clipsHintBounce {
+  0%, 100% { transform: translateY(0); opacity: .35; }
+  50% { transform: translateY(5px); opacity: .7; }
 }
 @keyframes fadeOut {
   to { opacity: 0; }

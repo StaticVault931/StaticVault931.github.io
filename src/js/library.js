@@ -81,13 +81,17 @@ function renderRecentSection() {
   const grid = document.getElementById('lib-recent-grid');
   if (!grid) return;
 
-  const items = state.recentlyViewed.slice(0, 24);
+  const items = state.recentlyViewed.slice(0, 36);
   if (!items.length) {
     if (sec) sec.style.display = 'none';
     return;
   }
   if (sec) sec.style.display = '';
-  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie')).join('');
+
+  // Use compact cards when there are many items (>12 = likely more than 4 rows)
+  const compact = items.length > 12;
+  if (compact) grid.classList.add('lib-grid-compact'); else grid.classList.remove('lib-grid-compact');
+  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie', { compact })).join('');
 }
 
 /* ── SEE ALL PAGE ────────────────────────────────────────────────── */
