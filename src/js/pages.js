@@ -185,19 +185,19 @@ function _buildAnimePage() {
   return el;
 }
 
-/* ── PAGE: TRAILERS ─────────────────────────────────────────────── */
+/* ── PAGE: CLIPS ─────────────────────────────────────────────────── */
 function _buildTrailersPage() {
   const el = document.createElement('main');
   el.className = 'page';
-  el.id = 'page-trailers';
+  el.id = 'page-clips';
   el.innerHTML = `
-  <div id="trailers-feed" class="trailers-feed" aria-label="Trailer feed">
-    <div class="trailers-empty" id="trailers-empty" style="display:none">
+  <div id="clips-feed" class="trailers-feed" aria-label="Clips feed">
+    <div class="trailers-empty" id="clips-empty" style="display:none">
       <span class="material-icons-round" style="font-size:3rem;color:var(--muted)">videocam_off</span>
-      <p>No trailers found</p>
+      <p>No clips found</p>
     </div>
   </div>
-  <div id="trailers-spinner" class="trailers-spinner" style="display:none">
+  <div id="clips-spinner" class="trailers-spinner" style="display:none">
     <div class="trailers-spinner-dot"></div>
   </div>`;
   return el;

@@ -10,7 +10,7 @@ const PAGE_META = {
   library: { title: 'My Library — StaticVault931',                                desc: 'Your personal watchlist, liked titles, and viewing history.' },
   prefs:   { title: 'Customize Your Feed — StaticVault931',                       desc: 'Set preferred genres, content ratings, and titles to personalize your recommendations.' },
   seeall:   { title: 'Browse All Content — StaticVault931',                       desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
-  trailers: { title: 'Watch Trailers — StaticVault931',                           desc: 'Scroll through the latest movie and TV show trailers. Find your next watch.' },
+  clips:    { title: 'Watch Clips — StaticVault931',                              desc: 'Scroll through short clips for the latest movies and TV shows. Discover your next watch.' },
 };
 
 const PAGE_BREADCRUMBS = {
@@ -21,7 +21,7 @@ const PAGE_BREADCRUMBS = {
   search:  [{ name: 'Search',       url: 'https://staticvault931.github.io/?page=search' }],
   library: [{ name: 'My Library',   url: 'https://staticvault931.github.io/?page=library' }],
   prefs:    [{ name: 'Customize Feed', url: 'https://staticvault931.github.io/?page=prefs' }],
-  trailers: [{ name: 'Trailers',       url: 'https://staticvault931.github.io/?page=trailers' }],
+  clips:    [{ name: 'Clips',           url: 'https://staticvault931.github.io/?page=clips' }],
 };
 
 function updatePageMeta(p) {

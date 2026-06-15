@@ -66,8 +66,11 @@
   color: var(--muted);
   overflow: hidden;
   display: -webkit-box;
+  display: box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
+  box-orient: vertical;
 }
 
 /* Title overlay on card image */
@@ -80,16 +83,17 @@
   pointer-events: none;
 }
 .card-img-title-name {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: .8rem;
   font-weight: 900;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-shadow: 0 1px 8px rgba(0,0,0,.95);
   line-height: 1.2;
-  padding-right: 50px;
+  padding-right: 46px;
+  word-break: break-word;
 }
 .card-img-title-year {
   display: block;
@@ -273,10 +277,12 @@
   font-size: .9rem;
   font-weight: 800;
   line-height: 1.18;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   margin-bottom: .2rem;
+  word-break: break-word;
 }
 .card-sub {
   font-size: .72rem;
@@ -1616,9 +1622,9 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   opacity: 0;
   transform: scale(.82) translateY(18px);
   transition: opacity .3s var(--ease), transform .3s var(--ease);
-  /* Width = max of card width and 380px so it's never smaller than the card */
+  /* Width scales with card width, capped at 580px */
   width: max(var(--card-w, 380px), 380px);
-  max-width: 520px;
+  max-width: min(580px, 90vw);
   border-radius: 14px;
   overflow: hidden;
   /* Scrollable when card is capped in positionNetflixCard */
@@ -2476,12 +2482,12 @@ img[alt]::after {
   max-width: 520px;
 }
 
-/* ── TRAILERS FEED (YouTube Shorts style) ───────────────────────── */
-#page-trailers {
+/* ── CLIPS FEED (YouTube Shorts style) ──────────────────────────── */
+#page-clips {
   padding: 0;
   overflow: hidden;
 }
-#page-trailers.active {
+#page-clips.active {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -2499,6 +2505,31 @@ img[alt]::after {
   background: #000;
 }
 .trailers-feed::-webkit-scrollbar { display: none; }
+
+/* First-time tutorial swipe hint */
+.clips-tutorial {
+  position: fixed;
+  bottom: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .4rem;
+  z-index: 99;
+  pointer-events: none;
+  animation: clipsTutPulse 1.6s ease-in-out infinite;
+}
+.clips-tutorial .material-icons-round { font-size: 2.4rem; color: #fff; }
+.clips-tutorial p { font-size: .82rem; color: rgba(255,255,255,.85); white-space: nowrap; }
+.clips-tutorial-out { animation: fadeOut .4s forwards; }
+@keyframes clipsTutPulse {
+  0%, 100% { opacity: .7; transform: translateX(-50%) translateY(0); }
+  50% { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+}
+@keyframes fadeOut {
+  to { opacity: 0; }
+}
 
 .trailer-slide {
   height: calc(100vh - 64px);

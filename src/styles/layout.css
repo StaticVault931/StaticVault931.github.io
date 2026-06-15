@@ -1563,6 +1563,51 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
 .page-subnav-btn:hover { color: var(--text); }
 .page-subnav-btn.on { color: var(--text); border-bottom-color: var(--red); }
 
+/* ── LIBRARY PROVIDERS GRID ─────────────────────────────────────── */
+.lib-providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: .75rem;
+}
+.lib-prov-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .55rem;
+  padding: 1.1rem .5rem;
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .15s;
+  color: var(--text);
+}
+.lib-prov-card:hover { background: var(--s3); border-color: var(--border3); transform: translateY(-2px); }
+.lib-prov-icon {
+  width: 52px; height: 52px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.05rem; font-weight: 900;
+  color: #fff;
+  letter-spacing: -.01em;
+}
+.lib-prov-name { font-size: .75rem; font-weight: 700; color: var(--muted); }
+.lib-prov-card:hover .lib-prov-name { color: var(--text); }
+
+/* ── CYF PREF LIST EMPTY STATE ───────────────────────────────────── */
+.pref-list-empty {
+  padding: .5rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  align-items: flex-start;
+}
+.pref-tag.pref-tag-sk {
+  display: inline-block;
+  border-radius: 20px;
+  opacity: .5;
+}
+
 /* ── STREAM MODE ─────────────────────────────────────────────────── */
 .sv-stream-section {
   padding: 1rem 3.5rem 2rem;
@@ -1674,11 +1719,11 @@ body.sv-hide-ratings .card-rating { display: none !important; }
 /* ── PROVIDER PAGE ─────────────────────────────────────────────────── */
 #page-provider { padding-top: 0; }
 .provider-page-header {
-  position: sticky; top: 0; z-index: 90;
+  position: sticky; top: 64px; z-index: 90;
   background: rgba(5,5,5,.95); backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center;
-  height: 58px; overflow: hidden;
+  height: 52px; overflow: hidden;
 }
 .provider-page-header-inner {
   display: flex; align-items: center; gap: .75rem;
@@ -1701,7 +1746,7 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   font-size: 1.25rem; letter-spacing: .04em; text-transform: uppercase;
   white-space: nowrap;
 }
-#provider-page-body { padding-bottom: 3rem; }
+#provider-page-body { padding: 1rem 0 3rem; }
 #provider-page-body .section { padding: 0 2rem; margin-bottom: 1.2rem; }
 
 /* ── NAV: provider tab styling ────────────────────────────────────── */

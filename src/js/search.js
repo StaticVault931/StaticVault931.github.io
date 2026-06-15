@@ -23,8 +23,14 @@ let _everythingSort = 'popularity.desc';
 let _everythingPage = 1;
 let _everythingLoading = false;
 let _everythingType = 'all'; // all | movie | tv
+let _everythingObs = null;
 
 export function getSearchFilters() { return { ..._filters }; }
+
+export function setProviderFilter(prov) {
+  _providerFilter = prov || null;
+  _sfActive = 'everything';
+}
 
 export function buildSearchFilters(container) {
   if (!container) return;
@@ -609,12 +615,13 @@ export async function loadEverything(reset = true) {
       });
     });
 
-    // Infinite scroll sentinel
+    // Infinite scroll sentinel — disconnect old observer first to prevent stacking
+    if (_everythingObs) { _everythingObs.disconnect(); _everythingObs = null; }
     const sentinel = document.getElementById('everything-sentinel');
-    const obs = new IntersectionObserver(entries => {
+    _everythingObs = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && !_everythingLoading) loadEverything(false);
     }, { rootMargin: '300px' });
-    if (sentinel) obs.observe(sentinel);
+    if (sentinel) _everythingObs.observe(sentinel);
   }
 
   if (_everythingLoading) return;
