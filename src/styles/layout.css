@@ -981,7 +981,7 @@
   display: flex; align-items: center; gap: .4rem;
   font-size: .72rem; font-weight: 900; text-transform: uppercase;
   letter-spacing: .1em; color: var(--muted);
-  margin-bottom: .9rem; padding-left: .1rem;
+  margin-bottom: .9rem;
   border-left: 2px solid var(--red); padding-left: .5rem;
 }
 .cyf-section-label .material-icons-round { font-size: .85rem; color: var(--red); }
@@ -1054,11 +1054,6 @@
   font-size: .75rem; color: var(--dim); font-weight: 700;
 }
 .pref-autosave-note .material-icons-round { font-size: .85rem; animation: spin 2s linear infinite; }
-
-@media (max-width: 900px) {
-  .cyf-main-grid { grid-template-columns: 1fr; }
-  .cyf-right-col { position: static; }
-}
 
 #page-prefs { padding: 80px 3.5rem 4rem; }
 /* h1 and p are now inside .cyf-header-left — keep generic page heading style for other pages */
@@ -1471,12 +1466,6 @@
   box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
 .sv-toggle.on .sv-toggle-knob { transform: translateX(16px); }
-.settings-group-header {
-  font-size: .6rem; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--dim);
-  padding: .5rem .3rem .15rem; grid-column: 1 / -1;
-  border-bottom: 1px solid var(--border);
-}
 /* ── ANIMATION LEVEL SLIDER CONTROL ─────────────────────────────── */
 .sv-setting-slider3 { cursor: default; align-items: flex-start; flex-direction: column; gap: .45rem; }
 .sv-slider3-wrap { width: 100%; }

@@ -150,10 +150,6 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ── SHIMMER SKELETON ────────────────────────────────────────────── */
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 .sk {
   background: linear-gradient(
     90deg,

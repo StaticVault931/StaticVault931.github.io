@@ -128,6 +128,7 @@ export function goSeeAll(key, title) {
     page: 1,
     items: [],
     loading: false,
+    prevPage: state.currentPage || 'home',
   };
   goPage('seeall');
 }

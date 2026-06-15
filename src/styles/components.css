@@ -1244,7 +1244,6 @@
   text-transform: uppercase;
   letter-spacing: .1em;
   margin-bottom: .5rem;
-  padding-left: .2rem;
   border-left: 2px solid var(--red);
   padding-left: .45rem;
 }
@@ -2376,13 +2375,14 @@ img[alt]::after {
   border-bottom: 1px solid var(--border);
 }
 #company-close {
+  position: static; top: auto; right: auto; z-index: auto;
   width: 36px; height: 36px; border-radius: 50%;
   background: var(--s3); border: 1px solid var(--border2);
   color: var(--text); cursor: pointer; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   transition: background .18s;
 }
-#company-close:hover { background: var(--red); }
+#company-close:hover { background: var(--red); transform: none; }
 .company-toolbar-info { display: flex; align-items: center; gap: .6rem; flex: 1; min-width: 0; }
 .company-logo-sm { height: 28px; max-width: 80px; object-fit: contain; border-radius: 4px; }
 .company-toolbar .company-name { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 1.2rem; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2486,6 +2486,7 @@ img[alt]::after {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  padding-top: 64px; /* sit below fixed header */
 }
 .trailers-feed {
   flex: 1;
@@ -2500,7 +2501,7 @@ img[alt]::after {
 .trailers-feed::-webkit-scrollbar { display: none; }
 
 .trailer-slide {
-  height: 100vh;
+  height: calc(100vh - 64px);
   scroll-snap-align: start;
   position: relative;
   overflow: hidden;
@@ -2643,7 +2644,7 @@ img[alt]::after {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: calc(100vh - 64px);
   color: var(--muted);
   gap: .75rem;
 }

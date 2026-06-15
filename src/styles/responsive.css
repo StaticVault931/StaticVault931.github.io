@@ -2,7 +2,7 @@
 @media (min-width: 2200px) {
   :root { --card-w: 480px; }
   #header, .section, .genre-wrap, #hero-content,
-  #page-search, #page-library, #page-prefs, #page-seeall {
+  #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 5rem;
     padding-right: 5rem;
   }
@@ -12,7 +12,7 @@
 @media (min-width: 1921px) and (max-width: 2199px) {
   :root { --card-w: 420px; }
   #header, .section, .genre-wrap, #hero-content,
-  #page-search, #page-library, #page-prefs, #page-seeall {
+  #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 4rem;
     padding-right: 4rem;
   }
@@ -32,7 +32,7 @@
 @media (max-width: 1440px) {
   :root { --card-w: 290px; }
   #header, .section, .genre-wrap, #hero-content,
-  #page-search, #page-library, #page-prefs, #page-seeall {
+  #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 2.5rem;
     padding-right: 2.5rem;
   }
@@ -42,7 +42,7 @@
 @media (max-width: 1280px) {
   :root { --card-w: 255px; }
   #header, .section, .genre-wrap, #hero-content,
-  #page-search, #page-library, #page-prefs, #page-seeall {
+  #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 2rem;
     padding-right: 2rem;
   }
@@ -60,7 +60,7 @@
   .modal-right-panel { width: 280px; }
   .modal-left-panel { width: 240px; }
   #header, .section, .genre-wrap, #hero-content,
-  #page-search, #page-library, #page-prefs, #page-seeall {
+  #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
   }
@@ -93,6 +93,12 @@
 @media (max-width: 720px) {
   :root { --card-w: 200px; }
 
+  /* Account for shorter mobile header (58px vs 64px desktop) */
+  #page-trailers.active { padding-top: 58px; }
+  .trailer-slide, .trailers-empty { height: calc(100vh - 58px); }
+  .page-subnav { top: 58px; }
+  .search-page-top { top: 58px; }
+
   #header { height: 58px; padding: 0 1rem; }
   .logo { font-size: 1.55rem; }
   .nav-tabs { display: none; }
@@ -116,7 +122,8 @@
   #page-search,
   #page-library,
   #page-prefs,
-  #page-seeall { padding-left: 1rem; padding-right: 1rem; }
+  #page-seeall,
+  .page-subnav { padding-left: 1rem; padding-right: 1rem; }
 
   .genre-scroll { flex-wrap: nowrap; }
 
@@ -180,7 +187,8 @@
   #page-search,
   #page-library,
   #page-prefs,
-  #page-seeall { padding-left: .6rem; padding-right: .6rem; }
+  #page-seeall,
+  .page-subnav { padding-left: .6rem; padding-right: .6rem; }
 
   .section-head h2 { font-size: 1rem; }
 

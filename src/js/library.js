@@ -100,6 +100,9 @@ export async function renderSeeAll() {
 
   if (titleEl) titleEl.textContent = seeAll.title || 'Browse';
 
+  const backBtn = document.querySelector('.seeall-back-btn');
+  if (backBtn) backBtn.dataset.page = seeAll.prevPage || 'home';
+
   if (!seeAll.fetcher) {
     grid.innerHTML = '<p class="muted-note">Could not load content.</p>';
     if (moreBtn) moreBtn.style.display = 'none';
