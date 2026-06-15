@@ -230,6 +230,16 @@ const SHORTCUTS = [
   { key: 'Shift+Apply Feed',  desc: 'Refresh without leaving the page',       group: 'Tips' },
   { key: 'Shift+Share',       desc: 'Copy link directly to clipboard',        group: 'Tips' },
   { key: '?',                 desc: 'Show this shortcuts screen',             group: 'Tips' },
+  // Clips
+  { key: '↓ / S',      desc: 'Next clip',                    group: 'Clips' },
+  { key: '↑ / W',      desc: 'Previous clip',                group: 'Clips' },
+  { key: 'Space',       desc: 'Next clip',                   group: 'Clips' },
+  { key: 'P',           desc: 'Watch now (open player)',      group: 'Clips' },
+  { key: 'I',           desc: 'Open info page',              group: 'Clips' },
+  { key: 'M',           desc: 'Toggle mute',                 group: 'Clips' },
+  { key: 'L',           desc: 'Like / Unlike',               group: 'Clips' },
+  { key: 'B',           desc: 'Bookmark / Watchlist',        group: 'Clips' },
+  { key: 'X',           desc: 'Not Interested (hide clip)',  group: 'Clips' },
 ];
 
 /* ── CARD LOGO OBSERVER (declared here so init() IIFE can access before
@@ -7348,21 +7358,68 @@ function _scoreClipItem(item) {
   return score;
 }
 
-// Show first-time tutorial overlay
+// Show tutorial overlay every time Clips page loads
 function _maybeShowClipsTutorial(feed) {
-  if (localStorage.getItem('sv_clips_tutorial')) return;
-  const tip = document.createElement('div');
-  tip.className = 'clips-tutorial';
-  tip.innerHTML = `<span class="material-icons-round">swipe_up</span><p>Scroll up to see the next clip</p>`;
-  feed.appendChild(tip);
+  feed.querySelector('.clips-tutorial-panel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.className = 'clips-tutorial-panel';
+  panel.innerHTML = `
+    <div class="clips-tutorial-inner">
+      <button class="clips-tutorial-close" aria-label="Dismiss"><span class="material-icons-round">close</span></button>
+      <div class="clips-tut-icon"><span class="material-icons-round">play_circle</span></div>
+      <h3 class="clips-tut-title">Discover with Clips</h3>
+      <p class="clips-tut-desc">Your personal discovery feed — scroll through trailers for movies &amp; TV shows tailored to your taste. Find your next binge.</p>
+      <div class="clips-tut-shortcuts">
+        <div class="clips-tut-sc-row"><kbd>↓ / S</kbd><span>Next clip</span></div>
+        <div class="clips-tut-sc-row"><kbd>↑ / W</kbd><span>Previous clip</span></div>
+        <div class="clips-tut-sc-row"><kbd>Space</kbd><span>Next clip</span></div>
+        <div class="clips-tut-sc-row"><kbd>P</kbd><span>Watch now</span></div>
+        <div class="clips-tut-sc-row"><kbd>I</kbd><span>More info</span></div>
+        <div class="clips-tut-sc-row"><kbd>M</kbd><span>Mute / Unmute</span></div>
+        <div class="clips-tut-sc-row"><kbd>L</kbd><span>Like</span></div>
+        <div class="clips-tut-sc-row"><kbd>B</kbd><span>Bookmark</span></div>
+        <div class="clips-tut-sc-row"><kbd>X</kbd><span>Not Interested</span></div>
+      </div>
+      <p class="clips-tut-hint"><span class="material-icons-round">swipe_up</span> Scroll or tap to start</p>
+    </div>`;
+
+  feed.appendChild(panel);
+
   const dismiss = () => {
-    tip.classList.add('clips-tutorial-out');
-    setTimeout(() => tip.remove(), 400);
-    localStorage.setItem('sv_clips_tutorial', '1');
-    feed.removeEventListener('scroll', dismiss);
+    panel.classList.add('clips-tutorial-out');
+    setTimeout(() => panel.remove(), 400);
+    feed.removeEventListener('scroll', onScroll);
   };
-  feed.addEventListener('scroll', dismiss, { once: true });
-  setTimeout(dismiss, 5000);
+  const onScroll = () => dismiss();
+  panel.querySelector('.clips-tutorial-close').addEventListener('click', e => { e.stopPropagation(); dismiss(); });
+  feed.addEventListener('scroll', onScroll, { once: true });
+  setTimeout(dismiss, 14000);
+}
+
+// Get the clip slide currently most visible in the feed
+function _getActiveClipSlide() {
+  const feed = document.getElementById('clips-feed');
+  if (!feed) return null;
+  const slides = [...feed.querySelectorAll('.trailer-slide')];
+  if (!slides.length) return null;
+  const feedTop = feed.getBoundingClientRect().top;
+  let best = null, bestDist = Infinity;
+  slides.forEach(sl => {
+    const dist = Math.abs(sl.getBoundingClientRect().top - feedTop);
+    if (dist < bestDist) { bestDist = dist; best = sl; }
+  });
+  return best;
+}
+
+// Snap to next (+1) or previous (-1) clip slide
+function _clipsNavSlide(dir) {
+  const current = _getActiveClipSlide();
+  if (!current) return;
+  const target = dir > 0 ? current.nextElementSibling : current.previousElementSibling;
+  if (target?.classList.contains('trailer-slide')) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 // Pause all clips (called on page switch or tab hide)
@@ -7394,6 +7451,7 @@ async function initTrailersFeed() {
         if (rect.top < window.innerHeight && rect.bottom > 0) _playTrailerSlide(sl);
       });
     });
+    _maybeShowClipsTutorial(feed);
     return;
   }
 
@@ -7476,6 +7534,16 @@ async function initTrailersFeed() {
     setTimeout(() => _playTrailerSlide(firstSlide), 300);
   }
 
+  // Wheel snap — convert wheel delta to slide navigation so snap feels crisp
+  let _wheelDebounce = 0;
+  feed.addEventListener('wheel', e => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - _wheelDebounce < 600) return;
+    _wheelDebounce = now;
+    _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+
   _maybeShowClipsTutorial(feed);
 }
 
@@ -7542,12 +7610,13 @@ function _buildTrailerSlide(item) {
   slide.dataset.genres = genreIds;
 
   slide.innerHTML = `
-    ${backdropPath ? `<img class="trailer-slide-poster" src="${backdropPath}" alt="${esc(title)}" loading="lazy">` : ''}
+    ${backdropPath ? `<img class="trailer-slide-poster" src="${backdropPath}" alt="${esc(title)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'">` : ''}
     <iframe class="trailer-slide-iframe" allow="autoplay; fullscreen; encrypted-media" allowfullscreen title="${esc(title)} clip" style="opacity:0;transition:opacity .4s"></iframe>
     <div class="trailer-slide-gradient"></div>
     <div class="trailer-slide-content">
       <div class="trailer-slide-left">
         <div class="trailer-type-pill ${type}">${typeLabel}</div>
+        <img class="trailer-slide-logo" src="" alt="${esc(title)} logo" style="display:none" loading="lazy">
         <h2 class="trailer-slide-title">${esc(title)}</h2>
         <div class="trailer-slide-meta">${[year, rating ? '★ ' + rating : ''].filter(Boolean).join(' · ')}</div>
         <div class="trailer-slide-btn-row">
@@ -7560,14 +7629,17 @@ function _buildTrailerSlide(item) {
         </div>
       </div>
       <div class="trailer-slide-right">
-        <button class="trailer-icon-btn" data-action="mute" title="Toggle mute" aria-label="Toggle mute">
+        <button class="trailer-icon-btn" data-action="mute" title="Toggle mute (M)" aria-label="Toggle mute">
           <span class="material-icons-round">${_trailersMuted ? 'volume_off' : 'volume_up'}</span>
         </button>
-        <button class="trailer-icon-btn" data-action="like" title="Like" aria-label="Like">
+        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
-        <button class="trailer-icon-btn" data-action="wl" title="Add to watchlist" aria-label="Add to watchlist">
+        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
           <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
+        </button>
+        <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
+          <span class="material-icons-round">thumb_down_off_alt</span>
         </button>
       </div>
     </div>`;
@@ -7599,10 +7671,43 @@ function _buildTrailerSlide(item) {
       const icon = btn.querySelector('.material-icons-round');
       if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
       btn.classList.toggle('on', isInWatchlist(id));
+    } else if (action === 'dislike') {
+      // Down-weight genres and remove slide
+      const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
+      genreIds.forEach(g => {
+        _clipsDwellPrefs.set(g, Math.max(-5, (_clipsDwellPrefs.get(g) || 0) - 2));
+      });
+      _saveClipsDwellPrefs();
+      _pauseTrailerSlide(slide);
+      slide.style.transition = 'opacity .28s, transform .28s';
+      slide.style.opacity = '0';
+      slide.style.transform = 'translateX(-50px)';
+      setTimeout(() => slide.remove(), 320);
+      toast('Showing less like this', 'thumb_down');
     }
   });
 
   return slide;
+}
+
+// Fetch English title logo for a clip slide (cached in sessionStorage)
+const _clipsLogoCache = new Map();
+async function _fetchClipsLogo(id, type) {
+  const k = `${type}-${id}`;
+  if (_clipsLogoCache.has(k)) return _clipsLogoCache.get(k);
+  try {
+    const endpoint = type === 'tv' ? `tv/${id}` : `movie/${id}`;
+    const data = await tmdb(`/${endpoint}/images`, { include_image_language: 'en,null' });
+    const logos = data.logos || [];
+    const logo = logos.find(l => l.iso_639_1 === 'en' && l.file_path) ||
+                 logos.find(l => !l.iso_639_1 && l.file_path);
+    const url = logo ? `https://image.tmdb.org/t/p/w500${logo.file_path}` : null;
+    _clipsLogoCache.set(k, url);
+    return url;
+  } catch {
+    _clipsLogoCache.set(k, null);
+    return null;
+  }
 }
 
 async function _playTrailerSlide(slide) {
@@ -7612,6 +7717,23 @@ async function _playTrailerSlide(slide) {
   const year = slide.dataset.year || '';
   const iframe = slide.querySelector('.trailer-slide-iframe');
   if (!iframe) return;
+
+  // Fetch English logo in parallel (non-blocking)
+  const logoEl = slide.querySelector('.trailer-slide-logo');
+  if (logoEl && !logoEl.dataset.tried) {
+    logoEl.dataset.tried = '1';
+    _fetchClipsLogo(id, type).then(url => {
+      if (url && logoEl.isConnected) {
+        logoEl.src = url;
+        logoEl.style.display = '';
+        logoEl.addEventListener('load', () => {
+          const titleEl = slide.querySelector('.trailer-slide-title');
+          if (titleEl) titleEl.style.display = 'none';
+        }, { once: true });
+        logoEl.addEventListener('error', () => { logoEl.style.display = 'none'; }, { once: true });
+      }
+    });
+  }
 
   if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
 
@@ -7815,6 +7937,34 @@ function initKeyboard() {
       document.getElementById('modal-overlay')?.classList.contains('open') ||
       document.getElementById('info-overlay')?.classList.contains('open');
     if (anyOverlayOpen) return;
+
+    // ── Clips page keyboard shortcuts (override global nav keys) ─────
+    if (state.currentPage === 'clips') {
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S' || e.key === ' ') {
+        e.preventDefault(); _clipsNavSlide(1); return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        e.preventDefault(); _clipsNavSlide(-1); return;
+      }
+      if (e.key === 'p' || e.key === 'P') {
+        _getActiveClipSlide()?.querySelector('[data-action="watch"]')?.click(); return;
+      }
+      if (e.key === 'i' || e.key === 'I') {
+        _getActiveClipSlide()?.querySelector('[data-action="info"]')?.click(); return;
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        _getActiveClipSlide()?.querySelector('[data-action="mute"]')?.click(); return;
+      }
+      if (e.key === 'l' || e.key === 'L') {
+        _getActiveClipSlide()?.querySelector('[data-action="like"]')?.click(); return;
+      }
+      if (e.key === 'b' || e.key === 'B') {
+        _getActiveClipSlide()?.querySelector('[data-action="wl"]')?.click(); return;
+      }
+      if (e.key === 'x' || e.key === 'X') {
+        _getActiveClipSlide()?.querySelector('[data-action="dislike"]')?.click(); return;
+      }
+    }
 
     // Number keys 1-7 navigate pages; 0 = cycle theme
     const pageKeys = { '1': 'home', '2': 'movies', '3': 'tv', '4': 'anime', '5': 'library', '6': 'prefs' };

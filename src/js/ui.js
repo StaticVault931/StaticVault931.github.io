@@ -96,7 +96,14 @@ export function makeCard(m, type, opts = {}) {
     aria-label="${esc(title)} (${typeLabel})">
     <div class="card-poster">
       ${imgSrc
-        ? `<img src="${imgSrc}" alt="${esc(title)}" loading="lazy">`
+        ? `<img src="${imgSrc}" alt="${esc(title)}" loading="lazy"
+             onerror="this.onerror=null;this.style.display='none';var _f=this.parentNode.querySelector('.card-poster-ph');if(_f)_f.style.display='flex';">
+           <div class="card-poster-ph" style="display:none">
+             <span class="card-ph-icon material-icons-round">${type === 'anime' ? 'auto_awesome' : type === 'tv' ? 'tv' : 'movie'}</span>
+             <span class="card-ph-title">${esc(title)}</span>
+             ${year ? `<span class="card-ph-year">${year}</span>` : ''}
+             ${rating ? `<span class="card-ph-rating"><span class="material-icons-round">star</span>${rating}</span>` : ''}
+           </div>`
         : `<div class="card-poster-ph">
              <span class="card-ph-icon material-icons-round">${type === 'anime' ? 'auto_awesome' : type === 'tv' ? 'tv' : 'movie'}</span>
              <span class="card-ph-title">${esc(title)}</span>

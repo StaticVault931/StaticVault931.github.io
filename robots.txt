@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://staticvault931.github.io/seo/sitemap.xml
+Sitemap: https://staticvault931.github.io/sitemap.xml

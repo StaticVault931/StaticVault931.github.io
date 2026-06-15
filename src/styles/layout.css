@@ -1020,10 +1020,11 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
   margin-bottom: 1rem;
 }
 .cyf-taste-col-left { display: flex; flex-direction: column; gap: .75rem; }
+.cyf-pref-spacer { flex: 1; min-height: 24px; border-radius: 12px; opacity: .3; }
 .cyf-taste-col-right {
   display: flex; flex-direction: column; gap: .75rem;
   position: sticky; top: 80px;

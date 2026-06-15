@@ -2506,26 +2506,103 @@ img[alt]::after {
 }
 .trailers-feed::-webkit-scrollbar { display: none; }
 
-/* First-time tutorial swipe hint */
-.clips-tutorial {
+/* Clips tutorial overlay panel */
+.clips-tutorial-panel {
   position: fixed;
-  bottom: 5rem;
-  left: 50%;
-  transform: translateX(-50%);
+  inset: 0;
+  z-index: 200;
+  background: rgba(0,0,0,.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: .4rem;
-  z-index: 99;
-  pointer-events: none;
-  animation: clipsTutPulse 1.6s ease-in-out infinite;
+  justify-content: center;
+  animation: fadeInUp .35s ease;
 }
-.clips-tutorial .material-icons-round { font-size: 2.4rem; color: #fff; }
-.clips-tutorial p { font-size: .82rem; color: rgba(255,255,255,.85); white-space: nowrap; }
-.clips-tutorial-out { animation: fadeOut .4s forwards; }
-@keyframes clipsTutPulse {
-  0%, 100% { opacity: .7; transform: translateX(-50%) translateY(0); }
-  50% { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+.clips-tutorial-out { animation: fadeOut .35s forwards !important; }
+.clips-tutorial-inner {
+  background: rgba(16,16,16,.97);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 1.75rem 2rem 1.5rem;
+  max-width: 400px;
+  width: 90vw;
+  position: relative;
+  text-align: center;
+  box-shadow: 0 28px 90px rgba(0,0,0,.8);
+}
+.clips-tutorial-close {
+  position: absolute;
+  top: .7rem;
+  right: .7rem;
+  background: rgba(255,255,255,.1);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,.65);
+  cursor: pointer;
+  transition: background .15s;
+}
+.clips-tutorial-close:hover { background: rgba(255,255,255,.22); }
+.clips-tutorial-close .material-icons-round { font-size: 1rem; }
+.clips-tut-icon { margin-bottom: .65rem; }
+.clips-tut-icon .material-icons-round { font-size: 2.8rem; color: var(--red); }
+.clips-tut-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 .45rem;
+}
+.clips-tut-desc {
+  font-size: .82rem;
+  color: rgba(255,255,255,.65);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+}
+.clips-tut-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .3rem .6rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+.clips-tut-sc-row {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .76rem;
+  color: rgba(255,255,255,.7);
+}
+.clips-tut-sc-row kbd {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 4px;
+  padding: .12rem .38rem;
+  font-size: .68rem;
+  font-family: monospace;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: center;
+}
+.clips-tut-hint {
+  font-size: .73rem;
+  color: rgba(255,255,255,.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  margin: 0;
+}
+.clips-tut-hint .material-icons-round { font-size: .85rem; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeOut {
   to { opacity: 0; }
@@ -2536,7 +2613,7 @@ img[alt]::after {
   scroll-snap-align: start;
   position: relative;
   overflow: hidden;
-  background: #000;
+  background: linear-gradient(135deg, #0d0d1a 0%, #1a0d2e 50%, #0d1a0d 100%);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -2576,6 +2653,16 @@ img[alt]::after {
 .trailer-slide-left {
   flex: 1;
   min-width: 0;
+}
+.trailer-slide-logo {
+  max-width: 210px;
+  max-height: 82px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+  margin-bottom: .3rem;
+  filter: drop-shadow(0 2px 10px rgba(0,0,0,.7));
 }
 .trailer-slide-title {
   font-family: 'Bebas Neue', Impact, sans-serif;
@@ -2651,6 +2738,8 @@ img[alt]::after {
 .trailer-icon-btn:active { transform: scale(.9); }
 .trailer-icon-btn.on { background: var(--red); }
 .trailer-icon-btn .material-icons-round { font-size: 1.25rem; }
+.trailer-icon-dislike { background: rgba(255,255,255,.1); }
+.trailer-icon-dislike:hover { background: rgba(239,68,68,.35); }
 
 .trailers-spinner {
   position: fixed;
