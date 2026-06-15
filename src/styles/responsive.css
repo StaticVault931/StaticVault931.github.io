@@ -1,6 +1,6 @@
 /* ── 2560px ultra-wide ───────────────────────────────────────────── */
 @media (min-width: 2200px) {
-  :root { --card-w: 480px; }
+  :root { --card-w: 520px; }
   #header, .section, .genre-wrap, #hero-content,
   #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 5rem;
@@ -10,7 +10,7 @@
 
 /* ── 2048px / 2000px — 2K displays ──────────────────────────────── */
 @media (min-width: 1921px) and (max-width: 2199px) {
-  :root { --card-w: 420px; }
+  :root { --card-w: 460px; }
   #header, .section, .genre-wrap, #hero-content,
   #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 4rem;
@@ -20,17 +20,17 @@
 
 /* ── 1920px ───────────────────────────────────────────────────────── */
 @media (max-width: 1920px) {
-  :root { --card-w: 380px; }
+  :root { --card-w: 420px; }
 }
 
 /* ── 1600px ───────────────────────────────────────────────────────── */
 @media (max-width: 1600px) {
-  :root { --card-w: 320px; }
+  :root { --card-w: 360px; }
 }
 
 /* ── 1440px — Macbook Pro 14/16, large Chromebooks ──────────────── */
 @media (max-width: 1440px) {
-  :root { --card-w: 290px; }
+  :root { --card-w: 320px; }
   #header, .section, .genre-wrap, #hero-content,
   #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 2.5rem;
@@ -40,7 +40,7 @@
 
 /* ── 1280px — Macbook Air 13, 720p, Chromebooks ─────────────────── */
 @media (max-width: 1280px) {
-  :root { --card-w: 255px; }
+  :root { --card-w: 280px; }
   #header, .section, .genre-wrap, #hero-content,
   #page-search, #page-library, #page-prefs, #page-seeall, .page-subnav {
     padding-left: 2rem;
@@ -51,12 +51,12 @@
 
 /* ── 1152px — 2k/4k scaled displays, 1024x768 ────────────────────── */
 @media (max-width: 1152px) {
-  :root { --card-w: 235px; }
+  :root { --card-w: 255px; }
 }
 
 /* ── 1024px ───────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  :root { --card-w: 215px; }
+  :root { --card-w: 235px; }
   .modal-right-panel { width: 280px; }
   .modal-left-panel { width: 240px; }
   #header, .section, .genre-wrap, #hero-content,
@@ -91,7 +91,7 @@
 
 /* ── 720px ────────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
-  :root { --card-w: 200px; }
+  :root { --card-w: 210px; }
 
   /* Account for shorter mobile header (58px vs 64px desktop) */
   #page-clips.active { padding-top: 58px; }
@@ -299,10 +299,11 @@
   .modal-right-panel { width: 100% !important; max-height: 40vh !important; }
   #player-frame { min-height: 240px; }
 
-  /* Person overlay goes full width */
-  #person-panel { margin: 0 !important; border-radius: 0 !important; min-height: 100dvh; }
-  .person-layout { grid-template-columns: 1fr !important; gap: 1.2rem !important; padding: 1.2rem !important; }
-  .person-sidebar { position: static !important; flex-direction: row; align-items: flex-start; gap: 1.1rem; }
+  /* Person overlay: stack vertically on mobile */
+  #person-panel { min-height: 100dvh; }
+  .person-layout { grid-template-columns: 1fr !important; overflow-y: auto !important; height: auto !important; }
+  .person-sidebar { overflow-y: visible !important; height: auto !important; flex-direction: row; align-items: flex-start; gap: 1.1rem; border-right: none !important; border-bottom: 1px solid var(--border2); padding: 1.2rem !important; }
+  .person-content { overflow-y: visible !important; height: auto !important; padding: 1.2rem !important; }
   .person-photo { width: 110px !important; aspect-ratio: 2/3; flex-shrink: 0; }
   .person-name { font-size: 1.5rem !important; }
 }

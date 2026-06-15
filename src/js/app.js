@@ -882,8 +882,11 @@ async function loadHomeRows() {
       const sec = el.closest('.section');
       if (sec) sec.style.display = '';
       const type = id.includes('anime') ? 'anime' : id.includes('tv') ? 'tv' : null;
-      renderRow(id, cached, type, id === 'row-trending');
-      cached.forEach(m => _homeSeenIds.add(m.id));
+      // Dedup against already-rendered rows to prevent same title showing twice
+      const deduped = cached.filter(m => m.id && !_homeSeenIds.has(m.id));
+      const toRender = id === 'row-trending' ? cached : (deduped.length >= 4 ? deduped : cached);
+      toRender.forEach(m => _homeSeenIds.add(m.id));
+      renderRow(id, toRender, type, id === 'row-trending');
       hadCache = true;
     } else {
       el.innerHTML = skelCards(6);
@@ -5745,7 +5748,7 @@ export async function openPersonPage(personId) {
     // SEO
     const personPhoto = person.profile_path
       ? `https://image.tmdb.org/t/p/w780${person.profile_path}`
-      : 'https://staticvault931.github.io/favicon.png';
+      : 'https://staticvault931.github.io/assets/icons/favicon.png';
     document.title = `${person.name} — Films & TV — StaticVault931`;
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
     document.querySelector('meta[property="og:image"]')?.setAttribute('content', personPhoto);
@@ -5774,7 +5777,7 @@ function loadPersonCredits(personId, type) {
   items.sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)));
   const seen = new Set();
   items = items.filter(m => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; });
-  const html = items.slice(0, 60).map(m => makeCard(m, m.media_type || type)).join('');
+  const html = items.map(m => makeCard(m, m.media_type || type)).join('');
   grid.innerHTML = html || `<p style="color:var(--muted);padding:1rem;text-align:center;">No credits found.</p>`;
 }
 
@@ -6236,7 +6239,7 @@ function openPersonSearchForAvatar() {
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.2rem">Featured</div>
         <div style="display:flex;gap:.65rem;flex-wrap:wrap;">${(() => {
           const featuredAvatars = [
-            { url: 'favicon.png', name: 'SV931', special: 'sv931' },
+            { url: 'assets/icons/favicon.png', name: 'SV931', special: 'sv931' },
             { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
             // Person avatars: searched by exact name via TMDB — always correct face
             { name: 'Robert Downey Jr.',  searchName: 'Robert Downey Jr.' },
@@ -6837,7 +6840,8 @@ async function _loadCardLogo(card) {
     const url = best ? `https://image.tmdb.org/t/p/w300${best.file_path}` : null;
     _logoCache.set(id, url);
     if (url) _applyCardLogo(card, url);
-  } catch {
+  } catch (err) {
+    console.warn(`[SV Logo] card ${id} (${type}):`, err?.message || 'no logo');
     _logoCache.set(id, null);
   }
 }
@@ -7588,15 +7592,26 @@ async function initTrailersFeed() {
     if (!hasTutorial) setTimeout(() => _playTrailerSlide(firstRealSlide), 300);
   }
 
-  // Wheel snap — convert wheel delta to slide navigation so snap feels crisp
+  // Wheel snap — intercept wheel events and snap to next/prev slide
   let _wheelDebounce = 0;
   feed.addEventListener('wheel', e => {
     e.preventDefault();
     const now = Date.now();
-    if (now - _wheelDebounce < 600) return;
+    if (now - _wheelDebounce < 500) return;
+    if (Math.abs(e.deltaY) < 5) return; // ignore tiny micro-scrolls
     _wheelDebounce = now;
     _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
   }, { passive: false });
+
+  // Touch swipe — track touch start Y, snap on swipe end
+  let _touchStartY = 0;
+  feed.addEventListener('touchstart', e => {
+    _touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  feed.addEventListener('touchend', e => {
+    const dy = _touchStartY - e.changedTouches[0].clientY;
+    if (Math.abs(dy) > 40) _clipsNavSlide(dy > 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 async function _loadMoreTrailers() {
@@ -7697,6 +7712,7 @@ function _buildTrailerSlide(item) {
   slide.innerHTML = `
     ${backdropPath ? `<img class="trailer-slide-poster" src="${backdropPath}" alt="${esc(title)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'">` : ''}
     <iframe class="trailer-slide-iframe" allow="autoplay; fullscreen; encrypted-media" allowfullscreen title="${esc(title)} clip" style="opacity:0;transition:opacity .4s"></iframe>
+    <span class="material-icons-round trailer-slide-pause-ind"></span>
     <div class="trailer-slide-gradient"></div>
     <div class="trailer-slide-content">
       <div class="trailer-slide-left">
@@ -7731,7 +7747,24 @@ function _buildTrailerSlide(item) {
 
   slide.addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
-    if (!btn) return;
+    if (!btn) {
+      // Tap on video area — toggle pause/play via YouTube postMessage
+      const iframe = slide.querySelector('.trailer-slide-iframe');
+      if (iframe?.src?.includes('youtube.com/embed')) {
+        const nowPaused = slide.dataset.clipsPaused !== '1';
+        const cmd = nowPaused ? 'pauseVideo' : 'playVideo';
+        iframe.contentWindow?.postMessage(`{"event":"command","func":"${cmd}","args":""}`, '*');
+        slide.dataset.clipsPaused = nowPaused ? '1' : '0';
+        const ind = slide.querySelector('.trailer-slide-pause-ind');
+        if (ind) {
+          ind.textContent = nowPaused ? 'pause' : 'play_arrow';
+          ind.classList.add('show');
+          clearTimeout(ind._hideT);
+          ind._hideT = setTimeout(() => ind.classList.remove('show'), 700);
+        }
+      }
+      return;
+    }
     const action = btn.dataset.action;
     if (action === 'watch') {
       openMedia(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
@@ -7786,7 +7819,7 @@ async function _fetchClipsLogo(id, type) {
     const u = new URL(`${TMDB_BASE}/${endpoint}/images`);
     u.searchParams.set('include_image_language', 'en,null');
     const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
-    if (!r.ok) throw new Error('logo fetch failed');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     const logos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
     const logo = logos.find(l => l.iso_639_1 === 'en' && l.file_path) ||
@@ -7794,7 +7827,8 @@ async function _fetchClipsLogo(id, type) {
     const url = logo ? `https://image.tmdb.org/t/p/w300${logo.file_path}` : null;
     _clipsLogoCache.set(k, url);
     return url;
-  } catch {
+  } catch (err) {
+    if (err?.message && !err.message.includes('no logo')) console.warn(`[SV ClipsLogo] ${k}:`, err.message);
     _clipsLogoCache.set(k, null);
     return null;
   }
@@ -7807,6 +7841,8 @@ async function _playTrailerSlide(slide) {
   const year = slide.dataset.year || '';
   const iframe = slide.querySelector('.trailer-slide-iframe');
   if (!iframe) return;
+  // Reset paused state when slide becomes active
+  slide.dataset.clipsPaused = '0';
 
   // Fetch English logo in parallel (non-blocking)
   const logoEl = slide.querySelector('.trailer-slide-logo');

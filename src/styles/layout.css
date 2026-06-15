@@ -395,13 +395,13 @@
 /* ── ROWS / SECTIONS ─────────────────────────────────────────────── */
 .section {
   padding: 0 3.5rem;
-  margin-bottom: 1.4rem;  /* reduced from 2.4rem */
+  margin-bottom: 0.7rem;
 }
 .sec-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: .9rem;
+  margin-bottom: .55rem;
 }
 .sec-title {
   font-family: 'Nunito', system-ui, sans-serif;
@@ -437,7 +437,7 @@
   display: flex;
   gap: .65rem;
   overflow-x: auto;
-  padding: .4rem 0 2rem;
+  padding: .3rem 0 1rem;
   scroll-snap-type: none;
   scrollbar-width: none;
   scroll-behavior: smooth;
