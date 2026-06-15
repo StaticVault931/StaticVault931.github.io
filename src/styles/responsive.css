@@ -301,16 +301,20 @@
 
   /* Person overlay goes full width */
   #person-panel { margin: 0 !important; border-radius: 0 !important; min-height: 100dvh; }
-  .person-layout { grid-template-columns: 1fr !important; }
-  .person-sidebar { position: static !important; flex-direction: row; align-items: flex-start; gap: 1rem; }
-  .person-photo { width: 90px !important; aspect-ratio: 2/3; }
-  .person-name { font-size: 1.3rem !important; }
+  .person-layout { grid-template-columns: 1fr !important; gap: 1.2rem !important; padding: 1.2rem !important; }
+  .person-sidebar { position: static !important; flex-direction: row; align-items: flex-start; gap: 1.1rem; }
+  .person-photo { width: 110px !important; aspect-ratio: 2/3; flex-shrink: 0; }
+  .person-name { font-size: 1.5rem !important; }
 }
 
 /* ── VERTICAL SCROLL on card rows: no snap on mobile ─────────────── */
 @media (max-width: 480px) {
-
-
   /* Show 2 partial cards to hint scrollability */
   :root { --card-w: 68vw; }
+
+  /* Profile editor: stack on mobile */
+  .profile-editor-body { flex-direction: column; align-items: center; }
+  .pe-avatar-col { width: 100%; align-items: center; }
+  .pe-quick-avatars { max-width: 100%; }
+  .pe-fields-col { width: 100%; }
 }

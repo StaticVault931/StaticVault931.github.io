@@ -47,10 +47,10 @@ export function makeCard(m, type, opts = {}) {
   const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);
   const rating = ratingVal ? ratingVal.toFixed(1) : '';
 
-  // Image: prefer backdrop for 16:9 cards, fall back to poster/coverImage
+  // Image: poster first (clean, portrait), backdrop as fallback only if no poster
   const backdrop = imgUrl(m.backdrop_path, 'w780');
   const poster = imgUrl(m.poster_path || m.coverImage_large, 'w342');
-  const imgSrc = backdrop || poster;
+  const imgSrc = poster || backdrop;
 
   const likedNow = isLiked(id);
   const wlNow = isInWatchlist(id);
@@ -115,7 +115,7 @@ export function makeCard(m, type, opts = {}) {
       ${showOverlayRating && rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
       ${numEl}
       <div class="card-img-title">
-        <img class="card-logo-img" src="" alt="" style="display:none" loading="lazy">
+        <img class="card-logo-img" alt="" style="display:none" loading="lazy">
         <div class="card-img-title-name">${esc(title)}</div>
         ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
       </div>

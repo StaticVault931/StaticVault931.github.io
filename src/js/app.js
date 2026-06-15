@@ -602,6 +602,22 @@ function registerAllSeeAll() {
   GENRES.forEach(g => {
     registerSeeAll('genre-' + g.id, p => tmdb('/discover/movie', { with_genres: g.id, sort_by: 'popularity.desc', page: p }));
   });
+
+  // Top list see-alls
+  registerSeeAll('top-rated-movies', p => tmdb('/movie/top_rated', { 'vote_count.gte': 1000, page: p }));
+  registerSeeAll('top-rated-tv',     p => tmdb('/tv/top_rated',    { 'vote_count.gte': 500,  page: p }).then(tagTv));
+
+  // Country / region trending see-alls
+  registerSeeAll('trend-jp', p => tmdb('/discover/movie', { with_original_language: 'ja', region: 'JP', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-kr', p => tmdb('/discover/movie', { with_original_language: 'ko', region: 'KR', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-gb', p => tmdb('/discover/movie', { region: 'GB', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: p }));
+  registerSeeAll('trend-in', p => tmdb('/discover/movie', { with_original_language: 'hi', region: 'IN', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-fr', p => tmdb('/discover/movie', { with_original_language: 'fr', region: 'FR', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-de', p => tmdb('/discover/movie', { with_original_language: 'de', region: 'DE', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-br', p => tmdb('/discover/movie', { with_original_language: 'pt', region: 'BR', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-es', p => tmdb('/discover/movie', { with_original_language: 'es', region: 'ES', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-mx', p => tmdb('/discover/movie', { with_original_language: 'es', region: 'MX', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
+  registerSeeAll('trend-it', p => tmdb('/discover/movie', { with_original_language: 'it', region: 'IT', sort_by: 'popularity.desc', 'vote_count.gte': 50, page: p }));
 }
 
 /* ── HERO ────────────────────────────────────────────────────────── */
@@ -851,6 +867,9 @@ async function loadHomeRows() {
     'row-weekend', 'row-hidden-gems', 'row-feel-good', 'row-intense',
     'row-documentary', 'row-international', 'row-teen-drama', 'row-sci-fi-tv', 'row-comfort',
     'row-discover-new',
+    'row-trend-jp', 'row-trend-kr', 'row-trend-gb', 'row-trend-in', 'row-trend-fr',
+    'row-trend-de', 'row-trend-br', 'row-trend-es', 'row-trend-mx', 'row-trend-it',
+    'row-imdb250', 'row-best-tv-ever',
   ];
 
   // ── INSTANT RENDER FROM CACHE ──────────────────────────────────────
@@ -995,11 +1014,26 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       return items.filter(Boolean);
     }},
     { id:'row-anime-home2',sec:'sec-anime-home2',type:'anime',fn:() => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
+    // Country / Region trending rows — one picked randomly per session
+    { id:'row-trend-jp', sec:'sec-trend-jp', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ja', region:'JP', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-kr', sec:'sec-trend-kr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ko', region:'KR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-gb', sec:'sec-trend-gb', type:null, fn:() => tmdb('/discover/movie', { region:'GB', sort_by:'popularity.desc', 'vote_count.gte':100, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-in', sec:'sec-trend-in', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'hi', region:'IN', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-fr', sec:'sec-trend-fr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'fr', region:'FR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-de', sec:'sec-trend-de', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'de', region:'DE', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-br', sec:'sec-trend-br', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'pt', region:'BR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-es', sec:'sec-trend-es', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'ES', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-mx', sec:'sec-trend-mx', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'MX', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-it', sec:'sec-trend-it', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'it', region:'IT', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    // Top lists
+    { id:'row-imdb250',    sec:'sec-imdb250',    type:'movie', fn:() => tmdb('/movie/top_rated', { 'vote_count.gte':1000, page:1 }).then(d => d.results||[]) },
+    { id:'row-best-tv-ever',sec:'sec-best-tv-ever',type:'tv', fn:() => tmdb('/tv/top_rated',    { 'vote_count.gte':500,  page:1 }).then(d => d.results||[]) },
   ];
 
   // Hide all pool sections by default; show only the selected ones
-  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes', 'row-sequels', 'row-new-to-you']; // always show these
-  const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id));
+  const COUNTRY_ROW_IDS = ['row-trend-jp','row-trend-kr','row-trend-gb','row-trend-in','row-trend-fr','row-trend-de','row-trend-br','row-trend-es','row-trend-mx','row-trend-it'];
+  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes', 'row-sequels', 'row-new-to-you', 'row-imdb250', 'row-best-tv-ever']; // always show these
+  const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id) && !COUNTRY_ROW_IDS.includes(r.id));
   const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
   let stdSelected = [];
   try { stdSelected = JSON.parse(sessionStorage.getItem(stdSessionKey) || '[]'); } catch {}
@@ -1013,7 +1047,9 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       byType.tv[Math.floor(Math.random() * byType.tv.length)],
       byType.anime[Math.floor(Math.random() * byType.anime.length)],
     ].filter((id, i, a) => id && a.indexOf(id) === i); // deduplicate
-    stdSelected = picks;
+    // Also pick 2 random country rows per session
+    const countryPicks = [...COUNTRY_ROW_IDS].sort(() => Math.random() - .5).slice(0, 2);
+    stdSelected = [...picks, ...countryPicks];
     sessionStorage.setItem(stdSessionKey, JSON.stringify(stdSelected));
   }
   const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
@@ -3088,15 +3124,13 @@ function initEventDelegation() {
     }
   });
 
-  // Library provider buttons (both old tab cards and new inline row) → filter search
+  // Library provider buttons → open provider page (not search)
   document.getElementById('page-library')?.addEventListener('click', e => {
     const card = e.target.closest('.lib-prov-card, .lib-qp-btn');
     if (!card) return;
     const id = +card.dataset.provId;
     const name = card.dataset.provName || '';
-    setProviderFilter(id ? { id, name } : null);
-    goPage('search');
-    requestAnimationFrame(() => loadEverything(true));
+    if (id) openProviderPage(id, name);
   });
 
   // Age warn buttons
@@ -5691,7 +5725,7 @@ export async function openPersonPage(personId) {
 
     if (nameEl)  nameEl.textContent = person.name || '';
     if (photoEl) {
-      photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w342') : '';
+      photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w500') : '';
       photoEl.alt = person.name || '';
       photoEl.style.display = person.profile_path ? '' : 'none';
     }
@@ -5736,10 +5770,11 @@ function loadPersonCredits(personId, type) {
   } else {
     items = (ov._credits.cast || []).filter(m => m.media_type === type);
   }
-  items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  // Sort by vote_count * vote_average — most culturally significant works first
+  items.sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)));
   const seen = new Set();
   items = items.filter(m => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; });
-  const html = items.slice(0, 40).map(m => makeCard(m, m.media_type || type)).join('');
+  const html = items.slice(0, 60).map(m => makeCard(m, m.media_type || type)).join('');
   grid.innerHTML = html || `<p style="color:var(--muted);padding:1rem;text-align:center;">No credits found.</p>`;
 }
 
@@ -6108,16 +6143,42 @@ function openProfileEditor(profileId) {
   const deleteBtn = document.getElementById('profile-delete-btn');
   const colorRow = document.getElementById('profile-color-row');
   if (title) title.textContent = profile ? 'Edit Profile' : 'New Profile';
-  if (nameInput) nameInput.value = profile?.name || '';
+  if (nameInput) { nameInput.value = profile?.name || ''; setTimeout(() => nameInput.focus(), 100); }
   if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
   const color = profile?.color || '#e50914';
+  const currentAvatar = profile?.avatar || '';
   if (preview) {
     preview.style.background = color && color !== 'transparent' ? color : 'transparent';
-    preview.innerHTML = profile?.avatar
-      ? `<img src="${esc(profile.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+    preview.innerHTML = currentAvatar
+      ? `<img src="${esc(currentAvatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
       : `<span class="material-icons-round">person</span>`;
   }
+  // Highlight active quick avatar
+  ov.querySelectorAll('.pe-quick-avatar').forEach(el => {
+    el.classList.toggle('on', el.dataset.avatar === currentAvatar);
+  });
   colorRow?.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s.dataset.color === color));
+
+  // Wire quick avatar clicks (once per open — check wired flag)
+  if (!ov._quickAvatarWired) {
+    ov._quickAvatarWired = true;
+    ov.addEventListener('click', e => {
+      const qa = e.target.closest('.pe-quick-avatar');
+      if (!qa) return;
+      const avatarUrl = qa.dataset.avatar || '';
+      const colorRow2 = document.getElementById('profile-color-row');
+      const activeColor = colorRow2?.querySelector('.profile-color-swatch.on')?.dataset.color || '#e50914';
+      const previewEl = document.getElementById('profile-avatar-preview');
+      if (previewEl) {
+        previewEl.style.background = avatarUrl ? 'transparent' : (activeColor !== 'transparent' ? activeColor : '#e50914');
+        previewEl.innerHTML = avatarUrl
+          ? `<img src="${esc(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+          : `<span class="material-icons-round">person</span>`;
+      }
+      ov.querySelectorAll('.pe-quick-avatar').forEach(el => el.classList.toggle('on', el === qa));
+    });
+  }
+
   ov.classList.add('open');
 }
 
@@ -6130,8 +6191,10 @@ function saveProfileFromEditor() {
   const name = (document.getElementById('profile-name-input')?.value || '').trim() || 'Profile';
   const colorRow = document.getElementById('profile-color-row');
   const color = colorRow?.querySelector('.profile-color-swatch.on')?.dataset.color || '#e50914';
+  // Get avatar from: active quick-avatar chip, or preview img src
+  const activeQA = document.getElementById('profile-editor-overlay')?.querySelector('.pe-quick-avatar.on');
   const avatarImg = document.getElementById('profile-avatar-preview')?.querySelector('img');
-  const avatar = avatarImg?.src || null;
+  const avatar = activeQA != null ? (activeQA.dataset.avatar || null) : (avatarImg?.src || null);
   if (_editingProfileId) {
     updateProfile(_editingProfileId, { name, color, avatar });
     toast('Profile updated!', 'check_circle');
@@ -6763,12 +6826,14 @@ async function _loadCardLogo(card) {
 
   try {
     const ep = type === 'anime' ? 'tv' : type;
-    const data = await tmdb(`/${ep}/${id}/images`, { include_image_language: 'en,null' });
-    const logos = (data.logos || [])
-      .filter(l => l.iso_639_1 === 'en' && l.file_path)
-      .sort((a, b) => b.vote_average - a.vote_average);
-    // Fallback: accept any-language logo if no English one
-    const best = logos[0] || (data.logos || []).sort((a, b) => b.vote_average - a.vote_average)[0];
+    // Direct fetch — avoid tmdb() adding language=en-US which overrides include_image_language in Firefox
+    const u = new URL(`${TMDB_BASE}/${ep}/${id}/images`);
+    u.searchParams.set('include_image_language', 'en,null');
+    const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
+    if (!r.ok) throw new Error('logo fetch failed');
+    const data = await r.json();
+    const allLogos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+    const best = allLogos.find(l => l.iso_639_1 === 'en' && l.file_path) || allLogos.find(l => l.file_path);
     const url = best ? `https://image.tmdb.org/t/p/w300${best.file_path}` : null;
     _logoCache.set(id, url);
     if (url) _applyCardLogo(card, url);
@@ -7300,7 +7365,7 @@ function positionNetflixCard(card, nc) {
 }
 
 /* ── CLIPS FEED (YouTube Shorts / TikTok style) ─────────────────── */
-let _trailersMuted = false; // unmuted by default
+let _trailersMuted = true; // start muted — autoplay requires mute; user clicks M to unmute
 let _trailersObserver = null;
 let _trailersPage = 1;
 let _trailersLoading = false;
@@ -7318,16 +7383,26 @@ function _saveClipsDwellPrefs() {
 // Score a clip item based on user preferences (higher = more relevant)
 function _scoreClipItem(item) {
   const prefGenres = new Set(state.prefGenres || []);
+  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
   const genreIds = item.genre_ids || [];
   let score = 0;
   genreIds.forEach(g => {
-    if (prefGenres.has(String(g))) score += 2;
-    score += (_clipsDwellPrefs.get(g) || 0);
+    if (prefGenres.has(String(g))) score += 2.5;
+    score += (_clipsDwellPrefs.get(g) || 0) * 1.5; // amplify dwell signal
   });
-  // Boost continue-watching items (user is already invested)
-  if (state.continueWatching?.[item.id]) score += 3;
-  // Reduce score for already-watched items
+  // Strong boost: watchlisted (user wants to watch but hasn't yet — perfect clip)
+  if ((state.watchlist || []).some(w => w.id === item.id)) score += 4;
+  // Mild boost: continue watching (already invested)
+  if (state.continueWatching?.[item.id]) score += 2;
+  // Liked items should still show (maybe they want to re-discover)
+  if ((state.liked || []).some(l => l.id === item.id)) score += 1;
+  // Penalty: disliked items
+  if (dislikedIds.has(item.id)) score -= 8;
+  // Penalty: recently viewed (already know about it)
   if (state.recentlyViewed?.some(r => r.id === item.id)) score -= 2;
+  // Quality signal: boost high-rated content slightly
+  const quality = (item.vote_average || 0) - 5; // positive for >5, negative for <5
+  score += quality * 0.3;
   return score;
 }
 
@@ -7531,22 +7606,55 @@ async function _loadMoreTrailers() {
   const spinner = document.getElementById('clips-spinner');
   if (spinner) spinner.style.display = '';
   try {
-    const [r1, r2] = await Promise.allSettled([
-      tmdb('/trending/movie/week', { page: _trailersPage }),
-      tmdb('/trending/tv/week',    { page: _trailersPage }),
-    ]);
-    const movies = (r1.status === 'fulfilled' ? r1.value.results || [] : []).map(m => ({ ...m, _type: 'movie' }));
-    const shows  = (r2.status === 'fulfilled' ? r2.value.results || [] : []).map(m => ({ ...m, _type: 'tv' }));
+    // On page 1: always use trending for fresh content
+    // On later pages: mix trending with genre-targeted picks from dwell prefs
+    let movies = [], shows = [];
+    if (_trailersPage <= 2) {
+      const [r1, r2] = await Promise.allSettled([
+        tmdb('/trending/movie/week', { page: _trailersPage }),
+        tmdb('/trending/tv/week',    { page: _trailersPage }),
+      ]);
+      movies = (r1.status === 'fulfilled' ? r1.value.results || [] : []).map(m => ({ ...m, _type: 'movie' }));
+      shows  = (r2.status === 'fulfilled' ? r2.value.results || [] : []).map(m => ({ ...m, _type: 'tv' }));
+    } else {
+      // After page 2: blend trending + genre-targeted based on dwell prefs + user preferences
+      const topDwellGenres = [..._clipsDwellPrefs.entries()]
+        .filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([g]) => g);
+      const prefGenres = (state.prefGenres || []).slice(0, 2).map(Number);
+      const genreIds = [...new Set([...topDwellGenres, ...prefGenres])].slice(0, 2);
+
+      const baseRequests = [
+        tmdb('/trending/movie/week', { page: _trailersPage }),
+        tmdb('/trending/tv/week',    { page: _trailersPage }),
+      ];
+      const genreRequests = genreIds.length ? [
+        tmdb('/discover/movie', { with_genres: genreIds[0], sort_by: 'vote_average.desc', 'vote_count.gte': 200, page: Math.ceil(Math.random() * 3) }),
+        genreIds[1] ? tmdb('/discover/tv', { with_genres: genreIds[1], sort_by: 'popularity.desc', page: Math.ceil(Math.random() * 3) }) : Promise.resolve(null),
+      ] : [];
+
+      const allResults = await Promise.allSettled([...baseRequests, ...genreRequests]);
+      movies = (allResults[0].status === 'fulfilled' ? allResults[0].value?.results || [] : []).map(m => ({ ...m, _type: 'movie' }));
+      shows  = (allResults[1].status === 'fulfilled' ? allResults[1].value?.results || [] : []).map(m => ({ ...m, _type: 'tv' }));
+      if (allResults[2]?.status === 'fulfilled' && allResults[2].value?.results) {
+        movies.push(...allResults[2].value.results.map(m => ({ ...m, _type: 'movie' })));
+      }
+      if (allResults[3]?.status === 'fulfilled' && allResults[3].value?.results) {
+        shows.push(...allResults[3].value.results.map(m => ({ ...m, _type: 'tv' })));
+      }
+    }
 
     // Merge, deduplicate, filter excluded, then sort by personalization score
     const existIds = new Set(_trailersItems.map(i => `${i._type}-${i.id}`));
     const watchlistIds = new Set((state.watchlist || []).map(w => w.id));
     const recentIds = new Set((state.recentlyViewed || []).map(r => r.id));
 
+    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
     const combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
-      if (watchlistIds.has(i.id)) return false; // already bookmarked
-      if (recentIds.has(i.id) && (state._repeatTolerance === 'minimum' || !state._repeatTolerance)) return false;
+      // Never show disliked content in clips
+      if (dislikedIds.has(i.id)) return false;
+      // Suppress recently-viewed on low repeat tolerance (but watchlisted items always show)
+      if (recentIds.has(i.id) && !watchlistIds.has(i.id) && (state._repeatTolerance === 'minimum' || !state._repeatTolerance)) return false;
       return true;
     });
 
@@ -7667,18 +7775,23 @@ function _buildTrailerSlide(item) {
   return slide;
 }
 
-// Fetch English title logo for a clip slide (cached in sessionStorage)
+// Fetch English title logo for a clip slide (direct fetch, no language filter override)
 const _clipsLogoCache = new Map();
 async function _fetchClipsLogo(id, type) {
   const k = `${type}-${id}`;
   if (_clipsLogoCache.has(k)) return _clipsLogoCache.get(k);
   try {
     const endpoint = type === 'tv' ? `tv/${id}` : `movie/${id}`;
-    const data = await tmdb(`/${endpoint}/images`, { include_image_language: 'en,null' });
-    const logos = data.logos || [];
+    // Direct fetch — avoid tmdb() which adds language=en-US that can override include_image_language
+    const u = new URL(`${TMDB_BASE}/${endpoint}/images`);
+    u.searchParams.set('include_image_language', 'en,null');
+    const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
+    if (!r.ok) throw new Error('logo fetch failed');
+    const data = await r.json();
+    const logos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
     const logo = logos.find(l => l.iso_639_1 === 'en' && l.file_path) ||
                  logos.find(l => !l.iso_639_1 && l.file_path);
-    const url = logo ? `https://image.tmdb.org/t/p/w500${logo.file_path}` : null;
+    const url = logo ? `https://image.tmdb.org/t/p/w300${logo.file_path}` : null;
     _clipsLogoCache.set(k, url);
     return url;
   } catch {

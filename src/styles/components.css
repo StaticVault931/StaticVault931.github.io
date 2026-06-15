@@ -107,18 +107,23 @@
 /* TMDB title-treatment logo — horizontal text image */
 .card-logo-img {
   display: block;
-  max-height: 52px;
-  max-width: calc(100% - 58px);
+  max-height: 56px;
+  max-width: calc(100% - 54px);
   width: auto;
   object-fit: contain;
-  object-position: left bottom;
+  object-position: left center;
   filter: drop-shadow(0 1px 8px rgba(0,0,0,1)) drop-shadow(0 2px 16px rgba(0,0,0,.8));
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   opacity: 0;
   transition: opacity .3s ease;
 }
 .card-logo-img.loaded {
   opacity: 1;
+}
+/* Push logo right of the number overlay on numbered rows */
+.card:has(.card-num-overlay) .card-logo-img {
+  margin-left: 3rem;
+  max-width: calc(100% - 3rem - 54px);
 }
 /* When logo is showing, hide the plain text title */
 .card-logo-img.loaded ~ .card-img-title-name,
@@ -1963,38 +1968,40 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 /* Two-column layout: sidebar (info) + main content (credits) */
 .person-layout {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 2rem;
+  grid-template-columns: 260px 1fr;
+  gap: 2.2rem;
   align-items: start;
-  padding: 1.8rem;
+  padding: 2rem;
 }
 
 /* LEFT SIDEBAR */
 .person-sidebar {
   position: sticky; top: 0;
-  display: flex; flex-direction: column; gap: .75rem;
+  display: flex; flex-direction: column; gap: .85rem;
 }
 .person-photo {
-  width: 100%; aspect-ratio: 2/3; border-radius: 12px;
+  width: 100%; aspect-ratio: 2/3; border-radius: 14px;
   object-fit: cover; background: var(--s3);
-  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
 }
 .person-name {
   font-family: 'Bebas Neue', Impact, sans-serif;
-  font-size: 1.7rem; letter-spacing: .04em; text-transform: uppercase;
+  font-size: 2rem; letter-spacing: .04em; text-transform: uppercase;
   line-height: 1.1; margin: 0;
 }
 .person-meta { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .2rem; }
 .person-meta-item {
   font-size: .72rem; color: var(--muted); background: var(--s3);
-  padding: .15rem .55rem; border-radius: 4px;
+  border: 1px solid var(--border2);
+  padding: .2rem .6rem; border-radius: 5px;
 }
 .person-bio {
-  font-size: .8rem; color: var(--muted); line-height: 1.6;
-  /* Always show full bio — person page has its own scroll */
+  font-size: .82rem; color: var(--muted); line-height: 1.7;
+  border-left: 2px solid var(--border2);
+  padding-left: .65rem;
   overflow: visible;
 }
-.person-bio.expanded { overflow: visible; } /* kept for compat */
+.person-bio.expanded { overflow: visible; }
 
 /* MIDDLE CONTENT */
 .person-content { min-width: 0; }
@@ -2126,17 +2133,17 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 
 /* ── Profile Editor ──────────────────────────────────────────────── */
 .profile-editor-panel {
-  background: var(--s1); border-radius: 18px; width: 100%; max-width: 460px;
+  background: var(--s1); border-radius: 18px; width: 100%; max-width: 560px;
   overflow: hidden; box-shadow: 0 60px 180px rgba(0,0,0,.98);
   animation: modalIn .24s var(--ease);
 }
 .profile-editor-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 1.4rem 1.6rem; border-bottom: 1px solid var(--border);
+  padding: 1.2rem 1.6rem; border-bottom: 1px solid var(--border);
   background: var(--s2);
 }
 .profile-editor-header h2 {
-  font-family: 'Bebas Neue', Impact, sans-serif; font-size: 1.5rem;
+  font-family: 'Bebas Neue', Impact, sans-serif; font-size: 1.6rem;
   letter-spacing: .05em; text-transform: uppercase;
 }
 #profile-editor-close {
@@ -2146,14 +2153,44 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   transition: background .18s, transform .18s;
 }
 #profile-editor-close:hover { background: var(--red); transform: rotate(90deg); }
-.profile-editor-body { padding: 1.6rem; display: flex; flex-direction: column; gap: 1.2rem; }
+.profile-editor-body {
+  padding: 1.6rem; display: flex; gap: 1.5rem; align-items: flex-start;
+}
+/* Avatar column */
+.pe-avatar-col {
+  display: flex; flex-direction: column; align-items: center; gap: .75rem; flex-shrink: 0;
+}
+.pe-quick-avatars {
+  display: flex; gap: .4rem; flex-wrap: wrap; justify-content: center;
+  max-width: 120px;
+}
+.pe-quick-avatar {
+  width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
+  background: var(--s3); border: 2px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color .15s, transform .15s;
+  flex-shrink: 0;
+}
+.pe-quick-avatar:hover { border-color: var(--red); transform: scale(1.12); }
+.pe-quick-avatar.on { border-color: #fff; }
+.pe-quick-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pe-quick-avatar .material-icons-round { font-size: 1rem; color: var(--muted); }
+.pe-more-avatars-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px dashed var(--border2);
+  background: var(--s2); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--muted); transition: border-color .15s, color .15s;
+}
+.pe-more-avatars-btn:hover { border-color: var(--red); color: var(--red); }
+.pe-more-avatars-btn .material-icons-round { font-size: 1rem; }
+/* Fields column */
+.pe-fields-col { flex: 1; display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
 .profile-avatar-picker { display: flex; align-items: center; gap: 1.2rem; }
 .profile-avatar-preview {
-  width: 88px; height: 88px; border-radius: 14px; background: var(--red);
+  width: 100px; height: 100px; border-radius: 50%; background: var(--red);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.4);
 }
-.profile-avatar-preview .material-icons-round { font-size: 2.4rem; color: rgba(255,255,255,.85); }
+.profile-avatar-preview .material-icons-round { font-size: 2.8rem; color: rgba(255,255,255,.85); }
 .profile-change-avatar-btn {
   display: flex; align-items: center; gap: .45rem;
   padding: .55rem 1.1rem; border-radius: var(--r);
@@ -2184,9 +2221,11 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .profile-color-swatch:hover { transform: scale(1.2); }
 .profile-color-swatch.on { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 0 3px rgba(255,255,255,.3); }
 .profile-editor-actions {
-  display: flex; gap: .6rem; padding: 0 1.6rem 1.6rem;
+  display: flex; gap: .6rem; margin-top: .5rem;
 }
 .profile-editor-actions button { flex: 1; }
+.ma.danger { background: rgba(220,38,38,.15); border: 1.5px solid rgba(220,38,38,.4); color: #f87171; }
+.ma.danger:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 .profile-btn { border-radius: 50% !important; overflow: hidden; }
 .profile-avatar-mini {
   width: 26px; height: 26px; border-radius: 50%; display: flex;
@@ -2439,26 +2478,6 @@ img[alt]::after {
 /* Sections inside company overlay match home page style */
 #company-row-view .section { padding: 0 2rem; margin-bottom: 1rem; }
 
-/* ── PERSON PAGE IMPROVEMENTS ──────────────────────────────────────── */
-/* Better person panel header area */
-#person-panel { min-height: min-content; }
-.person-name {
-  font-size: 1.8rem;
-}
-/* Person meta chips */
-.person-meta-item {
-  background: var(--s3); border: 1px solid var(--border2);
-  border-radius: 5px; padding: .2rem .6rem;
-}
-/* Improve person bio readability */
-.person-bio {
-  font-size: .82rem;
-  line-height: 1.7;
-  color: var(--muted);
-  border-left: 2px solid var(--border2);
-  padding-left: .65rem;
-  margin-top: .3rem;
-}
 
 /* ── COMPANY / PROVIDER OVERLAY: polish ───────────────────────────── */
 /* Better hero gradient for company pages */
@@ -2613,6 +2632,7 @@ img[alt]::after {
   height: 100%;
   border: none;
   z-index: 1;
+  pointer-events: none; /* prevents iframe from stealing scroll/wheel events */
 }
 .trailer-slide-gradient {
   position: absolute;
@@ -2635,14 +2655,14 @@ img[alt]::after {
   min-width: 0;
 }
 .trailer-slide-logo {
-  max-width: 210px;
-  max-height: 82px;
+  max-width: clamp(160px, 50%, 340px);
+  max-height: 100px;
   width: auto;
   height: auto;
   object-fit: contain;
   object-position: left center;
-  margin-bottom: .3rem;
-  filter: drop-shadow(0 2px 10px rgba(0,0,0,.7));
+  margin-bottom: .5rem;
+  filter: drop-shadow(0 2px 14px rgba(0,0,0,.9)) drop-shadow(0 0 4px rgba(0,0,0,.6));
 }
 .trailer-slide-title {
   font-family: 'Bebas Neue', Impact, sans-serif;

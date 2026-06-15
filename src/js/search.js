@@ -18,6 +18,23 @@ let _filters = {
 // Provider filter state
 let _providerFilter = null; // { id, name } | null
 
+// "Not on my services" filter state
+let _excludeMyServices = false;
+let _myProviders = new Set(JSON.parse(localStorage.getItem('sv_my_providers') || '[]'));
+function _saveMyProviders() { localStorage.setItem('sv_my_providers', JSON.stringify([..._myProviders])); }
+
+const _MY_PROV_LIST = [
+  { id: 8,    name: 'Netflix' },
+  { id: 337,  name: 'Disney+' },
+  { id: 9,    name: 'Prime Video' },
+  { id: 1899, name: 'Max' },
+  { id: 15,   name: 'Hulu' },
+  { id: 350,  name: 'Apple TV+' },
+  { id: 531,  name: 'Paramount+' },
+  { id: 386,  name: 'Peacock' },
+  { id: 283,  name: 'Crunchyroll' },
+];
+
 // Everything browse state
 let _everythingSort = 'popularity.desc';
 let _everythingPage = 1;
@@ -148,12 +165,22 @@ export function buildSearchFilters(container) {
         <button class="sf-prov-chip${!_providerFilter ? ' on' : ''}" data-prov-id="" data-prov-name="">Any Provider</button>
         <button class="sf-prov-chip${_providerFilter?.id === 8 ? ' on' : ''}" data-prov-id="8" data-prov-name="Netflix">Netflix</button>
         <button class="sf-prov-chip${_providerFilter?.id === 337 ? ' on' : ''}" data-prov-id="337" data-prov-name="Disney+">Disney+</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 9 ? ' on' : ''}" data-prov-id="9" data-prov-name="Amazon">Amazon</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 384 ? ' on' : ''}" data-prov-id="384" data-prov-name="HBO Max">Max</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 9 ? ' on' : ''}" data-prov-id="9" data-prov-name="Prime Video">Prime Video</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 1899 ? ' on' : ''}" data-prov-id="1899" data-prov-name="Max">Max</button>
         <button class="sf-prov-chip${_providerFilter?.id === 15 ? ' on' : ''}" data-prov-id="15" data-prov-name="Hulu">Hulu</button>
         <button class="sf-prov-chip${_providerFilter?.id === 350 ? ' on' : ''}" data-prov-id="350" data-prov-name="Apple TV+">Apple TV+</button>
         <button class="sf-prov-chip${_providerFilter?.id === 531 ? ' on' : ''}" data-prov-id="531" data-prov-name="Paramount+">Paramount+</button>
+        <button class="sf-prov-chip${_providerFilter?.id === 386 ? ' on' : ''}" data-prov-id="386" data-prov-name="Peacock">Peacock</button>
         <button class="sf-prov-chip${_providerFilter?.id === 283 ? ' on' : ''}" data-prov-id="283" data-prov-name="Crunchyroll">Crunchyroll</button>
+      </div>
+      <!-- Not on my services row -->
+      <div class="sf-filter-row sf-exclude-row">
+        <span class="sf-filter-label" style="font-size:.75rem;font-weight:700;color:var(--dim);align-self:center">Not on my services:</span>
+        <button class="sf-exclude-toggle${_excludeMyServices ? ' on' : ''}" id="sf-exclude-btn" title="Show only content not available on your selected subscriptions">
+          <span class="material-icons-round" style="font-size:.9rem">${_excludeMyServices ? 'toggle_on' : 'toggle_off'}</span>
+          ${_excludeMyServices ? 'Active' : 'Off'}
+        </button>
+        ${_MY_PROV_LIST.map(p => `<button class="sf-my-prov-chip${_myProviders.has(p.id) ? ' on' : ''}" data-my-prov="${p.id}" title="I subscribe to ${p.name}">${p.name}</button>`).join('')}
       </div>
     </div>`;
 
@@ -203,8 +230,11 @@ export function buildSearchFilters(container) {
   document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
     _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null };
     _providerFilter = null;
+    _excludeMyServices = false;
     container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
     container.querySelectorAll('.sf-prov-chip').forEach((c, i) => c.classList.toggle('on', i === 0));
+    const btn = document.getElementById('sf-exclude-btn');
+    if (btn) { btn.classList.remove('on'); btn.innerHTML = `<span class="material-icons-round" style="font-size:.9rem">toggle_off</span>Off`; }
     loadSearchDefault();
   });
 
@@ -222,6 +252,38 @@ export function buildSearchFilters(container) {
       else browseByFilters();
     });
   });
+
+  // "Not on my services" — toggle button
+  document.getElementById('sf-exclude-btn')?.addEventListener('click', () => {
+    _excludeMyServices = !_excludeMyServices;
+    const btn = document.getElementById('sf-exclude-btn');
+    if (btn) {
+      btn.classList.toggle('on', _excludeMyServices);
+      btn.innerHTML = `<span class="material-icons-round" style="font-size:.9rem">${_excludeMyServices ? 'toggle_on' : 'toggle_off'}</span>${_excludeMyServices ? 'Active' : 'Off'}`;
+    }
+    const inp = document.getElementById('search-input');
+    const q = inp?.value.trim();
+    if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
+    else if (_sfActive === 'everything') loadEverything();
+    else browseByFilters();
+  });
+
+  // "My subscriptions" — multi-select chips
+  container.querySelectorAll('.sf-my-prov-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = +chip.dataset.myProv;
+      if (_myProviders.has(id)) _myProviders.delete(id); else _myProviders.add(id);
+      chip.classList.toggle('on', _myProviders.has(id));
+      _saveMyProviders();
+      if (_excludeMyServices) {
+        const inp = document.getElementById('search-input');
+        const q = inp?.value.trim();
+        if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
+        else if (_sfActive === 'everything') loadEverything();
+        else browseByFilters();
+      }
+    });
+  });
 }
 
 async function browseByFilters() {
@@ -236,6 +298,7 @@ async function browseByFilters() {
     if (_filters.minRating) params['vote_average.gte'] = _filters.minRating;
     if (_filters.language) params.with_original_language = _filters.language;
     if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
+    if (_excludeMyServices && _myProviders.size > 0) { params.without_watch_providers = [..._myProviders].join('|'); params.watch_region = 'US'; }
     if (_filters.yearFrom && _filters.contentType !== 'tv') params['primary_release_date.gte'] = `${_filters.yearFrom}-01-01`;
     if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
     if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
@@ -331,8 +394,20 @@ function titleSimilarity(query, title) {
   if (t.startsWith(q)) return 1;
   if (t.includes(q)) return 2;
   const dist = levenshtein(q, t);
-  // Only count as "close" if edit distance is small relative to query length
   return dist <= Math.ceil(q.length * 0.3) ? 3 + dist : 999;
+}
+
+// Compute a single relevance score (higher = more relevant to show first)
+function computeRelevance(item, qLow) {
+  const title = (item.title || item.name || item.romaji || '').toLowerCase();
+  const sim = titleSimilarity(qLow, title);
+  // Title match: exact=500, starts-with=400, contains=200, close=100, else=0
+  const titleScore = sim === 0 ? 500 : sim === 1 ? 400 : sim === 2 ? 200 : sim <= 6 ? 100 : 0;
+  // Quality signal: log-weighted vote count × rating (normalised to 0-100)
+  const quality = Math.log10((item.vote_count || 1) + 1) * (item.vote_average || item.averageScore || 0);
+  // Popularity signal (small weight so quality/title win)
+  const pop = Math.log10((item.popularity || 1) + 1);
+  return titleScore + quality * 3 + pop;
 }
 
 // Build a variant spelling list for a query (catches common misspellings)
@@ -639,6 +714,7 @@ export async function loadEverything(reset = true) {
     'vote_count.gte': _everythingSort.startsWith('vote_average') ? 200 : 10,
   };
   if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
+  if (_excludeMyServices && _myProviders.size > 0) { params.without_watch_providers = [..._myProviders].join('|'); params.watch_region = 'US'; }
 
   try {
     let items = [];
@@ -917,8 +993,13 @@ export async function doSearch(q) {
 async function fetchSearchPage(q, page) {
   let _personResults = [];
 
+  // Extract year from query (e.g. "Die Hard 1988" → query="Die Hard", year=1988)
+  const yearMatch = q.match(/\b(19[5-9]\d|20[0-2]\d)\b/);
+  const yearHint = yearMatch ? parseInt(yearMatch[0]) : null;
+  const qClean = yearHint ? q.replace(yearMatch[0], '').trim() : q;
+
   // Person search — only for queries that look like names (2+ words) or when results are sparse
-  const looksLikeName = q.trim().split(/\s+/).length >= 2 && !/[0-9:!?]/.test(q);
+  const looksLikeName = qClean.trim().split(/\s+/).length >= 2 && !/[0-9:!?]/.test(qClean);
 
   // ── Run movie / TV / anime searches IN PARALLEL for speed ──────────
   const wantMovies = _sfActive !== 'tv' && _sfActive !== 'anime';
@@ -927,9 +1008,9 @@ async function fetchSearchPage(q, page) {
   const aniGQL = `query($s:String,$p:Int){Page(page:$p,perPage:20){media(type:ANIME,search:$s,isAdult:false,sort:[POPULARITY_DESC]){id title{romaji english}coverImage{large}averageScore startDate{year}description(asHtml:false)popularity}}}`;
 
   const [movieRes, tvRes, animeRes] = await Promise.allSettled([
-    wantMovies ? tmdb('/search/movie', { query: q, page }) : Promise.resolve(null),
-    wantTV     ? tmdb('/search/tv',    { query: q, page }) : Promise.resolve(null),
-    wantAnime  ? aniQuery(aniGQL, { s: q, p: page })       : Promise.resolve(null),
+    wantMovies ? tmdb('/search/movie', { query: qClean, page, ...(yearHint ? { year: yearHint } : {}) }) : Promise.resolve(null),
+    wantTV     ? tmdb('/search/tv',    { query: qClean, page, ...(yearHint ? { first_air_date_year: yearHint } : {}) }) : Promise.resolve(null),
+    wantAnime  ? aniQuery(aniGQL, { s: qClean, p: page })       : Promise.resolve(null),
   ]);
 
   const movies = (movieRes.status === 'fulfilled' && movieRes.value?.results)
@@ -960,29 +1041,26 @@ async function fetchSearchPage(q, page) {
     }
   });
 
-  // ── SORT: movies/TV first, anime last unless exact/close match ──────
-  // Anime comes last by default — only float to top if it's clearly what the user searched
-  if (_sfActive === 'all') {
-    const qLow = q.toLowerCase().trim();
-    all.sort((a, b) => {
-      const aIsAnime = a._type === 'anime';
-      const bIsAnime = b._type === 'anime';
-      const aSim = titleSimilarity(qLow, a.title || a.name || '');
-      const bSim = titleSimilarity(qLow, b.title || b.name || '');
-      const aExact = aSim <= 2;
-      const bExact = bSim <= 2;
-      // If one is an exact/close anime match and the other isn't, anime wins
-      if (aIsAnime && bIsAnime) return (b.popularity || 0) - (a.popularity || 0);
-      if (aIsAnime && aExact && !(bIsAnime)) return -1; // anime exact match floats up
-      if (bIsAnime && bExact && !(aIsAnime)) return 1;
-      if (aIsAnime && !bIsAnime) return 1;  // anime goes below movies/TV
-      if (!aIsAnime && bIsAnime) return -1;
-      // Both same category — sort by popularity
-      return (b.popularity || 0) - (a.popularity || 0);
-    });
-  } else {
-    all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  }
+  // ── SORT: relevance (title match + quality) with anime de-prioritised ──
+  const qLow = (yearHint ? qClean : q).toLowerCase().trim();
+  all.sort((a, b) => {
+    const aIsAnime = a._type === 'anime';
+    const bIsAnime = b._type === 'anime';
+    const aRel = computeRelevance(a, qLow);
+    const bRel = computeRelevance(b, qLow);
+    const aSim = titleSimilarity(qLow, a.title || a.name || '');
+    const bSim = titleSimilarity(qLow, b.title || b.name || '');
+    const aExact = aSim <= 2;
+    const bExact = bSim <= 2;
+    // In 'all' mode: anime only beats non-anime on exact title match
+    if (_sfActive === 'all') {
+      if (aIsAnime && !bIsAnime && aExact && !bExact) return -1;
+      if (bIsAnime && !aIsAnime && bExact && !aExact) return 1;
+      if (aIsAnime && !bIsAnime && !aExact) return 1;
+      if (bIsAnime && !aIsAnime && !bExact) return -1;
+    }
+    return bRel - aRel;
+  });
 
   // Apply language filter
   if (_filters.language) {
@@ -998,10 +1076,10 @@ async function fetchSearchPage(q, page) {
 
   // Fuzzy fallbacks if first page has too few results
   if (page === 1 && all.length < 4 && _sfActive !== 'anime') {
-    const normalized = normalizeQuery(q);
-    const noSpaces = normalizeNoSpaces(q);
+    const normalized = normalizeQuery(qClean);
+    const noSpaces = normalizeNoSpaces(qClean);
     // Levenshtein-based variants (catches "jurrasic world", "avengrs", etc.)
-    const typoVariants = queryVariants(q);
+    const typoVariants = queryVariants(qClean);
 
     const fallbackQueries = [
       normalized !== q ? normalized : null,
@@ -1070,7 +1148,7 @@ async function fetchSearchPage(q, page) {
   // Only do person search if query looks like a name or we need more results
   if ((looksLikeName || all.length < 4) && page === 1 && (_sfActive === 'all' || _sfActive === 'movie' || _sfActive === 'tv')) {
     try {
-      const personData = await tmdb('/search/person', { query: q });
+      const personData = await tmdb('/search/person', { query: qClean });
       const people = (personData.results || []).slice(0, 2).filter(p => p.known_for_department);
       // Fetch all person credits in parallel
       const creditResults = await Promise.allSettled(

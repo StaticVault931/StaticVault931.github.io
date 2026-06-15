@@ -467,24 +467,39 @@ export function injectOverlays() {
       <button id="profile-editor-close" aria-label="Close"><span class="material-icons-round">close</span></button>
     </div>
     <div class="profile-editor-body">
-      <div class="profile-avatar-picker" id="profile-avatar-area">
+      <!-- Left: avatar -->
+      <div class="pe-avatar-col">
         <div class="profile-avatar-preview" id="profile-avatar-preview">
           <span class="material-icons-round">person</span>
         </div>
-        <button class="profile-change-avatar-btn" id="profile-change-avatar-btn">
-          <span class="material-icons-round">photo_camera</span> Choose Avatar
-        </button>
+        <div class="pe-quick-avatars" id="pe-quick-avatars">
+          <div class="pe-quick-avatar pe-qa-default" data-avatar="" title="Default">
+            <span class="material-icons-round">person</span>
+          </div>
+          <div class="pe-quick-avatar" data-avatar="favicon.png" title="SV931">
+            <img src="favicon.png" alt="SV931">
+          </div>
+          <div class="pe-quick-avatar" data-avatar="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" title="StaticQuasar">
+            <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" alt="StaticQuasar">
+          </div>
+          <button class="pe-more-avatars-btn" id="profile-change-avatar-btn" title="Search actors / more options">
+            <span class="material-icons-round">search</span>
+          </button>
+        </div>
       </div>
-      <label class="profile-field-label">Profile Name
-        <input class="pref-input" id="profile-name-input" placeholder="Enter a name…" maxlength="20">
-      </label>
-      <label class="profile-field-label">Accent Color
-        <div class="profile-color-row" id="profile-color-row"></div>
-      </label>
-    </div>
-    <div class="profile-editor-actions">
-      <button class="ma primary" id="profile-save-btn">Save Profile</button>
-      <button class="ma" id="profile-delete-btn" style="display:none">Delete Profile</button>
+      <!-- Right: fields -->
+      <div class="pe-fields-col">
+        <label class="profile-field-label">Profile Name
+          <input class="pref-input" id="profile-name-input" placeholder="Enter a name…" maxlength="20" autocomplete="off">
+        </label>
+        <label class="profile-field-label">Accent Color
+          <div class="profile-color-row" id="profile-color-row"></div>
+        </label>
+        <div class="profile-editor-actions">
+          <button class="ma primary" id="profile-save-btn">Save</button>
+          <button class="ma danger" id="profile-delete-btn" style="display:none"><span class="material-icons-round" style="font-size:1rem">delete</span> Delete</button>
+        </div>
+      </div>
     </div>
   </div>`;
   frag.appendChild(profileEditor);

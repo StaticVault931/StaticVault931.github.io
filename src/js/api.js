@@ -634,12 +634,29 @@ export async function fetchAnimeDetails(id) {
 export async function testAllAPIs() {
   const results = [];
 
-  // TMDB — always required
-  try {
-    await tmdb('/movie/550'); // Fight Club — reliable test
-    results.push({ name: 'TMDB', status: 'ok', note: 'Core API — working' });
-  } catch (e) {
-    results.push({ name: 'TMDB', status: 'error', note: e.message });
+  // TMDB — test the three most critical paths in parallel
+  const [tmdbMovie, tmdbLogos, tmdbDiscover] = await Promise.allSettled([
+    tmdb('/movie/550'),                                  // basic movie (Fight Club)
+    fetch(`${TMDB_BASE}/movie/550/images?include_image_language=en,null`, // direct-fetch logo path (Firefox fix)
+      { headers: { Authorization: `Bearer ${TMDB_RAT}` } }).then(r => r.json()),
+    tmdb('/discover/movie', { sort_by: 'popularity.desc', page: 1 }),      // discover (home rows)
+  ]);
+  if (tmdbMovie.status === 'fulfilled') {
+    results.push({ name: 'TMDB — Movie data', status: 'ok', note: 'Fight Club loaded' });
+  } else {
+    results.push({ name: 'TMDB — Movie data', status: 'error', note: tmdbMovie.reason?.message || 'Failed' });
+  }
+  const logoData = tmdbLogos.status === 'fulfilled' ? tmdbLogos.value : null;
+  const logoCount = (logoData?.logos || []).length;
+  if (tmdbLogos.status === 'fulfilled' && logoCount >= 0) {
+    results.push({ name: 'TMDB — Images/Logos (direct)', status: 'ok', note: `Bearer-auth path — ${logoCount} logo(s) returned` });
+  } else {
+    results.push({ name: 'TMDB — Images/Logos (direct)', status: 'error', note: 'Title logo fetch failed (Firefox/cross-browser fix)' });
+  }
+  if (tmdbDiscover.status === 'fulfilled') {
+    results.push({ name: 'TMDB — Discover', status: 'ok', note: `Home rows — ${(tmdbDiscover.value?.results||[]).length} results` });
+  } else {
+    results.push({ name: 'TMDB — Discover', status: 'error', note: 'Discover failed' });
   }
 
   // AniList
@@ -738,13 +755,21 @@ export async function testAllAPIs() {
     results.push({ name: 'Wikidata SPARQL', status: 'error', note: 'Request failed' });
   }
 
-  // Vidsrc-embed feeds
-  try {
-    const r = await fetch(`${VIDSRC_BASE}/movies/latest/page-1.json`);
-    results.push({ name: 'Vidsrc-embed', status: r.ok ? 'ok' : 'error', note: r.ok ? 'Latest movies/shows feed — working' : 'Failed' });
-  } catch {
-    results.push({ name: 'Vidsrc-embed', status: 'error', note: 'Request failed' });
-  }
+  // Vidsrc-embed feeds — test movies + episodes (both are used heavily)
+  const [vidsrcMovies, vidsrcEps] = await Promise.allSettled([
+    fetch(`${VIDSRC_BASE}/movies/latest/page-1.json`),
+    fetch(`${VIDSRC_BASE}/episodes/latest/page-1.json`),
+  ]);
+  results.push({
+    name: 'Vidsrc — Movies feed',
+    status: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value.ok ? 'ok' : 'error',
+    note: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value.ok ? 'Latest movies feed — working' : 'Failed',
+  });
+  results.push({
+    name: 'Vidsrc — Episodes feed',
+    status: vidsrcEps.status === 'fulfilled' && vidsrcEps.value.ok ? 'ok' : 'error',
+    note: vidsrcEps.status === 'fulfilled' && vidsrcEps.value.ok ? 'New episodes feed — working' : 'Failed',
+  });
 
   // TasteDive
   if (!TASTEDIVE_KEY) {
