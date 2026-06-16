@@ -2008,7 +2008,7 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 .person-tab:hover { border-color: var(--border3); color: var(--text); }
 .person-tab.on { background: var(--red); border-color: var(--red); color: #fff; }
-.person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .75rem; }
+.person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 .person-grid .card { width: 100%; }
 
 /* ── PROFILES / WHO'S WATCHING ───────────────────────────────────── */
@@ -2375,8 +2375,8 @@ img[alt]::after {
 }
 
 /* ── CARD SIZE BOOST for person grid ─────────────────────────────── */
-.person-grid .card-title { font-size: 1rem !important; }
-.person-grid .card-body { padding: .65rem .8rem .75rem !important; }
+.person-grid .card-title { font-size: 1.05rem !important; }
+.person-grid .card-body { padding: .7rem .9rem .85rem !important; }
 
 /* ── TRANSPARENT PROFILE AVATAR CIRCLE FIX ───────────────────────── */
 /* When color is transparent, the avatar circle shows no background —
@@ -2509,12 +2509,14 @@ img[alt]::after {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  padding-top: 64px; /* sit below fixed header */
+  padding-top: 64px;
+  position: relative;
 }
 .trailers-feed {
   flex: 1;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   overscroll-behavior: contain;
@@ -2756,6 +2758,36 @@ img[alt]::after {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
+
+/* Clips nav arrows */
+#clips-nav {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 6rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  pointer-events: all;
+}
+.clips-nav-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,.35);
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, border-color .15s, opacity .15s;
+  backdrop-filter: blur(8px);
+}
+.clips-nav-btn:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.7); }
+.clips-nav-btn:active { transform: scale(.92); }
+.clips-nav-btn[disabled] { opacity: .25; cursor: default; pointer-events: none; }
+.clips-nav-btn .material-icons-round { font-size: 1.6rem; }
 
 .trailers-spinner {
   position: fixed;

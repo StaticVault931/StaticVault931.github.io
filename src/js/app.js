@@ -6849,13 +6849,21 @@ async function _loadCardLogo(card) {
 function _applyCardLogo(card, url) {
   const imgEl = card.querySelector('.card-logo-img');
   if (!imgEl) return;
+  const _onLoaded = () => {
+    imgEl.classList.add('loaded');
+    const titleName = card.querySelector('.card-img-title-name');
+    const titleYear = card.querySelector('.card-img-title-year');
+    const titleBox  = card.querySelector('.card-img-title');
+    if (titleName) titleName.style.display = 'none';
+    if (titleYear) titleYear.style.display = 'none';
+    if (titleBox)  titleBox.style.background = 'transparent';
+  };
   imgEl.style.display = 'block';
   imgEl.alt = card.dataset.title || '';
-  imgEl.addEventListener('load', () => imgEl.classList.add('loaded'), { once: true });
+  imgEl.addEventListener('load', _onLoaded, { once: true });
   imgEl.addEventListener('error', () => { imgEl.style.display = 'none'; }, { once: true });
   imgEl.src = url;
-  // Cached images may already be complete before listeners fire (Firefox/Safari)
-  if (imgEl.complete && imgEl.naturalWidth > 0) imgEl.classList.add('loaded');
+  if (imgEl.complete && imgEl.naturalWidth > 0) _onLoaded();
 }
 
 function _observeCards(target) {
@@ -7472,7 +7480,14 @@ function _clipsNavSlide(dir) {
   const slideH = feed.clientHeight || window.innerHeight;
   const currentIdx = Math.round(feed.scrollTop / slideH);
   const targetIdx = Math.max(0, Math.min(slides.length - 1, currentIdx + dir));
-  feed.scrollTo({ top: targetIdx * slideH, behavior: 'smooth' });
+  // Direct scrollTop assignment — CSS scroll-behavior: smooth handles animation
+  feed.scrollTop = targetIdx * slideH;
+  // Update nav arrow visibility
+  const nav = document.getElementById('clips-nav');
+  if (nav) {
+    nav.querySelector('.clips-nav-up')?.toggleAttribute('disabled', targetIdx === 0);
+    nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', targetIdx >= slides.length - 1);
+  }
 }
 
 // Pause all clips (called on page switch or tab hide)
@@ -7598,7 +7613,7 @@ async function initTrailersFeed() {
     e.preventDefault();
     const now = Date.now();
     if (now - _wheelDebounce < 500) return;
-    if (Math.abs(e.deltaY) < 5) return; // ignore tiny micro-scrolls
+    if (Math.abs(e.deltaY) < 5) return;
     _wheelDebounce = now;
     _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
   }, { passive: false });
@@ -7611,6 +7626,35 @@ async function initTrailersFeed() {
   feed.addEventListener('touchend', e => {
     const dy = _touchStartY - e.changedTouches[0].clientY;
     if (Math.abs(dy) > 40) _clipsNavSlide(dy > 0 ? 1 : -1);
+  }, { passive: true });
+
+  // Inject nav arrows if not already present
+  const clipsPage = document.getElementById('page-clips');
+  if (clipsPage && !document.getElementById('clips-nav')) {
+    const nav = document.createElement('div');
+    nav.id = 'clips-nav';
+    nav.innerHTML = `
+      <button class="clips-nav-btn clips-nav-up" title="Previous (↑ / W)" aria-label="Previous clip" disabled>
+        <span class="material-icons-round">keyboard_arrow_up</span>
+      </button>
+      <button class="clips-nav-btn clips-nav-down" title="Next (↓ / S)" aria-label="Next clip">
+        <span class="material-icons-round">keyboard_arrow_down</span>
+      </button>`;
+    nav.querySelector('.clips-nav-up').addEventListener('click', () => _clipsNavSlide(-1));
+    nav.querySelector('.clips-nav-down').addEventListener('click', () => _clipsNavSlide(1));
+    clipsPage.appendChild(nav);
+  }
+
+  // Update arrow states on scroll (IntersectionObserver-based slide tracking)
+  feed.addEventListener('scroll', () => {
+    const nav = document.getElementById('clips-nav');
+    if (!nav) return;
+    const slides = feed.querySelectorAll('.trailer-slide');
+    if (!slides.length) return;
+    const slideH = feed.clientHeight || window.innerHeight;
+    const idx = Math.round(feed.scrollTop / slideH);
+    nav.querySelector('.clips-nav-up')?.toggleAttribute('disabled', idx === 0);
+    nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', idx >= slides.length - 1);
   }, { passive: true });
 }
 
@@ -7749,6 +7793,7 @@ function _buildTrailerSlide(item) {
     const btn = e.target.closest('[data-action]');
     if (!btn) {
       // Tap on video area — toggle pause/play via YouTube postMessage
+      e.stopPropagation();
       const iframe = slide.querySelector('.trailer-slide-iframe');
       if (iframe?.src?.includes('youtube.com/embed')) {
         const nowPaused = slide.dataset.clipsPaused !== '1';
@@ -7850,13 +7895,15 @@ async function _playTrailerSlide(slide) {
     logoEl.dataset.tried = '1';
     _fetchClipsLogo(id, type).then(url => {
       if (url && logoEl.isConnected) {
-        logoEl.src = url;
-        logoEl.style.display = '';
-        logoEl.addEventListener('load', () => {
+        const _hideTitleEl = () => {
           const titleEl = slide.querySelector('.trailer-slide-title');
           if (titleEl) titleEl.style.display = 'none';
-        }, { once: true });
+        };
+        logoEl.addEventListener('load', _hideTitleEl, { once: true });
         logoEl.addEventListener('error', () => { logoEl.style.display = 'none'; }, { once: true });
+        logoEl.src = url;
+        logoEl.style.display = '';
+        if (logoEl.complete && logoEl.naturalWidth > 0) _hideTitleEl();
       }
     });
   }
@@ -7869,7 +7916,7 @@ async function _playTrailerSlide(slide) {
   if (iframe.src && iframe.src.includes(key)) return;
 
   const mute = _trailersMuted ? 1 : 0;
-  iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1`;
+  iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
 
   iframe.addEventListener('load', () => {
     iframe.style.opacity = '1';
