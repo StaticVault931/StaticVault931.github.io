@@ -18,10 +18,13 @@
 .card:nth-child(4) { animation-delay: .12s; }
 .card:nth-child(5) { animation-delay: .16s; }
 .card:hover {
-  transform: scaleX(1.10) scaleY(1.07) translateY(-6px);
+  transform: scale(1.07) translateY(-4px);
   box-shadow: 0 20px 56px rgba(0,0,0,.9);
   z-index: 20;
 }
+/* Edge cards grow inward so they aren't clipped by the row's scroll box */
+.card-row .card:first-child { transform-origin: left center; }
+.card-row .card:last-child { transform-origin: right center; }
 
 /* Poster area */
 .card-poster {

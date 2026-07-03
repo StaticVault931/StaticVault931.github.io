@@ -197,22 +197,30 @@ export async function fetchOMDb(imdbId) {
 /* ── FANART.TV (Transparent logos, HD backgrounds, studio logos) ─── */
 // NOTE: fanart.tv API sends invalid CORS headers (*, *) which Firefox rejects.
 // This function uses a CORS proxy workaround. If blocked, it returns null gracefully.
+// Circuit breaker: after 3 consecutive failures, stop calling Fanart for the
+// session — the browser logs every blocked CORS request regardless of our
+// catch, so the only way to keep the console clean is to not fire the request.
+let _fanartFails = 0;
 export async function fetchFanart(tmdbId, type = 'movies') {
   if (!FANART_KEY) return null;
+  if (_fanartFails >= 3 || sessionStorage.getItem('sv_fanart_dead') === '1') return null;
   const path = type === 'movies' ? `movies/${tmdbId}` : `tv/${tmdbId}`;
   const key = cacheKey('fanart_' + type + '_' + tmdbId, {});
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    // Try direct endpoint — silently fails if CORS blocked (Firefox)
     const endpoint = `https://webservice.fanart.tv/v3/${path}?api_key=${FANART_KEY}`;
     const r = await fetch(endpoint, { mode: 'cors' });
     if (!r.ok) return null;
     const data = await r.json();
+    _fanartFails = 0;
     cacheSet(key, data);
     return data;
   } catch {
-    // CORS blocked — return null silently (no console error spam)
+    if (++_fanartFails === 3) {
+      sessionStorage.setItem('sv_fanart_dead', '1');
+      console.warn('[SV Fanart] 3 consecutive failures (CORS) — disabled for this session');
+    }
     return null;
   }
 }
@@ -471,8 +479,18 @@ export function getVidsrcEmbedUrl(type, id, { season, episode, imdbId, dsLang, a
 }
 
 /* ── TASTEDIVE — "More Like This" recommendations ────────────────── */
+// Same circuit-breaker pattern as Fanart — TasteDive currently returns
+// 400 + CORS errors in the browser; stop calling after 3 failures.
+let _tastediveFails = 0;
+function _tastediveFail() {
+  if (++_tastediveFails === 3) {
+    sessionStorage.setItem('sv_tastedive_dead', '1');
+    console.warn('[SV TasteDive] 3 consecutive failures — disabled for this session');
+  }
+}
 export async function fetchTasteDive(title, type = 'movie') {
   if (!TASTEDIVE_KEY) return null;
+  if (_tastediveFails >= 3 || sessionStorage.getItem('sv_tastedive_dead') === '1') return null;
   const typeMap = { movie: 'movies', tv: 'shows', anime: 'shows' };
   const q = encodeURIComponent(title);
   const t = typeMap[type] || 'movies';
@@ -480,14 +498,17 @@ export async function fetchTasteDive(title, type = 'movie') {
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    // TasteDive uses JSONP or direct API — try with verbose=1 for descriptions
     const url = `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&verbose=1&apikey=${TASTEDIVE_KEY}`;
     const r = await fetch(url);
-    if (!r.ok) return null;
+    if (!r.ok) { _tastediveFail(); return null; }
     const data = await r.json();
+    _tastediveFails = 0;
     if (data?.Similar) cacheSet(key, data);
     return data?.Similar ? data : null;
-  } catch { return null; }
+  } catch {
+    _tastediveFail();
+    return null;
+  }
 }
 
 /* ── WIKIDATA SPARQL (franchise chains, studio ownership, awards) ── */

@@ -149,7 +149,8 @@ export async function loadForYou() {
     }
 
     renderRow('row-foryou', items, null);
-  } catch {
+  } catch (err) {
+    console.error('[SV ForYou] failed:', err?.message || err);
     rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Could not load recommendations.</p>';
   }
 }

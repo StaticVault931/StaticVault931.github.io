@@ -437,7 +437,10 @@
   display: flex;
   gap: .65rem;
   overflow-x: auto;
-  padding: .3rem 0 1rem;
+  /* Extra vertical room so hover-scaled cards aren't clipped by the scroll box;
+     negative margins keep the visual section spacing unchanged */
+  padding: 1.4rem 0 1.6rem;
+  margin: -1.1rem 0 -0.6rem;
   scroll-snap-type: none;
   scrollbar-width: none;
   scroll-behavior: smooth;

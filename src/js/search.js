@@ -385,16 +385,35 @@ function levenshtein(a, b) {
   return dp[a.length][b.length];
 }
 
+// Fold a string for matching: lowercase, strip accents, punctuation, collapse spaces
+function foldTitle(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[''`""&.:!?,\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Score how similar a title is to a query (0 = perfect, higher = worse)
 function titleSimilarity(query, title) {
   if (!title) return 999;
-  const q = query.toLowerCase().trim();
-  const t = title.toLowerCase().trim();
+  const q = foldTitle(query);
+  const t = foldTitle(title);
+  if (!q || !t) return 999;
   if (t === q) return 0;
-  if (t.startsWith(q)) return 1;
-  if (t.includes(q)) return 2;
-  const dist = levenshtein(q, t);
-  return dist <= Math.ceil(q.length * 0.3) ? 3 + dist : 999;
+  const qNS = q.replace(/ /g, '');
+  const tNS = t.replace(/ /g, '');
+  if (tNS === qNS) return 0;                       // "spider man" ↔ "spiderman"
+  if (t.startsWith(q) || tNS.startsWith(qNS)) return 1;
+  if (t.includes(q) || tNS.includes(qNS)) return 2;
+  // Word-level: every query word is a prefix of some title word ("stranger thing" → "stranger things")
+  const qWords = q.split(' ');
+  const tWords = t.split(' ');
+  if (qWords.length > 1 && qWords.every(qw => tWords.some(tw => tw.startsWith(qw)))) return 2;
+  // Typo tolerance on the space-free forms ("spidrman" ↔ "spiderman")
+  const dist = levenshtein(qNS, tNS);
+  return dist <= Math.max(2, Math.ceil(qNS.length * 0.3)) ? 3 + dist : 999;
 }
 
 // Compute a single relevance score (higher = more relevant to show first)
@@ -981,7 +1000,8 @@ export async function doSearch(q) {
     }
 
     renderSearchResults(items, q, true);
-  } catch {
+  } catch (err) {
+    console.error('[SV Search] failed:', err?.message || err);
     _searchState.loading = false;
     area.innerHTML = `<div class="search-empty">
       <span class="material-icons-round">wifi_off</span>

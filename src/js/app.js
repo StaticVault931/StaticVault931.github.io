@@ -794,8 +794,14 @@ function _loadRow(rowId, secId, fetchFn, type) {
       scheduledisambiguateTitles();
     })
     .catch(err => {
-      console.warn(`[SV] Row ${rowId}:`, err?.message || err);
-      // Keep skeleton visible — don't hide section on error
+      console.error(`[SV Row] "${rowId}" failed:`, err?.message || err);
+      // Never leave skeletons stuck: if the row has no real cards, hide the section
+      const rowEl = document.getElementById(rowId);
+      const hasCards = rowEl?.querySelector('.card');
+      if (!hasCards) {
+        if (sec) sec.style.display = 'none';
+        else if (rowEl) rowEl.innerHTML = '';
+      }
     });
 }
 
@@ -1001,21 +1007,6 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     { id:'row-family',    sec:'sec-family',    type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10751', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
     { id:'row-crime-tv',  sec:'sec-crime-tv',  type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'80', sort_by:'vote_average.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
     { id:'row-comedy-tv', sec:'sec-comedy-tv', type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'35', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
-    // Vidsrc-embed "Recently Added" rows — real availability data
-    { id:'row-recently-added', sec:'sec-recently-added', type:'movie', fn: async () => {
-      const f = await fetchVidsrcLatestMovies(1).catch(() => null);
-      if (!f?.length) return [];
-      const items = await Promise.all((f||[]).slice(0,12).map(i => i.tmdb_id ? tmdb(`/movie/${i.tmdb_id}`).then(d=>({...d,media_type:'movie'})).catch(()=>null) : null));
-      return items.filter(Boolean);
-    }},
-    { id:'row-new-episodes', sec:'sec-new-episodes', type:'tv', fn: async () => {
-      const f = await fetchVidsrcLatestEpisodes(1).catch(() => null);
-      if (!f?.length) return [];
-      const seen = new Set();
-      const uniq = (f||[]).filter(i=>{if(!i.tmdb_id||seen.has(i.tmdb_id))return false;seen.add(i.tmdb_id);return true;}).slice(0,12);
-      const items = await Promise.all(uniq.map(i => tmdb(`/tv/${i.tmdb_id}`).then(d=>({...d,media_type:'tv'})).catch(()=>null)));
-      return items.filter(Boolean);
-    }},
     { id:'row-anime-home2',sec:'sec-anime-home2',type:'anime',fn:() => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
     // Country / Region trending rows — one picked randomly per session
     { id:'row-trend-jp', sec:'sec-trend-jp', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ja', region:'JP', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
@@ -1125,7 +1116,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     ];
     // Pick 6 random franchises per session
     const seed = state._randomPage || 1;
-    const picked = [...franchises].sort(() => Math.sin(seed * 2.1 + franchises.indexOf(_)) - 0.5).slice(0, 7);
+    const picked = [...franchises].sort((a, b) => Math.sin(seed * 2.1 + a) - Math.sin(seed * 2.1 + b)).slice(0, 7);
     const results = await Promise.allSettled(
       picked.map(colId => tmdb(`/collection/${colId}`).then(d => {
         const parts = (d.parts||[]).sort((a,b)=>(a.release_date||'')>(b.release_date||'')?1:-1);
@@ -7535,6 +7526,22 @@ async function initTrailersFeed() {
     if (spinner) spinner.style.display = 'none';
   }
 
+  // Empty state — never leave a black screen with no explanation
+  if (!feed.querySelector('.trailer-slide')) {
+    console.error('[SV Clips] Feed loaded 0 slides');
+    feed.innerHTML = `
+      <div class="trailers-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8rem;color:var(--muted)">
+        <span class="material-icons-round" style="font-size:3rem">movie_filter</span>
+        <p>Couldn't load clips right now.</p>
+        <button class="trailer-cta trailer-cta-watch" id="clips-retry-btn"><span class="material-icons-round">refresh</span> Retry</button>
+      </div>`;
+    document.getElementById('clips-retry-btn')?.addEventListener('click', () => {
+      _trailersLoaded = false;
+      initTrailersFeed();
+    });
+    return;
+  }
+
   // Dwell time tracking: record when each slide enters/exits view
   const _dwellStart = new Map();
 
@@ -7820,8 +7827,13 @@ function _buildTrailerSlide(item) {
       document.querySelectorAll('.trailer-slide [data-action="mute"] .material-icons-round').forEach(ic => {
         ic.textContent = _trailersMuted ? 'volume_off' : 'volume_up';
       });
-      const iframe = slide.querySelector('.trailer-slide-iframe');
-      if (iframe?.src) iframe.src = iframe.src.replace(/mute=[01]/, `mute=${_trailersMuted ? 1 : 0}`);
+      // postMessage mute/unMute — no src rewrite, so the video never reloads
+      const cmd = _trailersMuted ? 'mute' : 'unMute';
+      document.querySelectorAll('.trailer-slide-iframe').forEach(f => {
+        if (f.src?.includes('youtube.com/embed')) {
+          f.contentWindow?.postMessage(`{"event":"command","func":"${cmd}","args":""}`, '*');
+        }
+      });
     } else if (action === 'like') {
       const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       toggleLike(likeItem);
@@ -7911,7 +7923,13 @@ async function _playTrailerSlide(slide) {
   if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
 
   const key = await fetchTrailerKey(id, type, title, year);
-  if (!key || key === '__none__') return;
+  if (!key || key === '__none__') {
+    console.warn(`[SV Clips] No trailer for "${title}" (${type}/${id})`);
+    // Remove the dead slide if it's below the viewport (safe — no scroll jump)
+    const feedEl = slide.parentElement;
+    if (feedEl && slide.offsetTop > feedEl.scrollTop + feedEl.clientHeight - 10) slide.remove();
+    return;
+  }
   if (!slide.isConnected) return;
   if (iframe.src && iframe.src.includes(key)) return;
 
