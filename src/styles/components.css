@@ -2589,15 +2589,19 @@ img[alt]::after {
 .trailers-feed {
   flex: 1;
   /* Navigation is fully JS-driven (wheel/swipe/keys/arrows → _clipsGoTo).
-     overflow hidden means the browser never fights our smooth scrollTo. */
-  overflow-y: hidden;
-  scrollbar-width: none;
-  overscroll-behavior: contain;
+     Slides sit in .clips-track which moves via translateY — transforms are
+     reliable in every browser, unlike programmatic scrolling. */
+  overflow: hidden;
   height: 100%;
   background: #000;
   touch-action: none;
+  overscroll-behavior: contain;
 }
-.trailers-feed::-webkit-scrollbar { display: none; }
+.clips-track {
+  position: relative;
+  transition: transform .55s var(--ease);
+  will-change: transform;
+}
 
 /* Clips tutorial in-feed slide */
 .clips-tutorial-slide {
@@ -2618,50 +2622,79 @@ img[alt]::after {
   z-index: 2;
   text-align: center;
   padding: 2rem 1.5rem;
-  max-width: 360px;
+  max-width: 640px;
   width: 100%;
 }
-.clips-tut-icon { margin-bottom: .75rem; }
-.clips-tut-icon .material-icons-round { font-size: 3rem; color: var(--red); }
+.clips-tut-icon { margin-bottom: 1rem; }
+.clips-tut-icon .material-icons-round { font-size: 4.5rem; color: var(--red); filter: drop-shadow(0 4px 20px var(--red-glow)); }
 .clips-tut-title {
-  font-size: 1.35rem;
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-size: clamp(2.2rem, 6vw, 3.2rem);
   font-weight: 800;
   color: #fff;
-  margin: 0 0 .5rem;
-  letter-spacing: .01em;
+  margin: 0 0 .7rem;
+  letter-spacing: .04em;
 }
 .clips-tut-desc {
-  font-size: .82rem;
-  color: rgba(255,255,255,.62);
-  line-height: 1.58;
-  margin: 0 0 1.1rem;
+  font-size: clamp(.95rem, 2.4vw, 1.1rem);
+  color: rgba(255,255,255,.72);
+  line-height: 1.65;
+  margin: 0 auto 1.6rem;
+  max-width: 520px;
 }
-.clips-tut-shortcuts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .28rem .55rem;
-  margin-bottom: 1.2rem;
+.clips-tut-desc em { color: var(--gold); font-style: italic; }
+
+/* Real button examples with what they do */
+.clips-tut-example {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.6rem;
+}
+.clips-tut-ex-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .45rem;
+  font-size: .78rem;
+  color: rgba(255,255,255,.7);
+  max-width: 110px;
+}
+.clips-tut-ex-btn .trailer-icon-btn { pointer-events: none; }
+
+.clips-tut-tips {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+  margin: 0 auto 1.8rem;
+  max-width: 460px;
   text-align: left;
 }
-.clips-tut-sc-row {
+.clips-tut-tip {
   display: flex;
   align-items: center;
-  gap: .4rem;
-  font-size: .75rem;
-  color: rgba(255,255,255,.65);
+  gap: .7rem;
+  font-size: .88rem;
+  color: rgba(255,255,255,.72);
+  line-height: 1.4;
 }
-.clips-tut-sc-row kbd {
+.clips-tut-tip .material-icons-round { font-size: 1.3rem; color: var(--red); flex-shrink: 0; }
+
+.clips-tut-content kbd {
   background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.2);
   border-radius: 4px;
-  padding: .1rem .35rem;
-  font-size: .67rem;
+  padding: .1rem .4rem;
+  font-size: .74rem;
   font-family: monospace;
   color: #fff;
   white-space: nowrap;
-  flex-shrink: 0;
-  min-width: 34px;
-  text-align: center;
+}
+.clips-tut-start-btn {
+  font-size: 1rem;
+  padding: .8rem 2rem;
+  animation: clipsHintBounce 1.8s ease-in-out infinite;
 }
 .clips-tut-scroll-hint {
   display: flex;

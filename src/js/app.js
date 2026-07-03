@@ -241,6 +241,126 @@ const SV_SETTINGS = [
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
 
+/* ── MOBILE QUICK SEARCH BAR (expands from the bottom nav) ───────── */
+function initBottomSearchBar() {
+  const navEl = document.getElementById('bottom-nav');
+  if (!navEl) return;
+  navEl.addEventListener('click', e => {
+    const btn = e.target.closest('.bottom-nav-btn');
+    if (!btn) return;
+    if (btn.classList.contains('bottom-nav-search')) {
+      // Existing handler navigates to the search page; then expand the bar
+      setTimeout(_openQuickSearch, 80);
+    } else {
+      _closeQuickSearch();
+    }
+  });
+}
+
+function _openQuickSearch() {
+  let bar = document.getElementById('quick-search-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'quick-search-bar';
+    bar.innerHTML = `
+      <span class="material-icons-round qsb-icon">search</span>
+      <input id="quick-search-input" type="search" placeholder="Search movies, shows, people…" autocomplete="off" enterkeyhint="search">
+      <button id="quick-search-close" aria-label="Close search"><span class="material-icons-round">close</span></button>`;
+    document.body.appendChild(bar);
+    const input = bar.querySelector('#quick-search-input');
+    // Mirror into the main search input so results render on the search page
+    input.addEventListener('input', () => {
+      const main = document.getElementById('search-input');
+      if (main) { main.value = input.value; main.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') _closeQuickSearch();
+      if (e.key === 'Enter') input.blur(); // dismiss keyboard, results already live
+    });
+    bar.querySelector('#quick-search-close').addEventListener('click', _closeQuickSearch);
+    // Stay above the on-screen keyboard (visualViewport tracks it)
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const reposition = () => {
+        if (!bar.classList.contains('open')) return;
+        const off = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        bar.style.bottom = off > 30 ? `${off + 8}px` : '';
+      };
+      vv.addEventListener('resize', reposition);
+      vv.addEventListener('scroll', reposition);
+      bar._vvReposition = reposition;
+    }
+  }
+  bar.classList.add('open');
+  const input = bar.querySelector('#quick-search-input');
+  const main = document.getElementById('search-input');
+  if (main && input) input.value = main.value;
+  setTimeout(() => { input?.focus(); bar._vvReposition?.(); }, 120);
+}
+
+function _closeQuickSearch() {
+  const bar = document.getElementById('quick-search-bar');
+  if (bar) { bar.classList.remove('open'); bar.style.bottom = ''; bar.querySelector('input')?.blur(); }
+}
+
+/* ── FUN EASTER EGGS (non-search) ────────────────────────────────── */
+function _rainConfetti(count = 40) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.style.cssText = `position:fixed;top:-10px;left:${Math.random() * 100}vw;width:8px;height:8px;border-radius:50%;background:hsl(${Math.random() * 360},90%,60%);z-index:9999;pointer-events:none;animation:confettiFall ${1 + Math.random() * 2}s ease-in forwards;`;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }, i * 50);
+  }
+}
+
+function _spinTheApp() {
+  document.body.style.transition = 'transform 1.2s ease-in-out';
+  document.body.style.transform = 'rotate(360deg)';
+  setTimeout(() => {
+    document.body.style.transform = '';
+    setTimeout(() => { document.body.style.transition = ''; }, 1300);
+  }, 1250);
+}
+
+function initFunEggs() {
+  // Konami code: ↑↑↓↓←→←→BA — full celebration
+  const seq = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+  let pos = 0;
+  document.addEventListener('keydown', e => {
+    if (e.target.matches?.('input, textarea, select')) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    pos = (k === seq[pos]) ? pos + 1 : (k === seq[0] ? 1 : 0);
+    if (pos === seq.length) {
+      pos = 0;
+      toast('Konami! +30 lives added to your watchlist', 'videogame_asset');
+      _rainConfetti(50);
+      _spinTheApp();
+    }
+  });
+
+  // Rapid logo clicks (7 in 1.5s) — confetti appreciation
+  let logoClicks = 0, logoTimer = null;
+  document.querySelector('.logo')?.addEventListener('click', () => {
+    logoClicks++;
+    clearTimeout(logoTimer);
+    logoTimer = setTimeout(() => { logoClicks = 0; }, 1500);
+    if (logoClicks >= 7) {
+      logoClicks = 0;
+      toast('You really like this logo. Here, have some confetti!', 'celebration');
+      _rainConfetti(40);
+    }
+  });
+
+  // Night-owl greeting: once per session between 2-5 AM
+  const hr = new Date().getHours();
+  if (hr >= 2 && hr < 5 && !sessionStorage.getItem('sv_owl')) {
+    sessionStorage.setItem('sv_owl', '1');
+    setTimeout(() => toast('Watching at this hour? Respect. 🦉', 'bedtime'), 4000);
+  }
+}
+
 // Apple platform detection (Mac, iPhone, iPad — including iPadOS reporting as Mac)
 function _isApplePlatform() {
   const p = navigator.platform || '';
@@ -318,6 +438,8 @@ let _cardLogoMutObs   = null;
   initShortcutsModal();
   initTestMode();
   initProfilesUI();
+  initFunEggs();
+  initBottomSearchBar();
   // Show profile selector on start if setting is enabled
   if (getSetting('showAccountsOnStart')) {
     setTimeout(() => openProfilesOverlay(), 700);
@@ -5538,18 +5660,22 @@ async function _enrichInfoPage(id, type, details, credits) {
       const typeColors = { free: '#22c55e', sub: '#b3b3b3', rent: '#f59e0b', buy: '#f97316' };
       const typeLabels = { free: 'Free', sub: 'Subscription', rent: 'Rent', buy: 'Buy' };
 
-      // Map Watchmode service names to TMDB watch provider IDs for internal provider pages
+      // Map Watchmode service names to TMDB watch provider IDs for internal
+      // provider pages. Keys are normalized (lowercase, no plus/+/tv suffix
+      // noise) so name variants like "Disney+" / "Disney Plus" both match.
       const WM_TO_TMDB = {
-        'Netflix':8,'Amazon Prime Video':9,'Hulu':15,'Disney Plus':337,'Max':384,'HBO Max':384,
-        'Apple TV Plus':350,'Peacock':386,'Peacock Premium':386,'Paramount Plus':531,'Crunchyroll':283,
-        'Tubi TV':73,'Pluto TV':300,'Kanopy':191,'Shudder':99,'Mubi':11,'FuboTV':257,
-        'AMC Plus':526,'Starz':43,'Showtime':37,'BritBox':151,'Acorn TV':196,'Plex':538,
+        'netflix':8,'amazon prime video':9,'amazon prime':9,'prime video':9,'hulu':15,
+        'disney':337,'max':384,'hbo max':384,'apple tv':350,'peacock':386,'peacock premium':386,
+        'paramount':531,'crunchyroll':283,'tubi':73,'pluto':300,'kanopy':191,'shudder':99,
+        'mubi':11,'fubotv':257,'amc':526,'starz':43,'showtime':37,'britbox':151,'acorn':196,'plex':538,
       };
+      const _wmKey = name => String(name || '').toLowerCase()
+        .replace(/\s*(\+|plus)\s*$/i, '').replace(/\s+tv$/i, '').trim();
       wtwEl.innerHTML = unique.map(s => {
         const color = typeColors[s.type] || '#888';
         const label = typeLabels[s.type] || s.type;
         const svgLogo = _getProviderSVG(s.name);
-        const tmdbProviderId = WM_TO_TMDB[s.name];
+        const tmdbProviderId = WM_TO_TMDB[_wmKey(s.name)];
         const externalUrl = (s.web_url && s.web_url !== 'N/A') ? s.web_url : null;
         return `<div class="wtw-badge wtw-${s.type||'sub'}" data-provider-id="${tmdbProviderId||''}" data-provider-name="${esc(s.name)}" data-external="${esc(externalUrl||'')}" style="cursor:pointer">
           <span class="wtw-logo">${svgLogo}</span>
@@ -5559,13 +5685,17 @@ async function _enrichInfoPage(id, type, details, credits) {
         </div>`;
       }).join('');
 
-      // Click = open StaticVault provider page
-      wtwEl.querySelectorAll('.wtw-badge[data-provider-id]').forEach(badge => {
+      // Click = open StaticVault provider page; fall back to the service's
+      // own site when we have no internal provider page for it
+      wtwEl.querySelectorAll('.wtw-badge').forEach(badge => {
         badge.addEventListener('click', e => {
           if (e.target.closest('.wtw-ext-link')) return;
-          const pid = badge.dataset.providerId;
+          const pid = +badge.dataset.providerId;
           const name = badge.dataset.providerName;
-          if (pid) openProviderPage(+pid, name);
+          if (pid) { openProviderPage(pid, name); return; }
+          const ext = badge.dataset.external;
+          if (ext) window.open(ext, '_blank', 'noopener');
+          else console.warn(`[SV WTW] No provider page or link for "${name}"`);
         });
       });
 
@@ -6889,8 +7019,8 @@ async function _loadCardLogo(card) {
 
   // Use cached result if available
   if (_logoCache.has(id)) {
-    const url = _logoCache.get(id);
-    if (url) _applyCardLogo(card, url);
+    const cached = _logoCache.get(id);
+    if (cached) _applyCardArt(card, cached.logo || null, cached.enBackdrop || null);
     return;
   }
 
@@ -6902,15 +7032,46 @@ async function _loadCardLogo(card) {
     const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
     if (!r.ok) throw new Error('logo fetch failed');
     const data = await r.json();
+
+    // Best case: an ENGLISH backdrop — the title text is baked into the art
+    // itself, so no overlay text or logo is needed at all
+    const enBackdrops = (data.backdrops || [])
+      .filter(b => b.iso_639_1 === 'en' && b.file_path)
+      .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+    const enBackdrop = enBackdrops[0] ? `https://image.tmdb.org/t/p/w780${enBackdrops[0].file_path}` : null;
+
     const allLogos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
     const best = allLogos.find(l => l.iso_639_1 === 'en' && l.file_path) || allLogos.find(l => l.file_path);
     const url = best ? `https://image.tmdb.org/t/p/w300${best.file_path}` : null;
-    _logoCache.set(id, url);
-    if (url) _applyCardLogo(card, url);
+
+    _logoCache.set(id, { logo: url, enBackdrop });
+    _applyCardArt(card, url, enBackdrop);
   } catch (err) {
     console.warn(`[SV Logo] card ${id} (${type}):`, err?.message || 'no logo');
     _logoCache.set(id, null);
   }
+}
+
+// Apply the best art to a card: English backdrop (embedded title) beats
+// logo-over-neutral-backdrop beats plain text overlay
+function _applyCardArt(card, logoUrl, enBackdropUrl) {
+  if (enBackdropUrl) {
+    const posterImg = card.querySelector('.card-poster > img');
+    if (posterImg) {
+      const swap = new Image();
+      swap.onload = () => {
+        if (!card.isConnected) return;
+        posterImg.src = enBackdropUrl;
+        // Title is in the image — hide the whole text/logo overlay
+        const overlay = card.querySelector('.card-img-title');
+        if (overlay) overlay.style.display = 'none';
+      };
+      swap.onerror = () => { if (logoUrl) _applyCardLogo(card, logoUrl); };
+      swap.src = enBackdropUrl;
+      return;
+    }
+  }
+  if (logoUrl) _applyCardLogo(card, logoUrl);
 }
 
 function _applyCardLogo(card, url) {
@@ -7214,6 +7375,23 @@ function initHoverTrailer() {
     const icon = document.querySelector('#nc-like .material-icons-round');
     if (icon) icon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   });
+  // Mute toggle — user gesture, so browsers always honor the unmute
+  document.getElementById('nc-mute')?.addEventListener('click', e => {
+    e.stopPropagation();
+    const frame = document.getElementById('nc-frame');
+    if (!frame?.src) return;
+    _hoverMuted = !_hoverMuted;
+    _ytCmd(frame, _hoverMuted ? 'mute' : 'unMute');
+    const icon = document.querySelector('#nc-mute .material-icons-round');
+    if (icon) icon.textContent = _hoverMuted ? 'volume_off' : 'volume_up';
+  });
+}
+
+// Hover preview mute state (initialised from the automute setting per card)
+let _hoverMuted = true;
+function _syncNcMuteIcon() {
+  const icon = document.querySelector('#nc-mute .material-icons-round');
+  if (icon) icon.textContent = _hoverMuted ? 'volume_off' : 'volume_up';
 }
 
 function clearHoverTrailer() {
@@ -7358,8 +7536,10 @@ async function showNetflixCard(card) {
             if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
             // Honor the automute setting — playback started muted for autoplay
             // reliability; unmute now unless the user opted for muted previews
-            if (!getSetting('automuteHoverTrailer') && _hoverCurrentCard === card) {
-              _ytCmd(frame, 'unMute');
+            if (_hoverCurrentCard === card) {
+              _hoverMuted = !!getSetting('automuteHoverTrailer');
+              if (!_hoverMuted) _ytCmd(frame, 'unMute');
+              _syncNcMuteIcon();
             }
             window.removeEventListener('message', ytHandler);
           } else if (d.event === 'onError') {
@@ -7410,7 +7590,7 @@ function positionNetflixCard(card, nc) {
   // Card width: proportionally larger than the source card (~1.3×) so the
   // hover preview clearly "grows" out of the card on every screen size
   const onSearch = state.currentPage === 'search';
-  const ncW = Math.min(onSearch ? 720 : 680, Math.max(Math.round(rect.width * 1.3), onSearch ? 460 : 400));
+  const ncW = Math.min(Math.round(vpW * 0.46), Math.max(Math.round(rect.width * 1.4), onSearch ? 500 : 440));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
   nc.style.overflowY = '';
@@ -7507,26 +7687,40 @@ function _maybeShowClipsTutorial(feed) {
     <div class="clips-tut-content">
       <div class="clips-tut-icon"><span class="material-icons-round">play_circle</span></div>
       <h3 class="clips-tut-title">Discover with Clips</h3>
-      <p class="clips-tut-desc">Your personal discovery feed — scroll trailers for movies &amp; TV shows tailored to your taste. Find your next binge.</p>
-      <div class="clips-tut-shortcuts">
-        <div class="clips-tut-sc-row"><kbd>↓ / S</kbd><span>Next clip</span></div>
-        <div class="clips-tut-sc-row"><kbd>↑ / W</kbd><span>Previous clip</span></div>
-        <div class="clips-tut-sc-row"><kbd>Space</kbd><span>Next clip</span></div>
-        <div class="clips-tut-sc-row"><kbd>P</kbd><span>Watch now</span></div>
-        <div class="clips-tut-sc-row"><kbd>I</kbd><span>More info</span></div>
-        <div class="clips-tut-sc-row"><kbd>M</kbd><span>Mute / Unmute</span></div>
-        <div class="clips-tut-sc-row"><kbd>L</kbd><span>Like</span></div>
-        <div class="clips-tut-sc-row"><kbd>B</kbd><span>Bookmark</span></div>
-        <div class="clips-tut-sc-row"><kbd>X</kbd><span>Not Interested</span></div>
+      <p class="clips-tut-desc">Your personal trailer feed. The more you watch, like, and skip, the smarter it gets. Now playing: <em>The Never-Ending Search For Something To Watch</em> — let's fix that.</p>
+
+      <div class="clips-tut-example" aria-hidden="true">
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">volume_up</span></span><span>Sound on/off <kbd>M</kbd></span></div>
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">thumb_up_off_alt</span></span><span>Like — more like this <kbd>L</kbd></span></div>
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">bookmark_border</span></span><span>Save for later <kbd>B</kbd></span></div>
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">thumb_down_off_alt</span></span><span>Never again <kbd>X</kbd></span></div>
       </div>
-      <div class="clips-tut-scroll-hint">
-        <span class="material-icons-round">expand_more</span>
-        Scroll down to start
+
+      <div class="clips-tut-tips">
+        <div class="clips-tut-tip"><span class="material-icons-round">swipe_vertical</span>Scroll, swipe, use the arrows, or press <kbd>↓</kbd>/<kbd>S</kbd> — whatever feels right</div>
+        <div class="clips-tut-tip"><span class="material-icons-round">touch_app</span>Tap the video to pause. Tap again to resume.</div>
+        <div class="clips-tut-tip"><span class="material-icons-round">play_arrow</span><kbd>P</kbd> starts watching instantly, <kbd>I</kbd> opens full info</div>
+        <div class="clips-tut-tip"><span class="material-icons-round">egg_alt</span>Psst — try searching "surprise me" or "do a barrel roll" sometime</div>
       </div>
+
+      <button class="trailer-cta trailer-cta-watch clips-tut-start-btn" type="button">
+        <span class="material-icons-round">expand_more</span> Start Watching
+      </button>
     </div>`;
 
-  feed.insertBefore(slide, feed.firstChild);
-  feed.scrollTo({ top: 0, behavior: 'instant' });
+  slide.querySelector('.clips-tut-start-btn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    _clipsNavSlide(1);
+  });
+
+  const track = _clipsTrack() || feed;
+  track.insertBefore(slide, track.firstChild);
+  if (track.classList?.contains('clips-track')) {
+    track.style.transition = 'none';
+    track.style.transform = 'translateY(0)';
+    requestAnimationFrame(() => { track.style.transition = ''; });
+  }
+  _clipsIdx = 0;
 }
 
 /* ── CLIPS NAVIGATION — index-driven, deterministic ──────────────────
@@ -7535,6 +7729,22 @@ function _maybeShowClipsTutorial(feed) {
    The active slide plays; its neighbors stay loaded-but-paused (preload);
    everything farther away is unloaded to save memory. */
 let _clipsIdx = 0;
+
+// Slides live inside a translateY track — programmatic scrolling proved
+// unreliable across browsers, transforms are not.
+function _clipsTrack() {
+  const feed = document.getElementById('clips-feed');
+  if (!feed) return null;
+  let track = feed.querySelector('.clips-track');
+  if (!track) {
+    track = document.createElement('div');
+    track.className = 'clips-track';
+    // Adopt any slides that were appended directly to the feed
+    [...feed.querySelectorAll(':scope > .trailer-slide')].forEach(s => track.appendChild(s));
+    feed.appendChild(track);
+  }
+  return track;
+}
 
 function _clipsSlides() {
   const feed = document.getElementById('clips-feed');
@@ -7568,7 +7778,13 @@ function _clipsGoTo(idx, { instant = false } = {}) {
   _clipsIdx = idx;
   const target = slides[idx];
 
-  feed.scrollTo({ top: target.offsetTop, behavior: instant ? 'instant' : 'smooth' });
+  // Move the track — CSS transition animates it; transforms work everywhere
+  const track = _clipsTrack();
+  if (track) {
+    if (instant) track.style.transition = 'none';
+    track.style.transform = `translateY(-${target.offsetTop}px)`;
+    if (instant) requestAnimationFrame(() => { track.style.transition = ''; });
+  }
   _clipsUpdateArrows(idx, slides.length);
 
   // Play the active slide; keep neighbors on standby; unload the rest
@@ -7658,6 +7874,7 @@ async function initTrailersFeed() {
 
   if (_trailersObserver) { _trailersObserver.disconnect(); _trailersObserver = null; }
   feed.querySelectorAll('.trailer-slide').forEach(el => el.remove());
+  feed.querySelector('.trailers-empty')?.remove();
 
   if (spinner) spinner.style.display = '';
   try {
@@ -7827,7 +8044,7 @@ async function _loadMoreTrailers() {
     if (feed) {
       combined.forEach(item => {
         const slide = _buildTrailerSlide(item);
-        feed.appendChild(slide);
+        (_clipsTrack() || feed).appendChild(slide);
       });
     }
   } finally {

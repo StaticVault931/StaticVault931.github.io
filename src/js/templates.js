@@ -112,6 +112,7 @@ export function injectOverlays() {
       <button class="nc-btn nc-btn-play" id="nc-play" title="Play"><span class="material-icons-round">play_arrow</span></button>
       <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save"><span class="material-icons-round">add</span></button>
       <button class="nc-btn nc-btn-like" id="nc-like" title="Like"><span class="material-icons-round">thumb_up_off_alt</span></button>
+      <button class="nc-btn nc-btn-mute" id="nc-mute" title="Sound on/off"><span class="material-icons-round">volume_off</span></button>
       <button class="nc-btn nc-btn-more" id="nc-more" title="More info"><span class="material-icons-round">expand_more</span></button>
     </div>
     <div class="nc-meta-row" id="nc-meta"></div>

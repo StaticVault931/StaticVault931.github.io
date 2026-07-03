@@ -155,6 +155,37 @@ export function buildSearchFilters(container) {
             <option value="ended">Ended/Cancelled</option>
           </select>
         </label>
+        <label class="sf-filter-label">Country of Origin
+          <select class="sf-filter-sel" id="sf-country">
+            <option value="">Any Country</option>
+            <option value="US">🇺🇸 United States</option>
+            <option value="GB">🇬🇧 United Kingdom</option>
+            <option value="JP">🇯🇵 Japan</option>
+            <option value="KR">🇰🇷 South Korea</option>
+            <option value="FR">🇫🇷 France</option>
+            <option value="DE">🇩🇪 Germany</option>
+            <option value="ES">🇪🇸 Spain</option>
+            <option value="IT">🇮🇹 Italy</option>
+            <option value="IN">🇮🇳 India</option>
+            <option value="CN">🇨🇳 China</option>
+            <option value="BR">🇧🇷 Brazil</option>
+            <option value="MX">🇲🇽 Mexico</option>
+            <option value="CA">🇨🇦 Canada</option>
+            <option value="AU">🇦🇺 Australia</option>
+            <option value="SE">🇸🇪 Sweden</option>
+            <option value="DK">🇩🇰 Denmark</option>
+            <option value="NO">🇳🇴 Norway</option>
+            <option value="TR">🇹🇷 Türkiye</option>
+          </select>
+        </label>
+        <label class="sf-filter-label" title="Blockbusters have many votes; hidden gems are highly rated but less known">Popularity
+          <select class="sf-filter-sel" id="sf-poptier">
+            <option value="">Any</option>
+            <option value="blockbuster">Blockbusters (10k+ votes)</option>
+            <option value="wellknown">Well Known (1k+ votes)</option>
+            <option value="hiddengem">Hidden Gems (&lt;1k votes, 7+ rating)</option>
+          </select>
+        </label>
         <button class="sf-filter-clear" id="sf-filter-clear" title="Clear all filters">
           <span class="material-icons-round">filter_alt_off</span> Clear
         </button>
@@ -194,6 +225,8 @@ export function buildSearchFilters(container) {
     _filters.language = document.getElementById('sf-lang')?.value || null;
     _filters.runtime = document.getElementById('sf-runtime')?.value || null;
     _filters.status = document.getElementById('sf-status')?.value || null;
+    _filters.country = document.getElementById('sf-country')?.value || null;
+    _filters.popTier = document.getElementById('sf-poptier')?.value || null;
   };
 
   // Decade preset wires year-from and year-to selects
@@ -228,7 +261,7 @@ export function buildSearchFilters(container) {
   });
 
   document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
-    _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null };
+    _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null, country: null, popTier: null };
     _providerFilter = null;
     _excludeMyServices = false;
     container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
@@ -321,6 +354,16 @@ async function browseByFilters() {
       } else if (_filters.status === 'ended') {
         params['with_status'] = '2|3|4'; // Ended, Cancelled, In Production
       }
+    }
+    // Country of origin
+    if (_filters.country) params.with_origin_country = _filters.country;
+    // Popularity tier
+    if (_filters.popTier === 'blockbuster') params['vote_count.gte'] = 10000;
+    else if (_filters.popTier === 'wellknown') params['vote_count.gte'] = 1000;
+    else if (_filters.popTier === 'hiddengem') {
+      params['vote_count.gte'] = 50;
+      params['vote_count.lte'] = 1000;
+      params['vote_average.gte'] = Math.max(_filters.minRating || 0, 7);
     }
 
     let items = [];
@@ -1147,6 +1190,17 @@ async function fetchSearchPage(q, page) {
   if (_filters.language) {
     all = all.filter(x => x.original_language === _filters.language || !_filters.language);
   }
+  // Country filter (client-side; origin_country present on TV results, use language as movie proxy)
+  if (_filters.country) {
+    const langByCountry = { US:'en', GB:'en', JP:'ja', KR:'ko', FR:'fr', DE:'de', ES:'es', IT:'it', IN:'hi', CN:'zh', BR:'pt', MX:'es', CA:'en', AU:'en', SE:'sv', DK:'da', NO:'no', TR:'tr' };
+    all = all.filter(x => x.origin_country?.length
+      ? x.origin_country.includes(_filters.country)
+      : (!langByCountry[_filters.country] || x.original_language === langByCountry[_filters.country]));
+  }
+  // Popularity tier filter (client-side for text search)
+  if (_filters.popTier === 'blockbuster') all = all.filter(x => (x.vote_count || 0) >= 10000);
+  else if (_filters.popTier === 'wellknown') all = all.filter(x => (x.vote_count || 0) >= 1000);
+  else if (_filters.popTier === 'hiddengem') all = all.filter(x => (x.vote_count || 0) < 1000 && (x.vote_average || 0) >= 7);
 
   // Apply sortBy filter
   if (_filters.sortBy === 'vote_average.desc') {
