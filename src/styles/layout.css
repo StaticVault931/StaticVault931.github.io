@@ -1336,6 +1336,37 @@
 .bottom-nav-btn.on { color: var(--red); }
 .bottom-nav-btn:hover { color: var(--text); }
 
+/* Mobile setting: auto-hide header on scroll down */
+#header { transition: transform .25s var(--ease), background .3s; }
+#header.hdr-hidden { transform: translateY(-100%); }
+
+/* Mobile setting: icons-only bottom nav */
+body.sv-icon-nav .bottom-nav-btn { font-size: 0; gap: 0; }
+body.sv-icon-nav .bottom-nav-btn .material-icons-round { font-size: 1.5rem; }
+body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
+
+/* Center search: raised accent circle, evenly flanked by 2 buttons each side */
+.bottom-nav-search {
+  position: relative;
+  margin-top: -1.35rem;
+}
+.bottom-nav-search .material-icons-round {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: 1.55rem;
+  box-shadow: 0 4px 16px var(--red-glow), 0 2px 8px rgba(0,0,0,.4);
+  transition: transform .15s var(--ease);
+}
+.bottom-nav-search:active .material-icons-round { transform: scale(.92); }
+.bottom-nav-search.on .material-icons-round { background: var(--red); color: #fff; }
+.bottom-nav-search.on { color: var(--red); }
+
 /* ── FOOTER ──────────────────────────────────────────────────────── */
 #footer {
   background: var(--s1);

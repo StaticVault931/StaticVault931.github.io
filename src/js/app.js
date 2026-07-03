@@ -19,8 +19,8 @@ import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
-const THEMES = ['dark', 'light', 'midnight', 'warm'];
-const THEME_ICONS = { dark: 'dark_mode', light: 'light_mode', midnight: 'nights_stay', warm: 'wb_sunny' };
+const THEMES = ['dark', 'midnight', 'ocean', 'warm', 'light'];
+const THEME_ICONS = { dark: 'dark_mode', midnight: 'nights_stay', ocean: 'water', warm: 'wb_sunny', light: 'light_mode' };
 
 function initTheme() {
   const saved = localStorage.getItem('sv_theme') || 'dark';
@@ -227,6 +227,11 @@ const SV_SETTINGS = [
   { id: 'hideTabAnime',   label: 'Hide Anime Tab',        desc: 'Remove the Anime tab from the navigation bar',                           default: false, icon: 'hide_source', group: 'Content' },
   // Playback — hover trailers
   { id: 'automuteHoverTrailer', label: 'Automute Hover Trailers', desc: 'Mute hover card trailers by default (can unmute in the card)', default: false, icon: 'volume_off', group: 'Playback' },
+  // Mobile-only (shown only on small screens)
+  { id: 'mobileHideHeader', label: 'Auto-Hide Top Bar',  desc: 'Hide the top bar when scrolling down for extra screen space — swipe up to bring it back', default: true,  icon: 'swipe_up',   group: 'Mobile', mobileOnly: true },
+  { id: 'mobileIconNav',    label: 'Compact Bottom Nav', desc: 'Icons only in the bottom navigation — smaller and cleaner',                                default: false, icon: 'apps',       group: 'Mobile', mobileOnly: true },
+  // Apple-only: frosted glass surfaces (backdrop-filter is fast on Apple GPUs)
+  { id: 'glassEffects',     label: 'Liquid Glass',       desc: 'Frosted-glass translucency on the top bar, menus, and overlays',                            default: true,  icon: 'blur_on',    group: 'Display', appleOnly: true },
   // Info page display
   { id: 'showOMDbRatings',   label: 'Show IMDb / RT / Metacritic', desc: 'Display external ratings from IMDb, Rotten Tomatoes, and Metacritic', default: true, icon: 'star_rate', group: 'Info Page' },
   { id: 'showWhereToWatch',  label: 'Show Where to Watch',         desc: 'Show streaming availability on the info page',                          default: true, icon: 'tv',        group: 'Info Page' },
@@ -235,6 +240,13 @@ const SV_SETTINGS = [
 ];
 
 const PROFILE_COLORS = ["#e50914","#6366f1","#22c55e","#f59e0b","#06b6d4","#ec4899","#8b5cf6","#f97316"];
+
+// Apple platform detection (Mac, iPhone, iPad — including iPadOS reporting as Mac)
+function _isApplePlatform() {
+  const p = navigator.platform || '';
+  const ua = navigator.userAgent || '';
+  return /Mac|iPhone|iPad|iPod/.test(p) || /Mac|iPhone|iPad|iPod/.test(ua);
+}
 
 /* ── STREAM MODE STATE (must be before init IIFE to avoid TDZ) ──── */
 let _streamPage = 1;
@@ -2110,6 +2122,25 @@ function applySetting(id, val) {
     document.body.classList.toggle('sv-reduced-motion', val === 'minimal');
     document.body.classList.toggle('sv-no-motion', val === 'none');
   }
+  if (id === 'mobileIconNav') document.body.classList.toggle('sv-icon-nav', !!val);
+  if (id === 'glassEffects') document.body.classList.toggle('sv-glass', !!val && _isApplePlatform());
+  if (id === 'mobileHideHeader') {
+    document.body.classList.toggle('sv-autohide-header', !!val);
+    if (val && !window._svHideHdrBound) {
+      window._svHideHdrBound = true;
+      let lastY = window.scrollY;
+      window.addEventListener('scroll', () => {
+        if (!document.body.classList.contains('sv-autohide-header')) return;
+        if (!window.matchMedia('(max-width: 720px)').matches) return;
+        const hdr = document.getElementById('header');
+        if (!hdr) return;
+        const y = window.scrollY;
+        if (y > lastY + 8 && y > 120) hdr.classList.add('hdr-hidden');
+        else if (y < lastY - 8 || y < 60) hdr.classList.remove('hdr-hidden');
+        lastY = y;
+      }, { passive: true });
+    }
+  }
   // Legacy compat: reducedMotion was a boolean previously — migrate if still stored
   if (id === 'reducedMotion') { setSetting('motionLevel', val ? 'minimal' : 'default'); }
   if (id === 'compactMode') document.body.classList.toggle('sv-compact-mode', val);
@@ -2141,6 +2172,8 @@ function applySetting(id, val) {
   if (id === 'hideTabClips') {
     const tab = document.querySelector('.nav-tab[data-page="clips"]');
     if (tab) tab.style.display = val ? 'none' : '';
+    const bnBtn = document.querySelector('#bottom-nav .bottom-nav-btn[data-page="clips"]');
+    if (bnBtn) bnBtn.style.display = val ? 'none' : '';
   }
   if (id === 'hideTabAnime') {
     const tab = document.querySelector('.nav-tab[data-page="anime"]');
@@ -2245,9 +2278,13 @@ function buildSettingsUI() {
   const grid = document.getElementById('sv-settings-grid');
   if (!grid) return;
 
-  // Group settings by their group field
+  // Group settings by their group field (mobile-only settings hidden on
+  // desktop; Apple-only settings hidden on non-Apple devices)
+  const isMobileViewport = window.matchMedia('(max-width: 720px)').matches;
   const groups = {};
   SV_SETTINGS.forEach(s => {
+    if (s.mobileOnly && !isMobileViewport) return;
+    if (s.appleOnly && !_isApplePlatform()) return;
     const g = s.group || 'Other';
     if (!groups[g]) groups[g] = [];
     groups[g].push(s);
@@ -7319,6 +7356,11 @@ async function showNetflixCard(card) {
           if (d.event === 'infoDelivery' && d.info?.playerState === 1) {
             clearTimeout(failsafeTimer);
             if (backdrop && _hoverCurrentCard === card) backdrop.style.opacity = '0';
+            // Honor the automute setting — playback started muted for autoplay
+            // reliability; unmute now unless the user opted for muted previews
+            if (!getSetting('automuteHoverTrailer') && _hoverCurrentCard === card) {
+              _ytCmd(frame, 'unMute');
+            }
             window.removeEventListener('message', ytHandler);
           } else if (d.event === 'onError') {
             // Trailer error — fall back to showing the backdrop image
@@ -7365,9 +7407,10 @@ function positionNetflixCard(card, nc) {
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
 
-  // Card width: always bigger than source card; larger cap on search page (bigger cards)
+  // Card width: proportionally larger than the source card (~1.3×) so the
+  // hover preview clearly "grows" out of the card on every screen size
   const onSearch = state.currentPage === 'search';
-  const ncW = Math.min(onSearch ? 660 : 580, Math.max(rect.width + 60, onSearch ? 460 : 380));
+  const ncW = Math.min(onSearch ? 720 : 680, Math.max(Math.round(rect.width * 1.3), onSearch ? 460 : 400));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
   nc.style.overflowY = '';
@@ -7551,6 +7594,24 @@ function _clipsGoTo(idx, { instant = false } = {}) {
 
 function _clipsNavSlide(dir) { _clipsGoTo(_clipsIdx + dir); }
 
+// Inject the on-screen up/down arrows (idempotent — runs on every clips visit)
+function _injectClipsNav() {
+  const clipsPage = document.getElementById('page-clips');
+  if (!clipsPage || document.getElementById('clips-nav')) return;
+  const nav = document.createElement('div');
+  nav.id = 'clips-nav';
+  nav.innerHTML = `
+    <button class="clips-nav-btn clips-nav-up" title="Previous (↑ / W)" aria-label="Previous clip" disabled>
+      <span class="material-icons-round">keyboard_arrow_up</span>
+    </button>
+    <button class="clips-nav-btn clips-nav-down" title="Next (↓ / S)" aria-label="Next clip">
+      <span class="material-icons-round">keyboard_arrow_down</span>
+    </button>`;
+  nav.querySelector('.clips-nav-up').addEventListener('click', () => _clipsNavSlide(-1));
+  nav.querySelector('.clips-nav-down').addEventListener('click', () => _clipsNavSlide(1));
+  clipsPage.appendChild(nav);
+}
+
 // Observe newly appended slides for dwell tracking
 function _observeNewClipSlides(feed) {
   feed.querySelectorAll('.trailer-slide:not([data-observed])').forEach(sl => {
@@ -7584,6 +7645,7 @@ async function initTrailersFeed() {
 
   // On return visit — re-trigger playback of visible slide without reloading
   if (_trailersLoaded && feed.querySelector('.trailer-slide')) {
+    _injectClipsNav();
     requestAnimationFrame(() => _clipsGoTo(_clipsIdx, { instant: true }));
     _maybeShowClipsTutorial(feed);
     return;
@@ -7656,22 +7718,7 @@ async function initTrailersFeed() {
   // Show tutorial first (may prepend a tutorial slide)
   _maybeShowClipsTutorial(feed);
 
-  // Inject nav arrows if not already present
-  const clipsPage = document.getElementById('page-clips');
-  if (clipsPage && !document.getElementById('clips-nav')) {
-    const nav = document.createElement('div');
-    nav.id = 'clips-nav';
-    nav.innerHTML = `
-      <button class="clips-nav-btn clips-nav-up" title="Previous (↑ / W)" aria-label="Previous clip" disabled>
-        <span class="material-icons-round">keyboard_arrow_up</span>
-      </button>
-      <button class="clips-nav-btn clips-nav-down" title="Next (↓ / S)" aria-label="Next clip">
-        <span class="material-icons-round">keyboard_arrow_down</span>
-      </button>`;
-    nav.querySelector('.clips-nav-up').addEventListener('click', () => _clipsNavSlide(-1));
-    nav.querySelector('.clips-nav-down').addEventListener('click', () => _clipsNavSlide(1));
-    clipsPage.appendChild(nav);
-  }
+  _injectClipsNav();
 
   // Activate the starting slide (tutorial if present, else first clip)
   _clipsGoTo(0, { instant: true });

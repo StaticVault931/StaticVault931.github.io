@@ -94,14 +94,19 @@
   :root { --card-w: 230px; }
 
   /* Account for shorter mobile header (58px vs 64px desktop) */
-  #page-clips.active { padding-top: 58px; }
-  .trailer-slide, .trailers-empty { height: calc(100vh - 58px); height: calc(100dvh - 58px); }
+  /* Slides fit between header (58px) and bottom nav (60px + safe area) */
+  #page-clips.active { padding-top: 58px; height: calc(100dvh - 60px - env(safe-area-inset-bottom, 0px)); }
+  .trailer-slide, .trailers-empty {
+    height: calc(100vh - 118px);
+    height: calc(100dvh - 118px - env(safe-area-inset-bottom, 0px));
+  }
 
-  /* Clips nav arrows: above the bottom nav, bigger touch targets */
+  /* Clips nav arrows: right edge, above center so thumbs reach them;
+     clear of the action-button column at the bottom */
   #clips-nav {
-    right: .75rem;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    gap: .65rem;
+    right: .6rem;
+    top: 42%;
+    gap: .8rem;
   }
   .clips-nav-btn { width: 54px; height: 54px; }
   .clips-nav-btn .material-icons-round { font-size: 1.9rem; }

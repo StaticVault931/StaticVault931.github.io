@@ -839,41 +839,102 @@ export async function loadSearchDefault() {
 }
 
 /* ── EASTER EGGS ─────────────────────────────────────────────────── */
+function _eggConfetti(color, count = 20) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      const c = color === 'rainbow' ? `hsl(${Math.random() * 360},90%,60%)` : color;
+      el.style.cssText = `position:fixed;top:-10px;left:${Math.random() * 100}vw;width:8px;height:8px;border-radius:50%;background:${c};z-index:9999;pointer-events:none;animation:confettiFall ${1 + Math.random() * 2}s ease-in forwards;`;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }, i * 60);
+  }
+}
+
+function _eggReveal(area, emoji, color, title, msg, extraHtml = '') {
+  area.innerHTML = `
+    <div class="easter-egg-result" style="text-align:center;padding:3rem 1rem;animation:eggReveal .6s var(--ease)">
+      <div style="font-size:4rem;margin-bottom:1rem">${emoji}</div>
+      <div style="font-size:1.4rem;font-weight:900;color:${color};margin-bottom:.75rem;font-family:'Bebas Neue',Impact,sans-serif;letter-spacing:.05em;text-transform:uppercase">${title}</div>
+      <div style="font-size:.95rem;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.7">${msg}</div>
+      ${extraHtml}
+    </div>`;
+}
+
+// Useful egg: render one random top-rated pick as a clickable card
+async function _eggSurprisePick(area, color, headline) {
+  _eggReveal(area, '🎲', color, headline, 'Rolling the dice on something great…');
+  try {
+    const page = 1 + Math.floor(Math.random() * 10);
+    const d = await tmdb('/movie/top_rated', { page });
+    const picks = (d.results || []).filter(m => m.backdrop_path);
+    const pick = picks[Math.floor(Math.random() * picks.length)];
+    if (!pick) return;
+    _eggReveal(area, '🎲', color, headline,
+      'The vault has chosen. Click the card to dive in — or search "surprise me" again to reroll.',
+      `<div class="search-grid" style="max-width:420px;margin:1.5rem auto 0">${makeCard({ ...pick }, 'movie')}</div>`);
+  } catch {}
+}
+
 function checkSearchEasterEgg(q) {
   const lower = q.toLowerCase().trim();
   const area = document.getElementById('search-results-area');
   if (!area) return false;
 
   const eggs = {
-    'staticvault931': { msg: 'You found the source! This is StaticVault931 — your personal cinema. Made with love by StaticQuasar931.', color: '#e50914', icon: 'movie' },
-    'staticquasar931': { msg: "Hey! That's us! Hi there, explorer! StaticQuasar931 is the creator of StaticVault931. Check out our Instagram @StaticQuasar931!", color: '#6366f1', icon: 'auto_awesome' },
-    'sv931': { msg: 'Short and sweet! SV931 = StaticVault931. You\'ve found the secret shorthand!', color: '#22c55e', icon: 'celebration' },
-    'themoviedb': { msg: "TMDB powers StaticVault931's entire catalog! We love their API. Check them out at themoviedb.org.", color: '#06b6d4', icon: 'storage' },
-    'anilist': { msg: 'AniList powers all the anime you see here! Amazing community and API.', color: '#8b5cf6', icon: 'auto_awesome' },
+    'staticvault931':  { emoji: '🎬', color: '#e50914', msg: 'You found the source! This is StaticVault931 — your personal cinema. Made with love by StaticQuasar931.' },
+    'staticquasar931': { emoji: '✨', color: '#6366f1', msg: "Hey! That's us! StaticQuasar931 is the creator of StaticVault931. Check out our Instagram @StaticQuasar931!" },
+    'sv931':           { emoji: '🎉', color: '#22c55e', msg: "Short and sweet! SV931 = StaticVault931. You've found the secret shorthand!" },
+    'themoviedb':      { emoji: '💡', color: '#06b6d4', msg: "TMDB powers StaticVault931's entire catalog! We love their API. Check them out at themoviedb.org." },
+    'anilist':         { emoji: '🌸', color: '#8b5cf6', msg: 'AniList powers all the anime you see here! Amazing community and API.' },
+    'hello there':     { emoji: '⚔️', color: '#4ade80', msg: 'General Kenobi! You are a bold one. (Try searching "Star Wars" for the real thing.)' },
+    'i am the danger': { emoji: '🧪', color: '#f5c518', msg: 'A guy opens his door and gets shot, and you think that of me? No. I AM the one who knocks. — Try "Breaking Bad".' },
   };
+
+  // Useful: random great movie
+  if (['surprise me', 'random', 'roll the dice', 'dice'].includes(lower)) {
+    _eggSurprisePick(area, '#f59e0b', 'Surprise Pick');
+    _eggConfetti('#f59e0b', 12);
+    return true;
+  }
+
+  // Fun: barrel roll — spins the whole app once
+  if (lower === 'do a barrel roll' || lower === 'barrel roll') {
+    _eggReveal(area, '🛩️', '#06b6d4', 'Wheeee!', 'Peppy would be proud.');
+    document.body.style.transition = 'transform 1.2s ease-in-out';
+    document.body.style.transform = 'rotate(360deg)';
+    setTimeout(() => { document.body.style.transform = ''; setTimeout(() => { document.body.style.transition = ''; }, 1300); }, 1250);
+    return true;
+  }
+
+  // Fun: disco — quick tour through every theme, then back home
+  if (lower === 'disco' || lower === 'party mode') {
+    _eggReveal(area, '🪩', '#ec4899', 'Disco Mode!', 'Taking every theme for a spin…');
+    _eggConfetti('rainbow', 30);
+    const original = document.documentElement.dataset.theme || 'dark';
+    const themes = ['dark', 'midnight', 'ocean', 'warm', 'light'];
+    themes.forEach((t, i) => setTimeout(() => { document.documentElement.dataset.theme = t; }, 400 * (i + 1)));
+    setTimeout(() => { document.documentElement.dataset.theme = original; }, 400 * (themes.length + 1));
+    return true;
+  }
+
+  // Useful: 42 — the answer, plus the film that goes with it
+  if (lower === '42' || lower === 'meaning of life') {
+    _eggReveal(area, '🐬', '#4ade80', "Don't Panic", 'The answer to life, the universe, and everything. Finding the film that explains the question…');
+    tmdb('/search/movie', { query: "Hitchhiker's Guide to the Galaxy" }).then(d => {
+      const m = (d.results || [])[0];
+      if (m) _eggReveal(area, '🐬', '#4ade80', "Don't Panic",
+        'The answer to life, the universe, and everything is 42. So long, and thanks for all the fish.',
+        `<div class="search-grid" style="max-width:420px;margin:1.5rem auto 0">${makeCard(m, 'movie')}</div>`);
+    }).catch(() => {});
+    return true;
+  }
 
   const egg = eggs[lower];
   if (!egg) return false;
 
-  const emojiMap = { movie: '🎬', celebration: '🎉', science: '🧪', auto_awesome: '✨', storage: '💡' };
-  const emoji = emojiMap[egg.icon] || '✨';
-
-  area.innerHTML = `
-    <div class="easter-egg-result" style="text-align:center;padding:3rem 1rem;animation:eggReveal .6s var(--ease)">
-      <div style="font-size:4rem;margin-bottom:1rem">${emoji}</div>
-      <div style="font-size:1.4rem;font-weight:900;color:${egg.color};margin-bottom:.75rem;font-family:'Bebas Neue',Impact,sans-serif;letter-spacing:.05em;text-transform:uppercase">Easter Egg Found!</div>
-      <div style="font-size:.95rem;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.7">${egg.msg}</div>
-    </div>`;
-
-  // Confetti animation
-  for (let i = 0; i < 20; i++) {
-    setTimeout(() => {
-      const el = document.createElement('div');
-      el.style.cssText = `position:fixed;top:-10px;left:${Math.random() * 100}vw;width:8px;height:8px;border-radius:50%;background:${egg.color};z-index:9999;pointer-events:none;animation:confettiFall ${1 + Math.random() * 2}s ease-in forwards;`;
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 3000);
-    }, i * 80);
-  }
+  _eggReveal(area, egg.emoji, egg.color, 'Easter Egg Found!', egg.msg);
+  _eggConfetti(egg.color);
   return true;
 }
 

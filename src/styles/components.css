@@ -3,6 +3,8 @@
   display: block; /* ensures <a> cards behave as block-level elements */
   flex-shrink: 0;
   width: var(--card-w);
+  user-select: none; /* prevents drag-scroll from highlighting title text */
+  -webkit-user-select: none;
   /* scroll-snap-align removed — caused row drift */
   border-radius: var(--r);
   background: var(--s2);
@@ -90,18 +92,18 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: .72rem;
+  font-size: 1rem;
   font-weight: 900;
   color: #fff;
-  text-shadow: 0 1px 6px rgba(0,0,0,.95);
-  line-height: 1.2;
+  text-shadow: 0 1px 8px rgba(0,0,0,.95), 0 0 3px rgba(0,0,0,.8);
+  line-height: 1.22;
   padding-right: 36px;
   word-break: break-word;
 }
 .card-img-title-year {
   display: block;
-  font-size: .58rem;
-  color: rgba(255,255,255,.5);
+  font-size: .72rem;
+  color: rgba(255,255,255,.65);
   margin-top: 2px;
 }
 /* TMDB title-treatment logo — horizontal text image */
@@ -1818,6 +1820,38 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .wt-skip-btn .material-icons-round { font-size: .9rem; }
 .wt-skip-btn:hover { background: #f6121d; box-shadow: 0 4px 18px rgba(229,9,20,.4); transform: scale(1.04); }
 
+/* ── LIQUID GLASS (Apple devices, toggleable) ────────────────────────
+   Frosted translucent surfaces via backdrop-filter — applied only when
+   body.sv-glass is set (Apple platform + setting enabled). */
+body.sv-glass #header.solid,
+body.sv-glass #bottom-nav,
+body.sv-glass .hdr-drop-menu,
+body.sv-glass #netflix-card,
+body.sv-glass .prov-more-panel,
+body.sv-glass .page-subnav {
+  background: rgba(16,16,20,.58) !important;
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+}
+body.sv-glass #header {
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+body.sv-glass .clips-nav-btn,
+body.sv-glass .trailer-icon-btn {
+  background: rgba(255,255,255,.10);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  border-color: rgba(255,255,255,.28);
+}
+/* Light theme gets a bright glass instead of dark */
+[data-theme="light"] body.sv-glass #header.solid,
+[data-theme="light"] body.sv-glass #bottom-nav,
+[data-theme="light"] body.sv-glass .hdr-drop-menu,
+[data-theme="light"] body.sv-glass .page-subnav {
+  background: rgba(225,228,233,.6) !important;
+}
+
 /* ── HEADER DROPDOWN MENUS (theme picker etc.) ───────────────────── */
 .hdr-drop-menu {
   position: fixed;
@@ -2799,35 +2833,38 @@ img[alt]::after {
   transform: translate(-50%, -50%) scale(1);
 }
 
-/* Clips nav arrows */
+/* Clips nav arrows — vertically centered on the right edge, always visible */
 #clips-nav {
   position: absolute;
-  right: 1.25rem;
-  bottom: 6rem;
-  z-index: 20;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
   display: flex;
   flex-direction: column;
-  gap: .5rem;
+  gap: .7rem;
   pointer-events: all;
 }
 .clips-nav-btn {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255,255,255,.35);
-  background: rgba(0,0,0,.55);
+  border: 1.5px solid rgba(255,255,255,.4);
+  background: rgba(20,20,20,.72);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background .15s, border-color .15s, opacity .15s;
-  backdrop-filter: blur(8px);
+  transition: background .15s, border-color .15s, opacity .15s, transform .1s;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 18px rgba(0,0,0,.5);
 }
-.clips-nav-btn:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.7); }
-.clips-nav-btn:active { transform: scale(.92); }
+.clips-nav-btn:hover { background: rgba(255,255,255,.22); border-color: #fff; }
+.clips-nav-btn:active { transform: scale(.9); }
 .clips-nav-btn[disabled] { opacity: .25; cursor: default; pointer-events: none; }
-.clips-nav-btn .material-icons-round { font-size: 1.6rem; }
+.clips-nav-btn .material-icons-round { font-size: 1.8rem; }
 
 .trailers-spinner {
   position: fixed;
