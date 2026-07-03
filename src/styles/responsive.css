@@ -95,7 +95,16 @@
 
   /* Account for shorter mobile header (58px vs 64px desktop) */
   #page-clips.active { padding-top: 58px; }
-  .trailer-slide, .trailers-empty { height: calc(100vh - 58px); }
+  .trailer-slide, .trailers-empty { height: calc(100vh - 58px); height: calc(100dvh - 58px); }
+
+  /* Clips nav arrows: above the bottom nav, bigger touch targets */
+  #clips-nav {
+    right: .75rem;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    gap: .65rem;
+  }
+  .clips-nav-btn { width: 54px; height: 54px; }
+  .clips-nav-btn .material-icons-round { font-size: 1.9rem; }
   .page-subnav { top: 58px; }
   .search-page-top { top: 58px; }
   .provider-page-header { top: 58px; }

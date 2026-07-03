@@ -39,6 +39,45 @@ function cycleTheme() {
   toast(`Theme: ${next.charAt(0).toUpperCase() + next.slice(1)}`, THEME_ICONS[next] || 'palette');
 }
 
+// Theme dropdown — shows all themes by name instead of blind cycling
+function toggleThemeMenu() {
+  const existing = document.getElementById('theme-menu');
+  if (existing) { existing.remove(); return; }
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const cur = document.documentElement.dataset.theme || 'dark';
+  const menu = document.createElement('div');
+  menu.id = 'theme-menu';
+  menu.className = 'hdr-drop-menu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = THEMES.map(t => `
+    <button class="hdr-drop-item${t === cur ? ' on' : ''}" data-theme-pick="${t}" role="menuitem">
+      <span class="material-icons-round">${THEME_ICONS[t] || 'palette'}</span>
+      ${t.charAt(0).toUpperCase() + t.slice(1)}
+      ${t === cur ? '<span class="material-icons-round hdr-drop-check">check</span>' : ''}
+    </button>`).join('');
+  menu.addEventListener('click', e => {
+    const pick = e.target.closest('[data-theme-pick]');
+    if (pick) { applyTheme(pick.dataset.themePick); menu.remove(); }
+  });
+  document.body.appendChild(menu);
+  const r = btn.getBoundingClientRect();
+  menu.style.top = `${r.bottom + 8}px`;
+  menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+  // Close on outside click / Escape
+  setTimeout(() => {
+    const close = e => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'click' && menu.contains(e.target)) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+      document.removeEventListener('keydown', close);
+    };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', close);
+  }, 0);
+}
+
 /* ── LEGAL ───────────────────────────────────────────────────────── */
 const LEGAL_CONTENT = {
   privacy: {
@@ -3035,7 +3074,7 @@ function initEventDelegation() {
   });
 
   // Theme toggle
-  document.getElementById('theme-toggle')?.addEventListener('click', cycleTheme);
+  document.getElementById('theme-toggle')?.addEventListener('click', e => { e.stopPropagation(); toggleThemeMenu(); });
 
   // Hero right-click → next slide
   document.getElementById('hero')?.addEventListener('contextmenu', e => {
@@ -6849,6 +6888,7 @@ function _applyCardLogo(card, url) {
     if (titleYear) titleYear.style.display = 'none';
     if (titleBox)  titleBox.style.background = 'transparent';
   };
+  imgEl.loading = 'eager'; // lazy + display:none never fires in Firefox
   imgEl.style.display = 'block';
   imgEl.alt = card.dataset.title || '';
   imgEl.addEventListener('load', _onLoaded, { once: true });
@@ -7368,7 +7408,7 @@ function positionNetflixCard(card, nc) {
 }
 
 /* ── CLIPS FEED (YouTube Shorts / TikTok style) ─────────────────── */
-let _trailersMuted = true; // start muted — autoplay requires mute; user clicks M to unmute
+let _trailersMuted = false; // audio on by default — the click that opened the Clips tab counts as user activation, and allow="autoplay" delegates it to the iframe
 let _trailersObserver = null;
 let _trailersPage = 1;
 let _trailersLoading = false;
@@ -7446,39 +7486,77 @@ function _maybeShowClipsTutorial(feed) {
   feed.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-// Get the clip slide currently most visible in the feed (by scrollTop index)
-function _getActiveClipSlide() {
+/* ── CLIPS NAVIGATION — index-driven, deterministic ──────────────────
+   The feed is overflow:hidden; ALL movement goes through _clipsGoTo(idx).
+   Wheel, touch swipe, keyboard, and the on-screen arrows all funnel here.
+   The active slide plays; its neighbors stay loaded-but-paused (preload);
+   everything farther away is unloaded to save memory. */
+let _clipsIdx = 0;
+
+function _clipsSlides() {
   const feed = document.getElementById('clips-feed');
-  if (!feed) return null;
-  const allSlides = [...feed.querySelectorAll('.trailer-slide')];
-  if (!allSlides.length) return null;
-  const slideH = feed.clientHeight || window.innerHeight;
-  const idx = Math.round(feed.scrollTop / slideH);
-  const slide = allSlides[Math.min(idx, allSlides.length - 1)] || allSlides[0];
-  // If landed on the tutorial slide, return the first real clip instead
+  return feed ? [...feed.querySelectorAll('.trailer-slide')] : [];
+}
+
+// Get the currently active clip slide (never the tutorial slide)
+function _getActiveClipSlide() {
+  const slides = _clipsSlides();
+  if (!slides.length) return null;
+  const slide = slides[Math.min(_clipsIdx, slides.length - 1)] || slides[0];
   if (slide.classList.contains('clips-tutorial-slide')) {
-    return allSlides.find(s => !s.classList.contains('clips-tutorial-slide')) || null;
+    return slides.find(s => !s.classList.contains('clips-tutorial-slide')) || null;
   }
   return slide;
 }
 
-// Snap to next (+1) or previous (-1) clip slide using feed.scrollTo
-function _clipsNavSlide(dir) {
+function _clipsUpdateArrows(idx, count) {
+  const nav = document.getElementById('clips-nav');
+  if (!nav) return;
+  nav.querySelector('.clips-nav-up')?.toggleAttribute('disabled', idx <= 0);
+  nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', idx >= count - 1);
+}
+
+function _clipsGoTo(idx, { instant = false } = {}) {
   const feed = document.getElementById('clips-feed');
   if (!feed) return;
-  const slides = [...feed.querySelectorAll('.trailer-slide')];
+  const slides = _clipsSlides();
   if (!slides.length) return;
-  const slideH = feed.clientHeight || window.innerHeight;
-  const currentIdx = Math.round(feed.scrollTop / slideH);
-  const targetIdx = Math.max(0, Math.min(slides.length - 1, currentIdx + dir));
-  // Direct scrollTop assignment — CSS scroll-behavior: smooth handles animation
-  feed.scrollTop = targetIdx * slideH;
-  // Update nav arrow visibility
-  const nav = document.getElementById('clips-nav');
-  if (nav) {
-    nav.querySelector('.clips-nav-up')?.toggleAttribute('disabled', targetIdx === 0);
-    nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', targetIdx >= slides.length - 1);
+  idx = Math.max(0, Math.min(slides.length - 1, idx));
+  _clipsIdx = idx;
+  const target = slides[idx];
+
+  feed.scrollTo({ top: target.offsetTop, behavior: instant ? 'instant' : 'smooth' });
+  _clipsUpdateArrows(idx, slides.length);
+
+  // Play the active slide; keep neighbors on standby; unload the rest
+  slides.forEach((s, i) => {
+    if (i === idx) return;
+    if (Math.abs(i - idx) <= 1) _standbyClipSlide(s);
+    else _unloadClipSlide(s);
+  });
+  if (!target.classList.contains('clips-tutorial-slide')) _playTrailerSlide(target);
+
+  // Preload the next slide (muted + paused) so it starts instantly
+  const next = slides[idx + 1];
+  if (next && !next.classList.contains('clips-tutorial-slide')) _preloadTrailerSlide(next);
+
+  // Infinite feed: top up when 2 slides from the end
+  if (idx >= slides.length - 2 && !_trailersLoading) {
+    _loadMoreTrailers().then(() => {
+      _observeNewClipSlides(feed);
+      _clipsUpdateArrows(_clipsIdx, _clipsSlides().length);
+    });
   }
+}
+
+function _clipsNavSlide(dir) { _clipsGoTo(_clipsIdx + dir); }
+
+// Observe newly appended slides for dwell tracking
+function _observeNewClipSlides(feed) {
+  feed.querySelectorAll('.trailer-slide:not([data-observed])').forEach(sl => {
+    sl.dataset.observed = '1';
+    _trailersObserver?.observe(sl);
+  });
 }
 
 // Pause all clips (called on page switch or tab hide)
@@ -7492,9 +7570,11 @@ function _pauseAllClips() {
   document.querySelectorAll('.trailer-slide-poster').forEach(p => { p.style.opacity = '1'; });
 }
 
-// Page visibility — pause clips when tab is hidden
+// Page visibility — pause clips when tab is hidden, resume when it returns
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && state.currentPage === 'clips') _pauseAllClips();
+  if (state.currentPage !== 'clips') return;
+  if (document.hidden) _pauseAllClips();
+  else _clipsGoTo(_clipsIdx, { instant: true });
 });
 
 async function initTrailersFeed() {
@@ -7504,10 +7584,7 @@ async function initTrailersFeed() {
 
   // On return visit — re-trigger playback of visible slide without reloading
   if (_trailersLoaded && feed.querySelector('.trailer-slide')) {
-    requestAnimationFrame(() => {
-      const active = _getActiveClipSlide();
-      if (active) _playTrailerSlide(active);
-    });
+    requestAnimationFrame(() => _clipsGoTo(_clipsIdx, { instant: true }));
     _maybeShowClipsTutorial(feed);
     return;
   }
@@ -7515,6 +7592,7 @@ async function initTrailersFeed() {
   _trailersLoaded = true;
   _trailersPage = 1;
   _trailersItems = [];
+  _clipsIdx = 0;
 
   if (_trailersObserver) { _trailersObserver.disconnect(); _trailersObserver = null; }
   feed.querySelectorAll('.trailer-slide').forEach(el => el.remove());
@@ -7542,26 +7620,20 @@ async function initTrailersFeed() {
     return;
   }
 
-  // Dwell time tracking: record when each slide enters/exits view
+  // Dwell time tracking (recommendation signal only — play/pause is handled
+  // deterministically by _clipsGoTo, not by this observer)
   const _dwellStart = new Map();
 
   _trailersObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       const slide = entry.target;
-      if (slide.classList.contains('clips-tutorial-slide')) return; // skip tutorial slide
+      if (slide.classList.contains('clips-tutorial-slide')) return;
       const id = +slide.dataset.id;
       const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
 
       if (entry.isIntersecting) {
         _dwellStart.set(id, Date.now());
-        _playTrailerSlide(slide);
-        // Preload next slide's trailer key
-        const next = slide.nextElementSibling;
-        if (next?.classList.contains('trailer-slide') && !next.classList.contains('clips-tutorial-slide')) {
-          fetchTrailerKey(+next.dataset.id, next.dataset.type, next.dataset.title || '', next.dataset.year || '');
-        }
       } else {
-        _pauseTrailerSlide(slide);
         const start = _dwellStart.get(id);
         if (start) {
           const dwell = (Date.now() - start) / 1000;
@@ -7579,61 +7651,10 @@ async function initTrailersFeed() {
     });
   }, { threshold: 0.55 });
 
-  feed.querySelectorAll('.trailer-slide:not(.clips-tutorial-slide)').forEach(sl => { sl.dataset.observed = '1'; _trailersObserver.observe(sl); });
+  _observeNewClipSlides(feed);
 
-  // Infinite scroll
-  let _scrollObserver = null;
-  function _rewatchLastSlide() {
-    if (_scrollObserver) _scrollObserver.disconnect();
-    _scrollObserver = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !_trailersLoading) {
-        _loadMoreTrailers().then(() => {
-          feed.querySelectorAll('.trailer-slide:not([data-observed])').forEach(sl => {
-            sl.dataset.observed = '1';
-            _trailersObserver?.observe(sl);
-          });
-          _rewatchLastSlide();
-        });
-      }
-    }, { threshold: 0.1 });
-    const allSlides = [...feed.querySelectorAll('.trailer-slide:not(.clips-tutorial-slide)')];
-    const lastSlide = allSlides[allSlides.length - 1];
-    if (lastSlide) _scrollObserver.observe(lastSlide);
-  }
-  _rewatchLastSlide();
-
-  // Show tutorial first (may prepend a tutorial slide), then autoplay first real clip
+  // Show tutorial first (may prepend a tutorial slide)
   _maybeShowClipsTutorial(feed);
-
-  const firstRealSlide = feed.querySelector('.trailer-slide:not(.clips-tutorial-slide)');
-  if (firstRealSlide) {
-    firstRealSlide.dataset.observed = '1';
-    _trailersObserver.observe(firstRealSlide);
-    // Only autoplay if no tutorial is shown (tutorial is at top, clips start below)
-    const hasTutorial = !!feed.querySelector('.clips-tutorial-slide');
-    if (!hasTutorial) setTimeout(() => _playTrailerSlide(firstRealSlide), 300);
-  }
-
-  // Wheel snap — intercept wheel events and snap to next/prev slide
-  let _wheelDebounce = 0;
-  feed.addEventListener('wheel', e => {
-    e.preventDefault();
-    const now = Date.now();
-    if (now - _wheelDebounce < 500) return;
-    if (Math.abs(e.deltaY) < 5) return;
-    _wheelDebounce = now;
-    _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
-  }, { passive: false });
-
-  // Touch swipe — track touch start Y, snap on swipe end
-  let _touchStartY = 0;
-  feed.addEventListener('touchstart', e => {
-    _touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-  feed.addEventListener('touchend', e => {
-    const dy = _touchStartY - e.changedTouches[0].clientY;
-    if (Math.abs(dy) > 40) _clipsNavSlide(dy > 0 ? 1 : -1);
-  }, { passive: true });
 
   // Inject nav arrows if not already present
   const clipsPage = document.getElementById('page-clips');
@@ -7652,17 +7673,43 @@ async function initTrailersFeed() {
     clipsPage.appendChild(nav);
   }
 
-  // Update arrow states on scroll (IntersectionObserver-based slide tracking)
-  feed.addEventListener('scroll', () => {
-    const nav = document.getElementById('clips-nav');
-    if (!nav) return;
-    const slides = feed.querySelectorAll('.trailer-slide');
-    if (!slides.length) return;
-    const slideH = feed.clientHeight || window.innerHeight;
-    const idx = Math.round(feed.scrollTop / slideH);
-    nav.querySelector('.clips-nav-up')?.toggleAttribute('disabled', idx === 0);
-    nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', idx >= slides.length - 1);
-  }, { passive: true });
+  // Activate the starting slide (tutorial if present, else first clip)
+  _clipsGoTo(0, { instant: true });
+
+  // ── Input wiring: everything funnels into _clipsGoTo ─────────────
+  if (!feed.dataset.navWired) {
+    feed.dataset.navWired = '1';
+
+    // Mouse wheel / trackpad — debounced so one gesture = one slide
+    let _wheelDebounce = 0;
+    feed.addEventListener('wheel', e => {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - _wheelDebounce < 450) return;
+      if (Math.abs(e.deltaY) < 5) return;
+      _wheelDebounce = now;
+      _clipsNavSlide(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
+
+    // Touch swipe — vertical swipe of 40px+ navigates
+    let _touchStartY = 0, _touchStartX = 0;
+    feed.addEventListener('touchstart', e => {
+      _touchStartY = e.touches[0].clientY;
+      _touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    feed.addEventListener('touchend', e => {
+      const dy = _touchStartY - e.changedTouches[0].clientY;
+      const dx = _touchStartX - e.changedTouches[0].clientX;
+      if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx)) _clipsNavSlide(dy > 0 ? 1 : -1);
+    }, { passive: true });
+    // Prevent rubber-band scrolling of the page behind the feed
+    feed.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+    // Keep the active slide aligned on resize / rotation
+    window.addEventListener('resize', () => {
+      if (state.currentPage === 'clips') _clipsGoTo(_clipsIdx, { instant: true });
+    });
+  }
 }
 
 async function _loadMoreTrailers() {
@@ -7819,20 +7866,25 @@ function _buildTrailerSlide(item) {
     }
     const action = btn.dataset.action;
     if (action === 'watch') {
+      _standbyClipSlide(slide); // pause trailer so audio doesn't bleed under the player
+      slide.dataset.clipsPaused = '1';
       openMedia(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
     } else if (action === 'info') {
+      _standbyClipSlide(slide);
+      slide.dataset.clipsPaused = '1';
       openInfoPage(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
     } else if (action === 'mute') {
       _trailersMuted = !_trailersMuted;
       document.querySelectorAll('.trailer-slide [data-action="mute"] .material-icons-round').forEach(ic => {
         ic.textContent = _trailersMuted ? 'volume_off' : 'volume_up';
       });
-      // postMessage mute/unMute — no src rewrite, so the video never reloads
-      const cmd = _trailersMuted ? 'mute' : 'unMute';
+      // postMessage mute/unMute — no src rewrite, so the video never reloads.
+      // Only the ACTIVE slide gets unmuted; others stay muted (no audio bleed).
+      const activeSlide = _getActiveClipSlide();
       document.querySelectorAll('.trailer-slide-iframe').forEach(f => {
-        if (f.src?.includes('youtube.com/embed')) {
-          f.contentWindow?.postMessage(`{"event":"command","func":"${cmd}","args":""}`, '*');
-        }
+        if (!f.src?.includes('youtube.com/embed')) return;
+        const unmute = !_trailersMuted && f.closest('.trailer-slide') === activeSlide;
+        _ytCmd(f, unmute ? 'unMute' : 'mute');
       });
     } else if (action === 'like') {
       const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
@@ -7853,11 +7905,15 @@ function _buildTrailerSlide(item) {
         _clipsDwellPrefs.set(g, Math.max(-5, (_clipsDwellPrefs.get(g) || 0) - 2));
       });
       _saveClipsDwellPrefs();
-      _pauseTrailerSlide(slide);
+      _unloadClipSlide(slide);
       slide.style.transition = 'opacity .28s, transform .28s';
       slide.style.opacity = '0';
       slide.style.transform = 'translateX(-50px)';
-      setTimeout(() => slide.remove(), 320);
+      setTimeout(() => {
+        slide.remove();
+        // Slide indexes shifted — re-align and activate the slide now at this position
+        _clipsGoTo(_clipsIdx, { instant: true });
+      }, 320);
       toast('Showing less like this', 'thumb_down');
     }
   });
@@ -7920,30 +7976,79 @@ async function _playTrailerSlide(slide) {
     });
   }
 
-  if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
+  // Already loaded (e.g. preloaded muted+paused) — resume instantly, no reload
+  if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+    const sendPlay = () => {
+      _ytCmd(iframe, 'playVideo');
+      _ytCmd(iframe, _trailersMuted ? 'mute' : 'unMute');
+    };
+    sendPlay();
+    // Re-send once — postMessage is dropped if the player wasn't ready yet
+    setTimeout(() => {
+      if (slide.isConnected && _clipsSlides()[_clipsIdx] === slide && slide.dataset.clipsPaused !== '1') sendPlay();
+    }, 450);
+    _showClipIframe(slide, iframe);
+    return;
+  }
 
   const key = await fetchTrailerKey(id, type, title, year);
   if (!key || key === '__none__') {
     console.warn(`[SV Clips] No trailer for "${title}" (${type}/${id})`);
-    // Remove the dead slide if it's below the viewport (safe — no scroll jump)
-    const feedEl = slide.parentElement;
-    if (feedEl && slide.offsetTop > feedEl.scrollTop + feedEl.clientHeight - 10) slide.remove();
+    // Remove the dead slide if it's below the current one (safe — no index shift)
+    const slides = _clipsSlides();
+    if (slides.indexOf(slide) > _clipsIdx) slide.remove();
     return;
   }
   if (!slide.isConnected) return;
-  if (iframe.src && iframe.src.includes(key)) return;
 
-  const mute = _trailersMuted ? 1 : 0;
-  iframe.src = `https://www.youtube.com/embed/${key}?autoplay=1&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
-
-  iframe.addEventListener('load', () => {
-    iframe.style.opacity = '1';
-    const poster = slide.querySelector('.trailer-slide-poster');
-    if (poster) poster.style.opacity = '0';
-  }, { once: true });
+  iframe.src = _clipsEmbedUrl(key, 1, _trailersMuted ? 1 : 0);
+  iframe.addEventListener('load', () => _showClipIframe(slide, iframe), { once: true });
 }
 
-function _pauseTrailerSlide(slide) {
+function _ytCmd(iframe, func) {
+  iframe.contentWindow?.postMessage(`{"event":"command","func":"${func}","args":""}`, '*');
+}
+
+function _clipsEmbedUrl(key, autoplay, mute) {
+  return `https://www.youtube.com/embed/${key}?autoplay=${autoplay}&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+}
+
+function _showClipIframe(slide, iframe) {
+  iframe.style.opacity = '1';
+  const poster = slide.querySelector('.trailer-slide-poster');
+  if (poster) poster.style.opacity = '0';
+}
+
+// Load the slide's trailer muted + paused so it starts instantly when active
+function _preloadTrailerSlide(slide) {
+  const iframe = slide.querySelector('.trailer-slide-iframe');
+  if (!iframe || (iframe.src && iframe.src.includes('youtube.com/embed'))) return;
+  const id = +slide.dataset.id;
+  const type = slide.dataset.type;
+  fetchTrailerKey(id, type, slide.dataset.title || '', slide.dataset.year || '').then(key => {
+    if (!key || key === '__none__' || !slide.isConnected) return;
+    // Guard: slide may have become active while the key was being fetched
+    if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
+    if (_clipsSlides()[_clipsIdx] === slide) { _playTrailerSlide(slide); return; }
+    iframe.src = _clipsEmbedUrl(key, 0, 1);
+    // Keep the poster visible — the iframe fades in only when the slide activates
+  });
+}
+
+// Neighbor slide: keep loaded but paused + muted (instant resume, no audio bleed)
+function _standbyClipSlide(slide) {
+  const iframe = slide.querySelector('.trailer-slide-iframe');
+  if (iframe?.src?.includes('youtube.com/embed')) {
+    _ytCmd(iframe, 'pauseVideo');
+    _ytCmd(iframe, 'mute');
+    iframe.style.opacity = '0';
+    const poster = slide.querySelector('.trailer-slide-poster');
+    if (poster) poster.style.opacity = '1';
+  }
+}
+
+// Far-away slide: fully unload the iframe to free memory
+function _unloadClipSlide(slide) {
   const iframe = slide.querySelector('.trailer-slide-iframe');
   if (iframe && iframe.src) {
     iframe.style.opacity = '0';
@@ -7952,6 +8057,9 @@ function _pauseTrailerSlide(slide) {
     if (poster) poster.style.opacity = '1';
   }
 }
+
+// Back-compat alias (used by dislike handler / dwell observer)
+function _pauseTrailerSlide(slide) { _unloadClipSlide(slide); }
 
 async function fetchTrailerKey(id, type, title = '', year = '') {
   let key = _hoverTrailerCache.get(id);

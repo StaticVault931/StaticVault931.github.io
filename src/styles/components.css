@@ -1818,6 +1818,42 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .wt-skip-btn .material-icons-round { font-size: .9rem; }
 .wt-skip-btn:hover { background: #f6121d; box-shadow: 0 4px 18px rgba(229,9,20,.4); transform: scale(1.04); }
 
+/* ── HEADER DROPDOWN MENUS (theme picker etc.) ───────────────────── */
+.hdr-drop-menu {
+  position: fixed;
+  z-index: 9500;
+  min-width: 180px;
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  padding: .35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: fadeIn .14s var(--ease);
+}
+.hdr-drop-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  width: 100%;
+  padding: .55rem .7rem;
+  border: none;
+  border-radius: calc(var(--r) - 4px);
+  background: transparent;
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s, color .12s;
+}
+.hdr-drop-item:hover { background: rgba(255,255,255,.07); color: #fff; }
+.hdr-drop-item.on { color: #fff; }
+.hdr-drop-item .material-icons-round { font-size: 1.1rem; }
+.hdr-drop-check { margin-left: auto; color: var(--red, #e50914); }
+
 /* ── SHARE MENU ──────────────────────────────────────────────────── */
 #share-overlay {
   position: fixed;
@@ -2511,20 +2547,21 @@ img[alt]::after {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* stable on mobile — tracks the dynamic URL bar */
   overflow: hidden;
   padding-top: 64px;
   position: relative;
 }
 .trailers-feed {
   flex: 1;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+  /* Navigation is fully JS-driven (wheel/swipe/keys/arrows → _clipsGoTo).
+     overflow hidden means the browser never fights our smooth scrollTo. */
+  overflow-y: hidden;
   scrollbar-width: none;
   overscroll-behavior: contain;
   height: 100%;
   background: #000;
+  touch-action: none;
 }
 .trailers-feed::-webkit-scrollbar { display: none; }
 
@@ -2612,7 +2649,7 @@ img[alt]::after {
 
 .trailer-slide {
   height: calc(100vh - 64px);
-  scroll-snap-align: start;
+  height: calc(100dvh - 64px);
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #0d0d1a 0%, #1a0d2e 50%, #0d1a0d 100%);
