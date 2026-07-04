@@ -29,7 +29,7 @@ function updatePageMeta(p) {
   document.title = m.title;
   const base = 'https://staticvault931.github.io/';
   const pageUrl = p === 'home' ? base : `${base}?page=${p}`;
-  const siteImg = `${base}favicon.png`;
+  const siteImg = `${base}assets/icons/favicon.png`;
 
   document.querySelector('meta[name="description"]')?.setAttribute('content', m.desc);
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', m.title);

@@ -141,7 +141,21 @@
   z-index: 3;
 }
 .card:hover .card-ov { opacity: 1; }
-.card-ov-actions { display: flex; gap: .35rem; margin-left: auto; }
+.card-ov { justify-content: space-between; gap: .5rem; }
+.card-ov-info { min-width: 0; align-self: flex-end; pointer-events: none; }
+.card-ov-title {
+  font-size: .95rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-shadow: 0 1px 6px rgba(0,0,0,.9);
+}
+.card-ov-sub { font-size: .72rem; color: rgba(255,255,255,.78); margin-top: 2px; }
+.card-ov-actions { display: flex; gap: .35rem; margin-left: auto; align-self: flex-end; flex-shrink: 0; }
 .card-like-btn, .card-wl-btn {
   width: 30px;
   height: 30px;
@@ -164,7 +178,8 @@
 /* Type pill */
 .type-pill {
   position: absolute;
-  top: 7px;
+  /* Bottom-left — the top edge belongs to the title/logo overlay */
+  bottom: 7px;
   left: 7px;
   z-index: 2;
   padding: .13rem .42rem;
@@ -175,6 +190,9 @@
   letter-spacing: .06em;
   backdrop-filter: blur(4px);
 }
+/* Hover overlay includes the type in its sub-line — hide the pill then */
+.card:hover .type-pill { opacity: 0; }
+.type-pill { transition: opacity .18s; }
 .tp-m { background: rgba(229,9,20,.9); color: #fff; }
 .tp-t { background: rgba(109,109,110,.9); color: #fff; }
 .tp-a { background: rgba(251,146,60,.9); color: #fff; }
@@ -606,8 +624,10 @@
 .prov-more-panel {
   display: flex;
   align-items: center;
+  /* Right-aligned — the "More" toggle lives at the right end of the bar */
+  justify-content: flex-end;
   gap: .3rem;
-  padding: .35rem .75rem .35rem 2.4rem;
+  padding: .35rem .75rem;
   background: var(--s1);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -1626,9 +1646,10 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   opacity: 0;
   transform: scale(.82) translateY(18px);
   transition: opacity .3s var(--ease), transform .3s var(--ease);
-  /* Width scales with card width, capped at 580px */
+  /* Width is set by positionNetflixCard (≈1.4× the hovered card) — the CSS
+     cap must not fight it or the hover stops growing with bigger cards */
   width: max(var(--card-w, 380px), 380px);
-  max-width: min(580px, 90vw);
+  max-width: 92vw;
   border-radius: 14px;
   overflow: hidden;
   /* Scrollable when card is capped in positionNetflixCard */

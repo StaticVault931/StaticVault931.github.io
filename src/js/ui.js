@@ -121,6 +121,10 @@ export function makeCard(m, type, opts = {}) {
         ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
       </div>
       <div class="card-ov">
+        <div class="card-ov-info">
+          <div class="card-ov-title">${esc(title)}</div>
+          <div class="card-ov-sub">${[year, rating ? '★ ' + rating : '', typeLabel].filter(Boolean).join(' · ')}</div>
+        </div>
         <div class="card-ov-actions">
           <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
             <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
@@ -159,9 +163,12 @@ export function renderRow(rowId, items, typeOverride, numbered = false) {
   // Always reset to start — prevents browser scroll-snap drift when cards replace skeletons
   el.scrollLeft = 0;
   syncRowArrows(el);
+  // Re-check after layout settles (section may have been display:none at render)
+  requestAnimationFrame(() => syncRowArrows(el));
   if (!el.dataset.arrowInit) {
     el.dataset.arrowInit = '1';
     el.addEventListener('scroll', () => syncRowArrows(el), { passive: true });
+    window.addEventListener('resize', () => syncRowArrows(el), { passive: true });
   }
 }
 
@@ -171,10 +178,12 @@ function syncRowArrows(row) {
   const rBtn = document.querySelector(`[data-scroll-row="${id}"][data-scroll-dir="1"]`);
   const lArrow = lBtn?.closest('.row-arrow');
   const rArrow = rBtn?.closest('.row-arrow');
+  // No off-screen content → no arrows at all
+  const noOverflow = row.scrollWidth <= row.clientWidth + 8;
   const atStart = row.scrollLeft <= 4;
   const atEnd = row.scrollLeft >= row.scrollWidth - row.clientWidth - 4;
-  if (lArrow) lArrow.classList.toggle('hidden', atStart);
-  if (rArrow) rArrow.classList.toggle('hidden', atEnd);
+  if (lArrow) lArrow.classList.toggle('hidden', noOverflow || atStart);
+  if (rArrow) rArrow.classList.toggle('hidden', noOverflow || atEnd);
 }
 
 /* ── SECTION VISIBILITY ──────────────────────────────────────────── */

@@ -1409,6 +1409,41 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .bottom-nav-search.on .material-icons-round { background: var(--red); color: #fff; }
 .bottom-nav-search.on { color: var(--red); }
 
+/* ── ABOUT / SEO CONTENT ─────────────────────────────────────────── */
+#about-content {
+  background: var(--s1);
+  border-top: 1px solid var(--border);
+  padding: 2.5rem 3.5rem;
+  margin-top: 2rem;
+}
+.about-inner { max-width: 1100px; margin: 0 auto; }
+#about-content h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: .7rem; color: var(--text); }
+#about-content h3 { font-size: .95rem; font-weight: 800; margin-bottom: .4rem; color: var(--text); }
+#about-content p { font-size: .84rem; color: var(--muted); line-height: 1.7; margin-bottom: .6rem; }
+#about-content a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+#about-content a:hover { color: var(--red); }
+.about-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin: 1.4rem 0;
+}
+.about-faq details {
+  border-bottom: 1px solid var(--border);
+  padding: .55rem 0;
+}
+.about-faq summary {
+  cursor: pointer;
+  font-size: .86rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.about-faq summary:hover { color: var(--text); }
+.about-faq details p { margin: .5rem 0 .2rem; }
+@media (max-width: 720px) {
+  #about-content { padding: 1.8rem 1rem; }
+}
+
 /* ── FOOTER ──────────────────────────────────────────────────────── */
 #footer {
   background: var(--s1);

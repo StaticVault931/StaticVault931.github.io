@@ -5942,15 +5942,50 @@ export async function openPersonPage(personId) {
       metaEl.innerHTML = items.map(s => `<span class="person-meta-item">${esc(s)}</span>`).join('');
     }
 
-    // SEO
+    // ── SEO: unique title, description, and Person JSON-LD per person ──
+    // Google refuses to index pages that share meta descriptions — each
+    // person page must be distinct and substantial.
     const personPhoto = person.profile_path
       ? `https://image.tmdb.org/t/p/w780${person.profile_path}`
       : 'https://staticvault931.github.io/assets/icons/favicon.png';
-    document.title = `${person.name} — Films & TV — StaticVault931`;
+    const knownFor = [...(person.combined_credits?.cast || [])]
+      .sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+      .slice(0, 4).map(m => m.title || m.name).filter(Boolean);
+    const dept = person.known_for_department || 'Acting';
+    const deptLabel = dept === 'Acting' ? 'actor' : dept === 'Directing' ? 'director' : dept === 'Writing' ? 'writer' : dept.toLowerCase();
+    const birthBits = [person.birthday ? `born ${person.birthday}` : null, person.place_of_birth].filter(Boolean).join(' in ');
+    const personDesc = `${person.name}${birthBits ? ` (${birthBits})` : ''} — ${deptLabel}${knownFor.length ? ` known for ${knownFor.join(', ')}` : ''}. Full filmography, biography, and where to watch on StaticVault931.`;
+    const personUrl = `https://staticvault931.github.io/?person=${personId}`;
+
+    document.title = `${person.name} — ${knownFor[0] ? `${knownFor[0]} & More` : 'Films & TV'} — StaticVault931`;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', personDesc.slice(0, 300));
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', `${person.name} — StaticVault931`);
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', personDesc.slice(0, 300));
     document.querySelector('meta[property="og:image"]')?.setAttribute('content', personPhoto);
-    document.querySelector('meta[property="og:url"]')?.setAttribute('content', `${location.origin}/?person=${personId}`);
-    document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${location.origin}/?person=${personId}`);
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', personUrl);
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', personUrl);
+
+    // Person structured data (dedicated element so it never clashes with media JSON-LD)
+    let personLd = document.getElementById('jsonld-person');
+    if (!personLd) {
+      personLd = document.createElement('script');
+      personLd.type = 'application/ld+json';
+      personLd.id = 'jsonld-person';
+      document.head.appendChild(personLd);
+    }
+    personLd.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: person.name,
+      url: personUrl,
+      image: personPhoto,
+      ...(person.birthday ? { birthDate: person.birthday } : {}),
+      ...(person.deathday ? { deathDate: person.deathday } : {}),
+      ...(person.place_of_birth ? { birthPlace: person.place_of_birth } : {}),
+      jobTitle: deptLabel.charAt(0).toUpperCase() + deptLabel.slice(1),
+      description: personDesc.slice(0, 500),
+      ...(person.imdb_id ? { sameAs: [`https://www.imdb.com/name/${person.imdb_id}/`] } : {}),
+    });
 
     ov._credits = person.combined_credits || {};
     loadPersonCredits(personId, 'all'); // default: show all credits
@@ -7519,7 +7554,8 @@ async function showNetflixCard(card) {
       // Always mute for reliable browser autoplay; setting controls whether to unmute after load
       const startMuted = 1;
       frame.src = `https://www.youtube.com/embed/${vidKey}?autoplay=1&mute=${startMuted}&controls=0&rel=0&modestbranding=1&fs=0&iv_load_policy=3&disablekb=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
-      
+      frame.addEventListener('load', () => _ytListen(frame), { once: true });
+
       // Failsafe: reveal the iframe after 3 seconds even if JS API fails
       const failsafeTimer = setTimeout(() => {
         if (_hoverCurrentCard === card && _hoverActive && backdrop) {
@@ -8266,11 +8302,22 @@ async function _playTrailerSlide(slide) {
   if (!slide.isConnected) return;
 
   iframe.src = _clipsEmbedUrl(key, 1, _trailersMuted ? 1 : 0);
-  iframe.addEventListener('load', () => _showClipIframe(slide, iframe), { once: true });
+  iframe.addEventListener('load', () => { _ytListen(iframe); _showClipIframe(slide, iframe); }, { once: true });
 }
 
 function _ytCmd(iframe, func) {
   iframe.contentWindow?.postMessage(`{"event":"command","func":"${func}","args":""}`, '*');
+}
+
+// YouTube's embed API ignores commands (and sends no infoDelivery events)
+// until it receives a "listening" handshake — send it once per iframe load
+function _ytListen(iframe) {
+  if (!iframe) return;
+  const send = () => iframe.contentWindow?.postMessage('{"event":"listening","id":"sv","channel":"widget"}', '*');
+  send();
+  // Player boots asynchronously inside the iframe — re-send a few times
+  setTimeout(send, 300);
+  setTimeout(send, 900);
 }
 
 function _clipsEmbedUrl(key, autoplay, mute) {
@@ -8295,6 +8342,7 @@ function _preloadTrailerSlide(slide) {
     if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
     if (_clipsSlides()[_clipsIdx] === slide) { _playTrailerSlide(slide); return; }
     iframe.src = _clipsEmbedUrl(key, 0, 1);
+    iframe.addEventListener('load', () => _ytListen(iframe), { once: true });
     // Keep the poster visible — the iframe fades in only when the slide activates
   });
 }
