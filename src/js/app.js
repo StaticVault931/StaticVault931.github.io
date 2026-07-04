@@ -15,12 +15,14 @@ import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getAct
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
 import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip, setProviderFilter } from './search.js';
+import { svFlag, setSvFlag } from './search/searchPipeline.js';
+import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
-const THEMES = ['dark', 'midnight', 'ocean', 'warm', 'light'];
-const THEME_ICONS = { dark: 'dark_mode', midnight: 'nights_stay', ocean: 'water', warm: 'wb_sunny', light: 'light_mode' };
+const THEMES = ['dark', 'midnight', 'warm', 'ocean', 'mist', 'light'];
+const THEME_ICONS = { dark: 'dark_mode', midnight: 'nights_stay', warm: 'wb_sunny', ocean: 'water', mist: 'foggy', light: 'light_mode' };
 
 function initTheme() {
   const saved = localStorage.getItem('sv_theme') || 'dark';
@@ -384,6 +386,10 @@ const SHORTCUTS = [
   { key: 'L',          desc: 'Go to Library',                group: 'Navigation' },
   { key: 'T / 0',      desc: 'Cycle theme',                  group: 'Navigation' },
   { key: '1–6',        desc: 'Jump to page by number',       group: 'Navigation' },
+  { key: '/',          desc: 'Jump to search',               group: 'Navigation' },
+  { key: '↑↑↓↓←→←→BA', desc: 'A classic surprise',           group: 'Fun' },
+  { key: '7× logo',    desc: 'Click the logo rapidly…',      group: 'Fun' },
+  { key: '"surprise me"', desc: 'Search it — random great pick', group: 'Fun' },
   { key: '7',          desc: 'Open search',                  group: 'Navigation' },
   { key: 'W / ↑',      desc: 'Scroll up',                    group: 'Navigation' },
   { key: 'S / ↓',      desc: 'Scroll down',                  group: 'Navigation' },
@@ -1028,6 +1034,101 @@ function _markShown(id) {
   } catch {}
 }
 
+/* ── HOLIDAY / SEASONAL ROWS ─────────────────────────────────────────
+   Date-windowed rows that cover the entire year — there is never a day
+   without at least one seasonal row. Windows use [month, day] (1-based)
+   and may wrap across New Year. All are summonable from the dev panel. */
+const _kwCache = (() => { try { return JSON.parse(localStorage.getItem('sv_kw_ids') || '{}'); } catch { return {}; } })();
+async function _kwId(name) {
+  if (_kwCache[name]) return _kwCache[name];
+  const d = await tmdb('/search/keyword', { query: name }).catch(() => null);
+  const id = d?.results?.[0]?.id || null;
+  if (id) { _kwCache[name] = id; try { localStorage.setItem('sv_kw_ids', JSON.stringify(_kwCache)); } catch {} }
+  return id;
+}
+
+const HOLIDAY_ROWS = [
+  { id: 'row-hol-newyear',   title: 'New Year, New Favorites', icon: 'celebration',   from: [12, 26], to: [1, 7],
+    fn: () => tmdb('/discover/movie', { sort_by: 'popularity.desc', 'primary_release_date.gte': `${new Date().getFullYear() - 1}-01-01`, 'vote_average.gte': 7, 'vote_count.gte': 300 }).then(d => d.results || []) },
+  { id: 'row-hol-valentine', title: 'Valentine Romance',       icon: 'favorite',      from: [1, 25],  to: [2, 14],
+    fn: () => tmdb('/discover/movie', { with_genres: '10749', sort_by: 'popularity.desc', 'vote_count.gte': 200 }).then(d => d.results || []) },
+  { id: 'row-hol-awards',    title: 'Awards Season Standouts', icon: 'emoji_events',  from: [2, 15],  to: [3, 15],
+    fn: () => tmdb('/discover/movie', { with_genres: '18', sort_by: 'vote_average.desc', 'vote_count.gte': 2000 }).then(d => d.results || []) },
+  { id: 'row-hol-spring',    title: 'Spring Adventures',       icon: 'local_florist', from: [3, 16],  to: [4, 27],
+    fn: () => tmdb('/discover/movie', { with_genres: '12', sort_by: 'popularity.desc', 'vote_count.gte': 200 }).then(d => d.results || []) },
+  { id: 'row-hol-maythe4th', title: 'May the 4th Be With You', icon: 'rocket_launch', from: [4, 28],  to: [5, 10],
+    fn: async () => {
+      const d = await tmdb('/search/collection', { query: 'star wars' });
+      const col = (d.results || []).find(c => /star wars/i.test(c.name));
+      if (!col) return [];
+      const c = await tmdb(`/collection/${col.id}`);
+      return (c.parts || []).map(m => ({ ...m, media_type: 'movie' }));
+    } },
+  { id: 'row-hol-summer',    title: 'Summer Blockbusters',     icon: 'wb_sunny',      from: [5, 11],  to: [8, 15],
+    fn: () => tmdb('/discover/movie', { sort_by: 'revenue.desc', 'primary_release_date.gte': '2000-01-01', 'vote_count.gte': 3000 }).then(d => d.results || []) },
+  { id: 'row-hol-school',    title: 'Back to School',          icon: 'school',        from: [8, 16],  to: [9, 20],
+    fn: async () => {
+      const k = await _kwId('high school');
+      return k ? tmdb('/discover/movie', { with_keywords: k, sort_by: 'popularity.desc', 'vote_count.gte': 100 }).then(d => d.results || []) : [];
+    } },
+  { id: 'row-hol-spooky',    title: 'Spooky Season',           icon: 'dark_mode',     from: [9, 21],  to: [10, 31],
+    fn: () => tmdb('/discover/movie', { with_genres: '27', sort_by: 'popularity.desc', 'vote_count.gte': 200 }).then(d => d.results || []) },
+  { id: 'row-hol-fall',      title: 'Cozy Fall Feel-Goods',    icon: 'eco',           from: [11, 1],  to: [11, 30],
+    fn: () => tmdb('/discover/movie', { with_genres: '10751|35', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }).then(d => d.results || []) },
+  { id: 'row-hol-christmas', title: 'Christmas Collection',    icon: 'ac_unit',       from: [12, 1],  to: [12, 25],
+    fn: async () => {
+      const k = await _kwId('christmas');
+      return k ? tmdb('/discover/movie', { with_keywords: k, sort_by: 'popularity.desc', 'vote_count.gte': 100 }).then(d => d.results || []) : [];
+    } },
+];
+
+function _holidayActive(def, now = new Date()) {
+  const m = now.getMonth() + 1, d = now.getDate();
+  const cur = m * 100 + d;
+  const from = def.from[0] * 100 + def.from[1];
+  const to = def.to[0] * 100 + def.to[1];
+  return from <= to ? (cur >= from && cur <= to) : (cur >= from || cur <= to); // wrap over NYE
+}
+
+// Create the home-page section for a holiday row if it doesn't exist yet
+function _ensureHolidaySection(def) {
+  let sec = document.getElementById(`sec-${def.id}`);
+  if (sec) return sec;
+  const home = document.getElementById('page-home');
+  if (!home) return null;
+  sec = document.createElement('section');
+  sec.className = 'section';
+  sec.id = `sec-${def.id}`;
+  sec.innerHTML = `
+    <div class="sec-header"><h2 class="sec-title"><span class="material-icons-round sec-icon">${def.icon}</span>${def.title}</h2></div>
+    <div class="row-wrap"><div class="card-row" id="${def.id}"></div></div>`;
+  const anchor = document.getElementById('sec-trending');
+  if (anchor && anchor.parentElement === home) anchor.after(sec);
+  else home.appendChild(sec);
+  return sec;
+}
+
+function _loadHolidayRows() {
+  HOLIDAY_ROWS.filter(_holidayActive).forEach(def => {
+    if (_ensureHolidaySection(def)) _scheduleRowLoad(def.id, `sec-${def.id}`, def.fn, 'movie');
+  });
+}
+
+// Dev panel: summon any holiday row on demand regardless of date
+window._svSummonRow = function (rowId) {
+  const def = HOLIDAY_ROWS.find(r => r.id === rowId);
+  if (!def) { toast(`Unknown row: ${rowId}`, 'error'); return; }
+  goPage('home');
+  setTimeout(() => {
+    const sec = _ensureHolidaySection(def);
+    if (!sec) return;
+    sec.style.display = '';
+    _loadRow(def.id, `sec-${def.id}`, def.fn, 'movie');
+    sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(`Summoned: ${def.title}`, 'auto_awesome');
+  }, 250);
+};
+
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 let _homeLoading = false; // kept for refreshFeed compat only
 
@@ -1233,6 +1334,9 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Each row observes itself — visible ones load first, others load as you scroll
   rowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
+
+  // Seasonal rows — the calendar windows cover the whole year
+  _loadHolidayRows();
 
   // ── WAVE 3: Curated rows — randomly selected, deferred to scroll ───
   const pRng = state._randomPage || 1;
@@ -6712,8 +6816,22 @@ function populateTestPanel() {
     panel.innerHTML = `
       <div class="dev-panel-header">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--red)"><path d="M9.4 3L7 8H3l7.5 13 2-7.5H17L9.4 3z"/></svg>
-        <span>Developer Testing Mode</span>
-        <button class="dev-close-btn" id="dev-close">Exit Dev Mode</button>
+        <span>Dev Mode</span>
+        <button class="dev-btn dev-btn-sm" id="dev-pin-btn" title="Pin: float the panel and keep it on every page">📌 Pin</button>
+        <button class="dev-close-btn" id="dev-close">Exit</button>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Search Engine Features</div>
+        <div class="dev-btn-row" id="dev-flags-row"></div>
+        <div class="dev-btn-row" style="margin-top:.4rem">
+          <button class="dev-btn" id="dev-btn-rebuild-index">Rebuild Search Index</button>
+        </div>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Row Summoner — Holiday &amp; Seasonal</div>
+        <div class="dev-btn-row" id="dev-rows-row"></div>
       </div>
 
       <div class="dev-section">
@@ -6743,6 +6861,8 @@ function populateTestPanel() {
             <button class="dev-btn dev-btn-sm" data-set-theme="light">Light</button>
             <button class="dev-btn dev-btn-sm" data-set-theme="midnight">Midnight</button>
             <button class="dev-btn dev-btn-sm" data-set-theme="warm">Warm</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="ocean">Ocean</button>
+            <button class="dev-btn dev-btn-sm" data-set-theme="mist">Mist</button>
           </div>
         </div>
       </div>
@@ -6843,6 +6963,103 @@ function populateTestPanel() {
 
     document.getElementById('dev-test-all-btn')?.addEventListener('click', () => {
       PROVIDERS.forEach(p => window._testProv(p.id));
+    });
+
+    // ── Search feature flags (SymSpell / RapidFuzz / aliases / index) ──
+    const flagsRow = panel.querySelector('#dev-flags-row');
+    if (flagsRow) {
+      const FLAGS = [
+        { id: 'spellcheck', label: 'SymSpell Spellcheck' },
+        { id: 'fuzzy',      label: 'RapidFuzz Ranking' },
+        { id: 'aliases',    label: 'Alias Expansion' },
+        { id: 'localindex', label: 'Local Index' },
+      ];
+      flagsRow.innerHTML = FLAGS.map(f =>
+        `<button class="dev-btn${svFlag(f.id) ? ' dev-btn-active' : ''}" data-sv-flag="${f.id}">${f.label}: ${svFlag(f.id) ? 'ON' : 'OFF'}</button>`).join('');
+      flagsRow.addEventListener('click', e => {
+        const btn = e.target.closest('[data-sv-flag]');
+        if (!btn) return;
+        const id = btn.dataset.svFlag;
+        const next = !svFlag(id);
+        setSvFlag(id, next);
+        btn.classList.toggle('dev-btn-active', next);
+        btn.textContent = `${FLAGS.find(f => f.id === id).label}: ${next ? 'ON' : 'OFF'}`;
+        toast(`${id} ${next ? 'enabled' : 'disabled'} — try a search`, 'science');
+      });
+    }
+    panel.querySelector('#dev-btn-rebuild-index')?.addEventListener('click', () => {
+      invalidateIndex();
+      buildIndex().then(() => toast('Search index rebuilt', 'refresh'));
+    });
+
+    // ── Holiday row summoner ─────────────────────────────────────────
+    const rowsRow = panel.querySelector('#dev-rows-row');
+    if (rowsRow) {
+      rowsRow.innerHTML = HOLIDAY_ROWS.map(r => {
+        const active = _holidayActive(r);
+        return `<button class="dev-btn${active ? ' dev-btn-active' : ''}" data-summon-row="${r.id}" title="${active ? 'Currently in season' : 'Out of season — summon to test'}">
+          <span class="material-icons-round" style="font-size:.85rem;vertical-align:-2px">${r.icon}</span> ${r.title}</button>`;
+      }).join('');
+      rowsRow.addEventListener('click', e => {
+        const btn = e.target.closest('[data-summon-row]');
+        if (btn) window._svSummonRow(btn.dataset.summonRow);
+      });
+    }
+
+    // ── Foldable sections (collapse to save space in floating mode) ──
+    panel.querySelectorAll('.dev-section').forEach(sec => {
+      const title = sec.querySelector('.dev-sec-title');
+      if (!title) return;
+      const det = document.createElement('details');
+      det.className = 'dev-fold';
+      det.open = true;
+      const sum = document.createElement('summary');
+      sum.className = 'dev-fold-sum';
+      sum.append(...title.childNodes);
+      det.appendChild(sum);
+      let node = title.nextSibling;
+      while (node) { const next = node.nextSibling; det.appendChild(node); node = next; }
+      title.remove();
+      sec.appendChild(det);
+    });
+
+    // ── Pin / float: fixed panel that follows across pages, draggable ─
+    const _setFloating = (on) => {
+      panel.classList.toggle('dev-floating', on);
+      const pinBtn = panel.querySelector('#dev-pin-btn');
+      if (pinBtn) { pinBtn.textContent = on ? '📌 Unpin' : '📌 Pin'; pinBtn.classList.toggle('dev-btn-active', on); }
+      if (on) {
+        document.body.appendChild(panel);
+        if (!panel.style.top) { panel.style.top = '84px'; panel.style.left = 'auto'; panel.style.right = '16px'; }
+        // Collapse all folds when floating so it starts compact
+        panel.querySelectorAll('.dev-fold').forEach((d, i) => { d.open = i === 0; });
+      } else {
+        panel.style.top = panel.style.left = panel.style.right = panel.style.width = panel.style.height = '';
+        document.getElementById('page-prefs')?.appendChild(panel);
+        panel.querySelectorAll('.dev-fold').forEach(d => { d.open = true; });
+      }
+      localStorage.setItem('sv_dev_float', on ? '1' : '0');
+    };
+    panel.querySelector('#dev-pin-btn')?.addEventListener('click', () => {
+      _setFloating(!panel.classList.contains('dev-floating'));
+    });
+    if (localStorage.getItem('sv_dev_float') === '1') _setFloating(true);
+
+    // Drag by the header while floating
+    const hdrEl = panel.querySelector('.dev-panel-header');
+    hdrEl?.addEventListener('pointerdown', e => {
+      if (e.target.closest('button') || !panel.classList.contains('dev-floating')) return;
+      e.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      panel.style.left = `${rect.left}px`; panel.style.right = 'auto';
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const move = ev => {
+        panel.style.left = `${Math.max(0, Math.min(window.innerWidth - 80, ev.clientX - sx))}px`;
+        panel.style.top = `${Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - sy))}px`;
+      };
+      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
     });
   }
 
@@ -7805,6 +8022,7 @@ function _clipsUpdateArrows(idx, count) {
   nav.querySelector('.clips-nav-down')?.toggleAttribute('disabled', idx >= count - 1);
 }
 
+let _clipsSyncTimer = null;
 function _clipsGoTo(idx, { instant = false } = {}) {
   const feed = document.getElementById('clips-feed');
   if (!feed) return;
@@ -7812,6 +8030,15 @@ function _clipsGoTo(idx, { instant = false } = {}) {
   if (!slides.length) return;
   idx = Math.max(0, Math.min(slides.length - 1, idx));
   _clipsIdx = idx;
+
+  // Pin every slide to the feed's exact pixel height — fractional-vh rounding
+  // otherwise lets the next clip peek in at the bottom edge
+  const feedH = feed.clientHeight;
+  if (feedH && feed._slideH !== feedH) {
+    feed._slideH = feedH;
+    feed.style.setProperty('--slide-h', `${feedH}px`);
+  }
+
   const target = slides[idx];
 
   // Move the track — CSS transition animates it; transforms work everywhere
@@ -7820,6 +8047,15 @@ function _clipsGoTo(idx, { instant = false } = {}) {
     if (instant) track.style.transition = 'none';
     track.style.transform = `translateY(-${target.offsetTop}px)`;
     if (instant) requestAnimationFrame(() => { track.style.transition = ''; });
+    // Desync guard: re-assert position after the animation settles, in case
+    // slide heights or layout changed mid-transition (image loads, resize)
+    clearTimeout(_clipsSyncTimer);
+    _clipsSyncTimer = setTimeout(() => {
+      if (_clipsIdx !== idx || !target.isConnected) return;
+      track.style.transition = 'none';
+      track.style.transform = `translateY(-${target.offsetTop}px)`;
+      requestAnimationFrame(() => { track.style.transition = ''; });
+    }, 700);
   }
   _clipsUpdateArrows(idx, slides.length);
 
@@ -8548,6 +8784,14 @@ function initKeyboard() {
       document.getElementById('modal-overlay')?.classList.contains('open') ||
       document.getElementById('info-overlay')?.classList.contains('open');
     if (anyOverlayOpen) return;
+
+    // "/" jumps to search and focuses the input
+    if (e.key === '/') {
+      e.preventDefault();
+      goPage('search');
+      setTimeout(() => document.getElementById('search-input')?.focus(), 150);
+      return;
+    }
 
     // ── Clips page keyboard shortcuts (override global nav keys) ─────
     if (state.currentPage === 'clips') {

@@ -484,13 +484,12 @@ export function getVidsrcEmbedUrl(type, id, { season, episode, imdbId, dsLang, a
 let _tastediveFails = 0;
 function _tastediveFail() {
   if (++_tastediveFails === 3) {
-    sessionStorage.setItem('sv_tastedive_dead', '1');
     console.warn('[SV TasteDive] 3 consecutive failures — disabled for this session');
   }
 }
 export async function fetchTasteDive(title, type = 'movie') {
   if (!TASTEDIVE_KEY) return null;
-  if (_tastediveFails >= 3 || sessionStorage.getItem('sv_tastedive_dead') === '1') return null;
+  if (_tastediveFails >= 3) return null;
   const typeMap = { movie: 'movies', tv: 'shows', anime: 'shows' };
   const q = encodeURIComponent(title);
   const t = typeMap[type] || 'movies';
@@ -498,7 +497,8 @@ export async function fetchTasteDive(title, type = 'movie') {
   const cached = cacheGet(key);
   if (cached) return cached;
   try {
-    const url = `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&verbose=1&apikey=${TASTEDIVE_KEY}`;
+    // TasteDive expects the key as `k=` (not `apikey=`) per their API docs
+    const url = `https://tastedive.com/api/similar?q=${q}&type=${t}&limit=10&info=1&k=${TASTEDIVE_KEY}`;
     const r = await fetch(url);
     if (!r.ok) { _tastediveFail(); return null; }
     const data = await r.json();

@@ -1410,12 +1410,15 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .bottom-nav-search.on { color: var(--red); }
 
 /* ── ABOUT / SEO CONTENT ─────────────────────────────────────────── */
+/* In the static HTML for crawlers, but only shown to users on Home */
 #about-content {
+  display: none;
   background: var(--s1);
   border-top: 1px solid var(--border);
   padding: 2.5rem 3.5rem;
   margin-top: 2rem;
 }
+body:has(#page-home.active) #about-content { display: block; }
 .about-inner { max-width: 1100px; margin: 0 auto; }
 #about-content h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: .7rem; color: var(--text); }
 #about-content h3 { font-size: .95rem; font-weight: 800; margin-bottom: .4rem; color: var(--text); }
@@ -1878,6 +1881,17 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   max-height: none !important;
 }
 #sec-foryou.expanded .row-arrow { display: none; }
+
+/* ── TYPED-FILTER ACTIVATION FLASH ───────────────────────────────── */
+@keyframes sfChipFlash {
+  0%   { box-shadow: 0 0 0 0 var(--red-glow); transform: scale(1); }
+  25%  { box-shadow: 0 0 0 8px var(--red-glow); transform: scale(1.08); background: var(--red); color: #fff; }
+  60%  { box-shadow: 0 0 0 4px var(--red-glow); transform: scale(1.02); }
+  100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+}
+.sf-chip-flash { animation: sfChipFlash 1.3s var(--ease); border-color: var(--red) !important; }
+
+.search-correction-note { animation: fadeIn .25s var(--ease); }
 
 /* ── SEARCH DID YOU MEAN ────────────────────────────────────────── */
 .search-did-you-mean {

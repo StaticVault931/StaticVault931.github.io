@@ -58,6 +58,25 @@
   --gold: #f5c518; --red: #0e9f8a; --red-glow: rgba(14,159,138,.22);
 }
 
+/* MIST — soft sea-glass grey-teal, sits between Ocean and Light */
+[data-theme="mist"] {
+  --bg: #9fb8b4; --s1: #acc2be; --s2: #a5bcb8; --s3: #93aeaa; --s4: #7f9c98;
+  --border: rgba(0,40,35,.14); --border2: rgba(0,40,35,.24); --border3: rgba(0,40,35,.38);
+  --text: #0c1b19; --muted: #2c4a45; --dim: #567470;
+  --gold: #8a5a00; --red: #0b6e60; --red-glow: rgba(11,110,96,.18);
+}
+[data-theme="mist"] #hero-title,
+[data-theme="mist"] .hero-pill,
+[data-theme="mist"] #hero-desc,
+[data-theme="mist"] .hero-btns { color: #fff !important; }
+[data-theme="mist"] #header {
+  background: linear-gradient(180deg, rgba(159,184,180,.98) 0%, rgba(159,184,180,.85) 70%, transparent);
+}
+[data-theme="mist"] #header.solid {
+  background: rgba(159,184,180,.97);
+  box-shadow: 0 1px 0 rgba(0,0,0,.1);
+}
+
 /* WARM — cinematic amber/sepia, like a lit theatre */
 [data-theme="warm"] {
   --bg: #110d08; --s1: #1c1510; --s2: #231a12; --s3: #2e2216; --s4: #3d2e1e;

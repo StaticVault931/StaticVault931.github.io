@@ -1,6 +1,9 @@
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
 import { state, GENRES, addRecentSearch, clearRecentSearches } from './state.js';
+import { initSearchPipeline, prepareQuery, svFlag } from './search/searchPipeline.js';
+import { rankResults } from './search/ranking.js';
+import { titleScore } from './search/fuzzy.js';
 
 let _debounce = null;
 let _sfActive = 'all';
@@ -489,6 +492,7 @@ let _acDebounce = null;
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 export function initSearch() {
+  initSearchPipeline(); // aliases + spell dictionary + local index (async)
   const inp = document.getElementById('search-input');
   if (!inp) return;
 
@@ -955,7 +959,7 @@ function checkSearchEasterEgg(q) {
     _eggReveal(area, '🪩', '#ec4899', 'Disco Mode!', 'Taking every theme for a spin…');
     _eggConfetti('rainbow', 30);
     const original = document.documentElement.dataset.theme || 'dark';
-    const themes = ['dark', 'midnight', 'ocean', 'warm', 'light'];
+    const themes = ['dark', 'midnight', 'warm', 'ocean', 'mist', 'light'];
     themes.forEach((t, i) => setTimeout(() => { document.documentElement.dataset.theme = t; }, 400 * (i + 1)));
     setTimeout(() => { document.documentElement.dataset.theme = original; }, 400 * (themes.length + 1));
     return true;
@@ -981,6 +985,84 @@ function checkSearchEasterEgg(q) {
   return true;
 }
 
+/* ── TYPED FILTERS ───────────────────────────────────────────────────
+   Lets users type filters directly: ":netflix", "include:disney",
+   "country:kr", "genre:horror", "year:1999". Matching tokens activate
+   the corresponding filter UI chip with a flash animation so the user
+   sees it took effect, and are stripped from the query. */
+const _TYPED_PROVIDERS = {
+  netflix: 8, disney: 337, 'disney+': 337, hulu: 15, max: 1899, hbo: 1899,
+  prime: 9, 'prime video': 9, amazon: 9, apple: 350, 'apple tv': 350,
+  paramount: 531, 'paramount+': 531, peacock: 386, crunchyroll: 283,
+};
+
+function _flashEl(el) {
+  if (!el) return;
+  el.classList.add('sf-chip-flash');
+  el.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  setTimeout(() => el.classList.remove('sf-chip-flash'), 1400);
+}
+
+function _applyTypedFilters(q) {
+  let cleaned = q;
+  let activated = false;
+
+  // Provider: ":netflix" or "include:netflix"
+  const provRe = /(?:^|\s)(?:include:|:)([a-z+]+(?: video| tv)?)/i;
+  const pm = cleaned.match(provRe);
+  if (pm) {
+    const name = pm[1].toLowerCase().trim();
+    const pid = _TYPED_PROVIDERS[name];
+    if (pid) {
+      cleaned = cleaned.replace(pm[0], ' ').replace(/\s+/g, ' ').trim();
+      const chip = document.querySelector(`.sf-prov-chip[data-prov-id="${pid}"]`);
+      if (chip) { chip.click(); _flashEl(chip); }
+      else { _providerFilter = { id: pid, name }; }
+      activated = true;
+      toast(`Filtering by ${name.charAt(0).toUpperCase() + name.slice(1)}`, 'filter_alt');
+    }
+  }
+
+  // Genre: "genre:horror"
+  const gm = cleaned.match(/(?:^|\s)genre:([a-z -]+?)(?=\s|$)/i);
+  if (gm) {
+    const g = GENRES.find(x => x.name.toLowerCase().startsWith(gm[1].toLowerCase().trim()));
+    if (g) {
+      cleaned = cleaned.replace(gm[0], ' ').replace(/\s+/g, ' ').trim();
+      const sel = document.getElementById('sf-genre');
+      if (sel) { sel.value = String(g.id); _flashEl(sel.closest('.sf-filter-label') || sel); }
+      _filters.genre = String(g.id);
+      activated = true;
+      toast(`Genre: ${g.name}`, 'filter_alt');
+    }
+  }
+
+  // Country: "country:kr"
+  const cm = cleaned.match(/(?:^|\s)country:([a-z]{2})(?=\s|$)/i);
+  if (cm) {
+    cleaned = cleaned.replace(cm[0], ' ').replace(/\s+/g, ' ').trim();
+    const code = cm[1].toUpperCase();
+    const sel = document.getElementById('sf-country');
+    if (sel) { sel.value = code; _flashEl(sel.closest('.sf-filter-label') || sel); }
+    _filters.country = code;
+    activated = true;
+    toast(`Country: ${code}`, 'filter_alt');
+  }
+
+  // Year: "year:1999"
+  const ym = cleaned.match(/(?:^|\s)year:(\d{4})(?=\s|$)/i);
+  if (ym) {
+    cleaned = cleaned.replace(ym[0], ' ').replace(/\s+/g, ' ').trim();
+    _filters.yearFrom = +ym[1]; _filters.yearTo = +ym[1];
+    const sel = document.getElementById('sf-year-from');
+    if (sel) { sel.value = ym[1]; _flashEl(sel.closest('.sf-filter-label') || sel); }
+    activated = true;
+    toast(`Year: ${ym[1]}`, 'filter_alt');
+  }
+
+  return { cleaned, activated };
+}
+
 /* ── SEARCH ──────────────────────────────────────────────────────── */
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
@@ -988,6 +1070,16 @@ export async function doSearch(q) {
 
   addRecentSearch(q);
   if (checkSearchEasterEgg?.(q)) return; // stop if easter egg found
+
+  // Typed filters ("include:netflix", "genre:horror", "country:kr", "year:1999")
+  // — but NOT bare ":topic" queries whose word isn't a provider name
+  if (/(?:include|genre|country|year):/i.test(q) || (q.startsWith(':') && _TYPED_PROVIDERS[q.slice(1).toLowerCase().trim()])) {
+    const tf = _applyTypedFilters(q);
+    if (tf.activated) {
+      q = tf.cleaned;
+      if (!q) { browseByFilters(); return; }
+    }
+  }
 
   // ── :topic SEARCH ──────────────────────────────────────────────────
   // Prefix with : to search by topic/keyword instead of title
@@ -1051,10 +1143,30 @@ export async function doSearch(q) {
     }
     return;
   }
-  _searchState = { query: q, page: 1, results: [], loading: true, done: false };
+  // ── Pipeline: normalize → aliases → spellcheck → local index ─────
+  const prep = prepareQuery(q);
+  let effectiveQ = prep.aliased ? prep.query : q;
+  let correctionUsed = null;
+
+  _searchState = { query: effectiveQ, page: 1, results: [], loading: true, done: false };
 
   try {
-    let items = await fetchSearchPage(q, 1);
+    let items = await fetchSearchPage(effectiveQ, 1);
+
+    // Weak results + a spellcheck suggestion → try the corrected query.
+    // (Never correct when the original already returns strong results.)
+    const strong = items.length >= 4 ||
+      (items[0] && titleScore(effectiveQ, items[0].title || items[0].name || '') >= 85);
+    if (!strong && prep.corrected && prep.suggestion && prep.suggestion !== effectiveQ.toLowerCase()) {
+      const correctedItems = await fetchSearchPage(prep.suggestion, 1).catch(() => []);
+      if (correctedItems.length > items.length) {
+        correctionUsed = { from: q, to: prep.suggestion };
+        items = correctedItems;
+        effectiveQ = prep.suggestion;
+        _searchState.query = effectiveQ;
+      }
+    }
+
     // Filter anime from search results if hideAnime is enabled
     try {
       const svSettings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
@@ -1103,7 +1215,25 @@ export async function doSearch(q) {
       return;
     }
 
-    renderSearchResults(items, q, true);
+    renderSearchResults(items, effectiveQ, true);
+
+    // Subtle correction / alias note at the top of the results
+    if (correctionUsed || prep.aliased) {
+      const note = document.createElement('div');
+      note.className = 'search-did-you-mean search-correction-note';
+      note.innerHTML = correctionUsed
+        ? `<span class="material-icons-round">spellcheck</span>
+           <span>Showing results for <strong>${esc(correctionUsed.to)}</strong></span>
+           <button class="search-clear-filters-btn" id="search-orig-btn">Search "${esc(correctionUsed.from)}" instead</button>`
+        : `<span class="material-icons-round">auto_awesome</span>
+           <span>Expanded to <strong>${esc(prep.query)}</strong></span>`;
+      area.prepend(note);
+      document.getElementById('search-orig-btn')?.addEventListener('click', () => {
+        localStorage.setItem('sv_flag_spellcheck_skip_once', '1');
+        renderSearchResults([], correctionUsed.from, true);
+        fetchSearchPage(correctionUsed.from, 1).then(orig => renderSearchResults(orig, correctionUsed.from, true));
+      });
+    }
   } catch (err) {
     console.error('[SV Search] failed:', err?.message || err);
     _searchState.loading = false;
@@ -1165,26 +1295,31 @@ async function fetchSearchPage(q, page) {
     }
   });
 
-  // ── SORT: relevance (title match + quality) with anime de-prioritised ──
+  // ── SORT: relevance with anime de-prioritised ─────────────────────
   const qLow = (yearHint ? qClean : q).toLowerCase().trim();
-  all.sort((a, b) => {
-    const aIsAnime = a._type === 'anime';
-    const bIsAnime = b._type === 'anime';
-    const aRel = computeRelevance(a, qLow);
-    const bRel = computeRelevance(b, qLow);
-    const aSim = titleSimilarity(qLow, a.title || a.name || '');
-    const bSim = titleSimilarity(qLow, b.title || b.name || '');
-    const aExact = aSim <= 2;
-    const bExact = bSim <= 2;
-    // In 'all' mode: anime only beats non-anime on exact title match
-    if (_sfActive === 'all') {
-      if (aIsAnime && !bIsAnime && aExact && !bExact) return -1;
-      if (bIsAnime && !aIsAnime && bExact && !aExact) return 1;
-      if (aIsAnime && !bIsAnime && !aExact) return 1;
-      if (bIsAnime && !aIsAnime && !bExact) return -1;
-    }
-    return bRel - aRel;
-  });
+  const _animePass = (a, b) => {
+    if (_sfActive !== 'all') return 0;
+    const aIsAnime = a._type === 'anime', bIsAnime = b._type === 'anime';
+    if (aIsAnime === bIsAnime) return 0;
+    const aExact = titleSimilarity(qLow, a.title || a.name || '') <= 2;
+    const bExact = titleSimilarity(qLow, b.title || b.name || '') <= 2;
+    if (aIsAnime && aExact && !bExact) return -1;
+    if (bIsAnime && bExact && !aExact) return 1;
+    if (aIsAnime && !aExact) return 1;
+    if (bIsAnime && !bExact) return -1;
+    return 0;
+  };
+  if (svFlag('fuzzy')) {
+    // RapidFuzz-style combined scoring (fuzzy + quality + user signals)
+    rankResults(all, qLow);
+    all.sort((a, b) => _animePass(a, b)); // stable sort keeps rank within groups
+  } else {
+    all.sort((a, b) => {
+      const pass = _animePass(a, b);
+      if (pass) return pass;
+      return computeRelevance(b, qLow) - computeRelevance(a, qLow);
+    });
+  }
 
   // Apply language filter
   if (_filters.language) {

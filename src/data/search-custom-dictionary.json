@@ -1,0 +1,33 @@
+{
+  "_comment": "Seed terms for the spellcheck dictionary — franchise names, providers, studios, and entertainment vocabulary. The live index adds TMDB titles, cast names, and the user's own library on top of these. Format: term → frequency weight (higher = preferred correction).",
+  "terms": {
+    "marvel": 500, "avengers": 400, "spider-man": 400, "spiderman": 300, "batman": 400,
+    "superman": 350, "star wars": 450, "star trek": 300, "harry potter": 450,
+    "lord of the rings": 400, "hobbit": 250, "jurassic": 300, "terminator": 250,
+    "transformers": 250, "mission impossible": 280, "james bond": 280, "john wick": 300,
+    "fast and furious": 280, "indiana jones": 250, "pirates of the caribbean": 260,
+    "matrix": 300, "alien": 250, "predator": 200, "godzilla": 250, "king kong": 200,
+    "deadpool": 300, "wolverine": 250, "x-men": 280, "guardians of the galaxy": 260,
+    "stranger things": 350, "game of thrones": 400, "breaking bad": 380,
+    "better call saul": 250, "the office": 320, "friends": 300, "seinfeld": 220,
+    "the simpsons": 280, "family guy": 240, "south park": 240, "rick and morty": 300,
+    "attack on titan": 320, "one piece": 320, "naruto": 320, "dragon ball": 300,
+    "demon slayer": 300, "jujutsu kaisen": 280, "my hero academia": 260,
+    "death note": 260, "fullmetal alchemist": 240, "one punch man": 240,
+    "hunter x hunter": 220, "pokemon": 280, "studio ghibli": 220,
+    "netflix": 300, "disney": 300, "hulu": 220, "hbo": 250, "max": 200,
+    "prime video": 220, "paramount": 200, "peacock": 180, "crunchyroll": 220,
+    "apple tv": 200, "pixar": 240, "dreamworks": 200, "warner bros": 200,
+    "universal": 180, "sony": 180, "lionsgate": 150, "a24": 200, "blumhouse": 160,
+    "christopher nolan": 220, "quentin tarantino": 220, "steven spielberg": 220,
+    "martin scorsese": 200, "denis villeneuve": 180, "wes anderson": 170,
+    "tom cruise": 200, "tom hanks": 200, "leonardo dicaprio": 210,
+    "brad pitt": 190, "denzel washington": 190, "keanu reeves": 200,
+    "scarlett johansson": 180, "margot robbie": 180, "zendaya": 190,
+    "timothee chalamet": 180, "pedro pascal": 190, "ryan gosling": 180,
+    "horror": 200, "comedy": 200, "thriller": 200, "romance": 180, "documentary": 160,
+    "animation": 180, "fantasy": 180, "science fiction": 180, "superhero": 200,
+    "zombie": 170, "vampire": 160, "heist": 150, "dystopian": 140, "anime": 250,
+    "christmas": 200, "halloween": 200, "trilogy": 140, "sequel": 130, "remake": 120
+  }
+}

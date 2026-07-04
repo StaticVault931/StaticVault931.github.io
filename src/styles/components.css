@@ -1841,6 +1841,45 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .wt-skip-btn .material-icons-round { font-size: .9rem; }
 .wt-skip-btn:hover { background: #f6121d; box-shadow: 0 4px 18px rgba(229,9,20,.4); transform: scale(1.04); }
 
+/* ── DEV PANEL: floating / foldable ──────────────────────────────── */
+.dev-fold-sum {
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  padding: .25rem 0;
+  user-select: none;
+}
+.dev-fold-sum:hover { color: var(--text); }
+#dev-test-panel.dev-floating {
+  position: fixed;
+  z-index: 9600;
+  width: min(400px, 92vw);
+  max-height: min(72vh, 640px);
+  overflow: auto;
+  resize: both;
+  border: 1.5px solid rgba(229,9,20,.45);
+  border-radius: 12px;
+  background: var(--s1);
+  box-shadow: 0 16px 48px rgba(0,0,0,.6);
+}
+#dev-test-panel.dev-floating .dev-panel-header {
+  cursor: move;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--s2);
+}
+#dev-test-panel.dev-floating .dev-section { padding: .5rem .75rem; }
+#dev-test-panel.dev-floating .dev-btn { font-size: .68rem; padding: .3rem .5rem; }
+body.sv-glass #dev-test-panel.dev-floating {
+  background: rgba(16,16,20,.7);
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+}
+
 /* ── LIQUID GLASS (Apple devices, toggleable) ────────────────────────
    Frosted translucent surfaces via backdrop-filter — applied only when
    body.sv-glass is set (Apple platform + setting enabled). */
@@ -2736,8 +2775,10 @@ img[alt]::after {
 }
 
 .trailer-slide {
+  /* --slide-h is set by JS to the feed's exact pixel height so slides never
+     round short and let the next clip peek in at the bottom */
   height: calc(100vh - 64px);
-  height: calc(100dvh - 64px);
+  height: var(--slide-h, calc(100dvh - 64px));
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #0d0d1a 0%, #1a0d2e 50%, #0d1a0d 100%);
@@ -2755,9 +2796,12 @@ img[alt]::after {
 }
 .trailer-slide-iframe {
   position: absolute;
-  inset: 0;
+  /* Oversized ~24% vertically: crops YouTube's title bar (top) and
+     watermark/"watch later" chrome (bottom) out of view */
+  top: -12%;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: 124%;
   border: none;
   z-index: 1;
   pointer-events: none; /* prevents iframe from stealing scroll/wheel events */
