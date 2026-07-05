@@ -120,10 +120,32 @@ export function lookupWord(word, maxEdit = MAX_EDIT) {
   return best;
 }
 
-/* Correct a whole query word-by-word.
+/* Look up the best correction for a whole phrase against multi-word
+   dictionary terms ("jujutsu kaisen", "star wars"…). Uses the same
+   delete-variant index — phrases are indexed by their first-7-char
+   prefix just like single words. */
+export function lookupPhrase(q, maxEdit = MAX_EDIT) {
+  const p = fold(q);
+  if (!p || p.length < 5 || !p.includes(' ')) return null;
+  const hit = lookupWord(p, maxEdit);
+  return hit && hit.term.includes(' ') ? hit : null;
+}
+
+/* Correct a whole query — phrase-level first, then word-by-word.
    Returns { corrected, changed } — only proposes when confident. */
 export function correctQuery(q) {
-  const words = fold(q).split(' ').filter(Boolean);
+  const folded = fold(q);
+
+  // Pass 1: whole-phrase correction ("jujutsu kaisan" → "jujutsu kaisen",
+  // "lord of the ring" → "lord of the rings"). Catches errors that span
+  // word boundaries, including missing/extra spaces.
+  const ph = lookupPhrase(folded);
+  if (ph && ph.distance > 0 && ph.distance <= (folded.length > 10 ? 2 : 1)) {
+    return { corrected: ph.term, changed: true };
+  }
+
+  // Pass 2: word-by-word correction
+  const words = folded.split(' ').filter(Boolean);
   let changed = false;
   const out = words.map(w => {
     if (w.length < 4 || /^\d+$/.test(w)) return w; // short/numeric words: leave alone
