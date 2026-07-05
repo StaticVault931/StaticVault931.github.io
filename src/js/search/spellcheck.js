@@ -1,25 +1,126 @@
-/* ── SPELLCHECK — SymSpell-style symmetric-delete correction ─────────
-   JS adaptation of the Symmetric Delete algorithm from SymSpell
-   (github.com/wolfgarbe/SymSpell, MIT, © Wolf Garbe). The C# library
-   can't run in the browser, so this reimplements the core idea:
+/*
+  SPELLCHECK: SymSpell-style symmetric-delete correction
 
-   Instead of generating every possible edit of a query word (huge), we
-   precompute DELETE-only variants of every dictionary term. A lookup
-   then generates deletes of the query word and intersects them with the
-   precomputed map — covering inserts/replaces/transposes of the query
-   because those become deletes of the dictionary term. Candidates are
-   verified with real Damerau-Levenshtein distance and ranked by
-   (distance, frequency). */
+  StaticVault uses this module before the local/TMDB result retry path. It keeps
+  the existing public API while making the dictionary more tolerant of
+  apostrophes, hyphens, punctuation, and missing spaces.
+
+  The algorithm:
+  - Index each dictionary term plus practical variants.
+  - Generate delete-only candidates from those variants.
+  - Generate delete-only candidates from the user query.
+  - Intersect both sets, then verify with Damerau-Levenshtein distance.
+
+  It catches common search mistakes:
+  - missing letters, extra letters, wrong letters, and adjacent swaps
+  - "spidermna" -> delete variants -> "spider-man" candidate -> verified
+  - "dont worry" -> apostrophe-free form -> "don't worry darling"
+  - "madmax" -> no-space variant -> "mad max"
+  - "spider man" -> hyphen/space variant -> "spider-man"
+
+  It does not understand meaning or synonyms, and it intentionally avoids
+  aggressive rewrites of short or already-good searches.
+*/
 
 import { fold } from './normalize.js';
 
 const MAX_EDIT = 2;
-const PREFIX_LEN = 7; // like SymSpell's prefix optimization — index only word prefixes
+const PREFIX_LEN = 7;
+const MIN_WORD_LEN = 3;
+const MIN_PHRASE_LEN = 5;
 
-const _deletes = new Map();   // deleteVariant → Set of dictionary terms
-const _freq = new Map();      // term → frequency weight
+const _deletes = new Map();
+const _freq = new Map();
+const _canonical = new Map();
+const _canonicalFreq = new Map();
 let _seeded = false;
 
+/* -------------------------------------------------------------------------
+   Normalization and variant helpers
+   ------------------------------------------------------------------------- */
+
+/* Keep a displayable dictionary term while normalizing case and spacing. */
+function _canonicalize(term) {
+  return String(term || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/* Shared folded form. Handles null safely and follows search normalization. */
+function _foldForm(term) {
+  return fold(term);
+}
+
+/* Space-free form for missing-space searches like "lordoftherings". */
+function _tightForm(term) {
+  return _foldForm(term).replace(/ /g, '');
+}
+
+/* Create lookup variants for one dictionary term.
+   Variants cover apostrophes, hyphens as spaces, hyphens removed, and no-space
+   phrase forms. All variants point back to the canonical dictionary term. */
+function _termForms(term) {
+  const raw = _canonicalize(term);
+  const forms = new Set();
+  const folded = _foldForm(raw);
+  if (folded) forms.add(folded);
+
+  const apostropheless = _foldForm(raw.replace(/['']/g, ''));
+  if (apostropheless) forms.add(apostropheless);
+
+  if (/-/.test(raw)) {
+    const hyphenAsSpace = _foldForm(raw.replace(/-/g, ' '));
+    const hyphenless = _foldForm(raw.replace(/-/g, ''));
+    if (hyphenAsSpace) forms.add(hyphenAsSpace);
+    if (hyphenless) forms.add(hyphenless);
+  }
+
+  const tight = _tightForm(raw);
+  if (tight && tight !== folded) forms.add(tight);
+  return [...forms].filter(form => form.length >= 2);
+}
+
+/* Mirror dictionary variants for user input. This lets "wall e" meet "wall-e"
+   and "spiderman" meet "spider-man" from either direction. */
+function _queryForms(query) {
+  const raw = String(query || '').toLowerCase().trim();
+  const forms = new Set();
+  const folded = _foldForm(raw);
+  if (folded) forms.add(folded);
+
+  const tight = _tightForm(raw);
+  if (tight) forms.add(tight);
+
+  if (/-/.test(raw)) {
+    const hyphenAsSpace = _foldForm(raw.replace(/-/g, ' '));
+    const hyphenless = _foldForm(raw.replace(/-/g, ''));
+    if (hyphenAsSpace) forms.add(hyphenAsSpace);
+    if (hyphenless) forms.add(hyphenless);
+  }
+
+  return [...forms].filter(Boolean);
+}
+
+/* Allow a typed phrase to match the start of a longer title. This is useful for
+   "dont worry" -> "don't worry darling", but only phrase-like inputs use it. */
+function _prefixDistance(queryForm, candidateForm, maxEdit) {
+  if (!queryForm || !candidateForm || candidateForm.length < queryForm.length) return maxEdit + 1;
+  return damerau(queryForm, candidateForm.slice(0, queryForm.length), maxEdit);
+}
+
+/* Stable ranking: distance first, then frequency, then shorter canonical term. */
+function _isBetterCandidate(next, best) {
+  if (!best) return true;
+  if (next.distance !== best.distance) return next.distance < best.distance;
+  if (next.freq !== best.freq) return next.freq > best.freq;
+  if (next.term.length !== best.term.length) return next.term.length < best.term.length;
+  return next.term.localeCompare(best.term) < 0;
+}
+
+/* -------------------------------------------------------------------------
+   Symmetric-delete indexing
+   ------------------------------------------------------------------------- */
+
+/* Generate delete variants up to maxDepth. This is why a typo and a correct
+   dictionary term can meet through a shared shortened form. */
 function _deleteVariants(word, maxDepth, out = new Set(), depth = 0) {
   if (depth >= maxDepth || word.length <= 2) return out;
   for (let i = 0; i < word.length; i++) {
@@ -32,131 +133,209 @@ function _deleteVariants(word, maxDepth, out = new Set(), depth = 0) {
   return out;
 }
 
-/* Add one term (word or phrase word) to the dictionary. */
-export function addTerm(term, frequency = 1) {
-  const t = fold(term);
-  if (!t || t.length < 2) return;
-  const existing = _freq.get(t) || 0;
-  _freq.set(t, Math.max(existing, frequency));
-  if (existing) return; // deletes already indexed
-
-  const prefix = t.slice(0, PREFIX_LEN);
+/* Store one folded lookup form in the delete index. */
+function _indexForm(form) {
+  const prefix = form.slice(0, PREFIX_LEN);
   const variants = _deleteVariants(prefix, MAX_EDIT);
   variants.add(prefix);
-  variants.forEach(v => {
-    let set = _deletes.get(v);
-    if (!set) { set = new Set(); _deletes.set(v, set); }
-    set.add(t);
+  variants.forEach(variant => {
+    let set = _deletes.get(variant);
+    if (!set) {
+      set = new Set();
+      _deletes.set(variant, set);
+    }
+    set.add(form);
   });
 }
 
-/* Load the seed entertainment dictionary (once). */
+/* Add one term to the dictionary. Null, empty, and one-letter forms are ignored.
+   Repeated terms update frequency without duplicating delete entries. */
+export function addTerm(term, frequency = 1) {
+  const canonical = _canonicalize(term);
+  if (!canonical || canonical.length < 2) return;
+
+  const freq = Number.isFinite(Number(frequency)) ? Number(frequency) : 1;
+  _canonicalFreq.set(canonical, Math.max(_canonicalFreq.get(canonical) || 0, freq));
+
+  _termForms(canonical).forEach(form => {
+    const existing = _freq.get(form) || 0;
+    _freq.set(form, Math.max(existing, freq));
+    if (!_canonical.has(form) || freq >= existing) _canonical.set(form, canonical);
+    if (!existing) _indexForm(form);
+  });
+}
+
+/* Load the seed entertainment dictionary once. The live index still adds real
+   TMDB and user-library titles on top of this seed. */
 export function loadSeedDictionary() {
   if (_seeded) return Promise.resolve();
   _seeded = true;
   return fetch('src/data/search-custom-dictionary.json')
     .then(r => r.json())
     .then(d => {
-      Object.entries(d.terms || {}).forEach(([term, freq]) => {
+      Object.entries(d?.terms || {}).forEach(([term, freq]) => {
         addTerm(term, freq);
-        // Also index each word of multi-word terms so single-word typos correct
-        term.split(/\s+/).forEach(w => { if (w.length > 3) addTerm(w, Math.round(freq / 2)); });
+        String(term || '').split(/\s+/).forEach(w => {
+          if (w.length > 3) addTerm(w, Math.round(Number(freq || 1) / 2));
+        });
       });
     })
     .catch(err => console.warn('[SV Search] Seed dictionary failed:', err?.message));
 }
 
-/* Damerau-Levenshtein (optimal string alignment) with early cutoff. */
+/* -------------------------------------------------------------------------
+   Distance verification
+   ------------------------------------------------------------------------- */
+
+/* Damerau-Levenshtein with early cutoff. It verifies insertions, deletions,
+   substitutions, and adjacent swaps after the fast delete-index pass. */
 export function damerau(a, b, max = MAX_EDIT) {
+  a = String(a || '');
+  b = String(b || '');
   if (Math.abs(a.length - b.length) > max) return max + 1;
   if (a === b) return 0;
-  const al = a.length, bl = b.length;
+
+  const al = a.length;
+  const bl = b.length;
   let prevPrev = null;
   let prev = Array.from({ length: bl + 1 }, (_, j) => j);
+
   for (let i = 1; i <= al; i++) {
     const cur = [i];
     let rowMin = i;
     for (let j = 1; j <= bl; j++) {
-      let cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let value = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
       if (prevPrev && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        v = Math.min(v, prevPrev[j - 2] + 1);
+        value = Math.min(value, prevPrev[j - 2] + 1);
       }
-      cur[j] = v;
-      if (v < rowMin) rowMin = v;
+      cur[j] = value;
+      if (value < rowMin) rowMin = value;
     }
-    if (rowMin > max) return max + 1; // early exit — row can't recover
+    if (rowMin > max) return max + 1;
     prevPrev = prev;
     prev = cur;
   }
   return prev[bl];
 }
 
-/* Look up the best correction for a single word.
-   Returns { term, distance, freq } or null when no good candidate. */
-export function lookupWord(word, maxEdit = MAX_EDIT) {
-  const w = fold(word);
-  if (!w || w.length < 3) return null;
-  if (_freq.has(w)) return { term: w, distance: 0, freq: _freq.get(w) };
+/* -------------------------------------------------------------------------
+   Lookup
+   ------------------------------------------------------------------------- */
 
-  const prefix = w.slice(0, PREFIX_LEN);
-  const candidates = new Set();
+function _candidateForms(form, maxEdit) {
+  const prefix = form.slice(0, PREFIX_LEN);
   const variants = _deleteVariants(prefix, maxEdit);
+  const candidates = new Set();
   variants.add(prefix);
-  variants.forEach(v => {
-    const set = _deletes.get(v);
-    if (set) set.forEach(t => candidates.add(t));
+  variants.forEach(variant => {
+    const set = _deletes.get(variant);
+    if (set) set.forEach(candidate => candidates.add(candidate));
   });
+  return candidates;
+}
+
+/* Look up a single word or compact query form. Returns canonical output. */
+export function lookupWord(word, maxEdit = MAX_EDIT) {
+  const forms = _queryForms(word).filter(form => form.length >= MIN_WORD_LEN);
+  if (!forms.length) return null;
 
   let best = null;
-  candidates.forEach(t => {
-    const d = damerau(w, t, maxEdit);
-    if (d > maxEdit) return;
-    const freq = _freq.get(t) || 1;
-    if (!best || d < best.distance || (d === best.distance && freq > best.freq)) {
-      best = { term: t, distance: d, freq };
+  forms.forEach(form => {
+    if (_freq.has(form)) {
+      const exact = { term: _canonical.get(form) || form, distance: 0, freq: _freq.get(form) || 1 };
+      if (_isBetterCandidate(exact, best)) best = exact;
     }
+    _candidateForms(form, maxEdit).forEach(candidate => {
+      const distance = damerau(form, candidate, maxEdit);
+      if (distance > maxEdit) return;
+      const canonical = _canonical.get(candidate) || candidate;
+      const next = { term: canonical, distance, freq: _freq.get(candidate) || _canonicalFreq.get(canonical) || 1 };
+      if (_isBetterCandidate(next, best)) best = next;
+    });
   });
   return best;
 }
 
-/* Look up the best correction for a whole phrase against multi-word
-   dictionary terms ("jujutsu kaisen", "star wars"…). Uses the same
-   delete-variant index — phrases are indexed by their first-7-char
-   prefix just like single words. */
+/* Phrase lookup runs before word-by-word correction. It catches word-boundary
+   mistakes like "lordoftherings" and phrase typos like "jujutsu kaisan". */
 export function lookupPhrase(q, maxEdit = MAX_EDIT) {
-  const p = fold(q);
-  if (!p || p.length < 5 || !p.includes(' ')) return null;
-  const hit = lookupWord(p, maxEdit);
-  return hit && hit.term.includes(' ') ? hit : null;
+  const forms = _queryForms(q).filter(form => form.length >= MIN_PHRASE_LEN);
+  if (!forms.length) return null;
+
+  const folded = _foldForm(q);
+  const phraseLike = folded.includes(' ') || forms.some(form => form.length >= 8);
+  if (!phraseLike) return null;
+
+  let best = null;
+  forms.forEach(form => {
+    if (_freq.has(form)) {
+      const exact = { term: _canonical.get(form) || form, distance: 0, freq: _freq.get(form) || 1 };
+      if (_isBetterCandidate(exact, best)) best = exact;
+    }
+    _candidateForms(form, maxEdit).forEach(candidate => {
+      const canonical = _canonical.get(candidate) || candidate;
+      const candidateForms = new Set([candidate, _foldForm(canonical), _tightForm(canonical)].filter(Boolean));
+      candidateForms.forEach(candidateForm => {
+        let distance = damerau(form, candidateForm, maxEdit);
+        if (distance > maxEdit && folded.includes(' ')) {
+          const prefixDistance = _prefixDistance(form, candidateForm, maxEdit);
+          distance = prefixDistance <= maxEdit ? prefixDistance + 1 : prefixDistance;
+        }
+        if (distance > maxEdit) return;
+        const next = { term: canonical, distance, freq: _freq.get(candidate) || _canonicalFreq.get(canonical) || 1 };
+        if (_isBetterCandidate(next, best)) best = next;
+      });
+    });
+  });
+  return best && (_foldForm(best.term).includes(' ') || /-/.test(best.term)) ? best : null;
 }
 
-/* Correct a whole query — phrase-level first, then word-by-word.
-   Returns { corrected, changed } — only proposes when confident. */
-export function correctQuery(q) {
-  const folded = fold(q);
+/* -------------------------------------------------------------------------
+   Query correction
+   ------------------------------------------------------------------------- */
 
-  // Pass 1: whole-phrase correction ("jujutsu kaisan" → "jujutsu kaisen",
-  // "lord of the ring" → "lord of the rings"). Catches errors that span
-  // word boundaries, including missing/extra spaces.
-  const ph = lookupPhrase(folded);
-  if (ph && ph.distance > 0 && ph.distance <= (folded.length > 10 ? 2 : 1)) {
-    return { corrected: ph.term, changed: true };
+function _acceptPhraseCorrection(original, hit) {
+  if (!hit) return false;
+  const folded = _foldForm(original);
+  if (!folded || hit.term === folded) return false;
+  if (hit.distance === 0) return hit.term !== folded;
+  return hit.distance <= (folded.length > 10 ? 2 : 1);
+}
+
+function _acceptWordCorrection(word, hit) {
+  if (!hit) return false;
+  if (word.length < 4 || /^\d+$/.test(word)) return false;
+  // distance 0 with a different canonical form is a variant rewrite
+  // ("madmax" → "mad max", "xmen" → "x-men") — accept those too
+  if (hit.distance === 0) return hit.term !== word;
+  return hit.distance <= (word.length > 6 ? 2 : 1);
+}
+
+/* Correct a query in two passes: whole phrase first, word-by-word second. */
+export function correctQuery(q) {
+  const folded = _foldForm(q);
+  if (!folded) return { corrected: '', changed: false };
+
+  const phraseHit = lookupPhrase(folded);
+  if (_acceptPhraseCorrection(folded, phraseHit)) {
+    return { corrected: phraseHit.term, changed: true };
   }
 
-  // Pass 2: word-by-word correction
   const words = folded.split(' ').filter(Boolean);
   let changed = false;
-  const out = words.map(w => {
-    if (w.length < 4 || /^\d+$/.test(w)) return w; // short/numeric words: leave alone
-    const hit = lookupWord(w);
-    if (hit && hit.distance > 0 && hit.distance <= (w.length > 6 ? 2 : 1)) {
+  const out = words.map(word => {
+    const hit = lookupWord(word);
+    if (_acceptWordCorrection(word, hit)) {
       changed = true;
       return hit.term;
     }
-    return w;
+    return word;
   });
-  return { corrected: out.join(' '), changed };
+  const corrected = out.join(' ');
+  return { corrected, changed: changed && corrected !== folded };
 }
 
-export function dictionarySize() { return _freq.size; }
+export function dictionarySize() {
+  return _canonicalFreq.size;
+}

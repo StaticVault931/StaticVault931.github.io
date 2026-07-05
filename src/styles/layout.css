@@ -1410,7 +1410,7 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .bottom-nav-search.on { color: var(--red); }
 
 /* ── ABOUT / SEO CONTENT ─────────────────────────────────────────── */
-/* In the static HTML for crawlers, but only shown to users on Home */
+/* Kept in the static HTML for crawlers, never shown to users */
 #about-content {
   display: none;
   background: var(--s1);
@@ -1418,7 +1418,6 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
   padding: 2.5rem 3.5rem;
   margin-top: 2rem;
 }
-body:has(#page-home.active) #about-content { display: block; }
 .about-inner { max-width: 1100px; margin: 0 auto; }
 #about-content h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: .7rem; color: var(--text); }
 #about-content h3 { font-size: .95rem; font-weight: 800; margin-bottom: .4rem; color: var(--text); }

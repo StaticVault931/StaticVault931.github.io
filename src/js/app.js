@@ -1218,6 +1218,55 @@ function _loadHolidayRows() {
   });
 }
 
+/* Dev page: shows EVERY holiday/seasonal row at once, in calendar order,
+   grouped by tier. Built on demand, navigable via goPage('holidayrows'). */
+window._svOpenHolidayPage = function () {
+  let page = document.getElementById('page-holidayrows');
+  if (!page) {
+    page = document.createElement('main');
+    page.className = 'page';
+    page.id = 'page-holidayrows';
+    page.tabIndex = -1;
+    document.getElementById('page-home')?.after(page);
+  }
+
+  const fmtDate = ([m, d]) => `${['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m]} ${d}`;
+  const byStart = (a, b) => (a.from[0] * 100 + a.from[1]) - (b.from[0] * 100 + b.from[1]);
+  const section = def => {
+    const active = _holidayActive(def);
+    return `
+    <section class="section" id="sec-all-${def.id}">
+      <div class="sec-header"><h2 class="sec-title">
+        <span class="material-icons-round sec-icon">${def.icon}</span>${def.title}
+        <span style="font-size:.72rem;font-weight:600;opacity:.65;margin-left:.6rem">${fmtDate(def.from)} – ${fmtDate(def.to)}${active ? ' · LIVE NOW' : ''}</span>
+      </h2></div>
+      <div class="row-wrap"><div class="card-row" id="all-${def.id}"></div></div>
+    </section>`;
+  };
+
+  const bigs = HOLIDAY_ROWS.filter(r => r.tier === 'big').slice().sort(byStart);
+  const smalls = HOLIDAY_ROWS.filter(r => r.tier === 'small').slice().sort(byStart);
+  page.innerHTML = `
+    <div style="padding:1.2rem 0 .2rem">
+      <h1 style="font-size:1.4rem;font-weight:800;margin-bottom:.2rem">Holiday Rows — All ${HOLIDAY_ROWS.length}</h1>
+      <p style="font-size:.82rem;opacity:.7">Every seasonal row in calendar order. Dev preview — normally only one Big + one Small show at a time.</p>
+    </div>
+    <h2 style="font-size:1.05rem;font-weight:800;margin:.8rem 0 .2rem">Big Seasonal (${bigs.length})</h2>
+    ${bigs.map(section).join('')}
+    <h2 style="font-size:1.05rem;font-weight:800;margin:1.4rem 0 .2rem">Small Holidays (${smalls.length})</h2>
+    ${smalls.map(section).join('')}`;
+
+  goPage('holidayrows');
+  // Lazy-load every row (IntersectionObserver defers off-screen ones)
+  [...bigs, ...smalls].forEach(def =>
+    _scheduleRowLoad(`all-${def.id}`, `sec-all-${def.id}`, def.fn, def.type || 'movie'));
+  toast(`Holiday Rows page — ${HOLIDAY_ROWS.length} rows`, 'calendar_month');
+};
+// Rebuild the dev page when landing on ?page=holidayrows directly (refresh/deep link)
+registerLoader('holidayrows', () => {
+  if (!document.getElementById('page-holidayrows')?.innerHTML) window._svOpenHolidayPage();
+});
+
 // Dev panel: summon any holiday row on demand regardless of date
 window._svSummonRow = function (rowId) {
   const def = HOLIDAY_ROWS.find(r => r.id === rowId);
@@ -6935,6 +6984,11 @@ function populateTestPanel() {
 
       <div class="dev-section">
         <div class="dev-sec-title">Row Summoner — Holiday &amp; Seasonal</div>
+        <div class="dev-btn-row" style="margin-bottom:.45rem">
+          <button class="dev-btn" id="dev-btn-holiday-page">
+            <span class="material-icons-round" style="font-size:.85rem;vertical-align:-2px">calendar_month</span>
+            Open Holiday Rows Page (all rows, in order)</button>
+        </div>
         <div class="dev-btn-row" id="dev-rows-row"></div>
       </div>
 
@@ -7097,6 +7151,7 @@ function populateTestPanel() {
     });
 
     // ── Holiday row summoner ─────────────────────────────────────────
+    panel.querySelector('#dev-btn-holiday-page')?.addEventListener('click', () => window._svOpenHolidayPage());
     const rowsRow = panel.querySelector('#dev-rows-row');
     if (rowsRow) {
       const _rowBtn = r => {
@@ -7950,19 +8005,29 @@ function positionNetflixCard(card, nc) {
   const vpW = window.innerWidth;
   const vpH = window.innerHeight;
 
-  // Card width: strictly proportional to the hovered card (1.5×) so every
-  // context (home rows, search grid, library, person page) gets a hover that
-  // visibly grows out of ITS card. Clamped so content always fits: never
-  // narrower than 340px (buttons/text need room), never wider than 46vw.
-  const ncW = Math.max(340, Math.min(Math.round(rect.width * 1.5), Math.round(vpW * 0.46)));
+  const marginH = 12;
+
+  // Card width: proportional to the hovered card AND guaranteed to be at
+  // least 90px wider than it, so the hover always visibly outgrows and
+  // covers the original card on every page (home rows, search grid,
+  // library, person page). Clamped so content fits: ≥340px for buttons
+  // and text, ≤60vw / viewport minus margins.
+  const ncW = Math.round(Math.min(
+    Math.max(rect.width * 1.5, rect.width + 90, 340),
+    vpW - marginH * 2,
+    vpW * 0.6
+  ));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
   nc.style.overflowY = '';
 
+  // Height floor: at least 70px taller than the original card, so the hover
+  // covers it vertically too (capped at 85% of the viewport).
+  const maxH = Math.floor(vpH * 0.85);
+  nc.style.minHeight = `${Math.min(Math.round(rect.height + 70), maxH)}px`;
+
   // Use scrollHeight for accurate height even when inner content is taller than rendered
   const rawH = Math.max(nc.scrollHeight || 0, nc.offsetHeight || 0) || 480;
-  // Cap the card at 85% of viewport height so it always fits
-  const maxH = Math.floor(vpH * 0.85);
   const ncH = Math.min(rawH, maxH);
   if (rawH > maxH) {
     // Content taller than cap → allow inner scroll so buttons stay accessible
@@ -7972,7 +8037,6 @@ function positionNetflixCard(card, nc) {
 
   // ── Horizontal positioning ──────────────────────────────────────
   let left = rect.left + (rect.width / 2) - (ncW / 2);
-  const marginH = 12;
 
   if (left < marginH && left + ncW > vpW - marginH) {
     left = (vpW - ncW) / 2; // narrow viewport — centre
