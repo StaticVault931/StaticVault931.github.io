@@ -7,6 +7,11 @@ import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from '.
    two rows — each row must reference a different title. */
 const _usedTitleIds = new Set();
 
+/* Claim items against the global home-page registry (app.js) so no title
+   repeats across rows. Falls back to a plain slice if app.js isn't ready. */
+const _claim = (items, cap = 14) =>
+  window._svClaimHomeItems ? window._svClaimHomeItems(items, cap) : (items || []).slice(0, cap);
+
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
 function passesAgeFilter(m) {
@@ -127,7 +132,9 @@ export async function loadForYou() {
     const outPrefItems = outPref.slice(0, mixCount);
     // Slight shuffle to intersperse discovery content
     const mixed = [...inPrefItems, ...outPrefItems].sort(() => Math.random() - 0.3);
-    const items = mixed.slice(0, totalWanted);
+    // Claim against the global registry — For You loads first, so it gets
+    // first pick and every later row automatically avoids these titles
+    const items = _claim(mixed, totalWanted);
 
     if (!items.length) {
       // Hard fallback: if pool was empty, just show highly-rated popular content
@@ -248,9 +255,7 @@ export async function loadBecauseYouLiked() {
        ...(simD.status === 'fulfilled' ? simD.value.results || [] : [])].forEach(m => {
         if (m.id && !mSeen.has(m.id)) { mSeen.add(m.id); merged.push(m); }
       });
-      const results = merged
-        .filter(m => !state.disliked.some(d => d.id === m.id))
-        .slice(0, 14);
+      const results = _claim(merged.filter(m => !state.disliked.some(d => d.id === m.id)), 14);
 
       if (results.length < 10) {
         sec.style.display = 'none'; // thin rows look broken — skip
@@ -305,8 +310,8 @@ export async function loadGenreTrending() {
     const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
     const mixed = []; const ml=movies.length, sl=shows.length;
     for (let i=0;i<Math.max(ml,sl);i++) { if(movies[i])mixed.push(movies[i]); if(shows[i])mixed.push(shows[i]); }
-    const filtered = mixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)).slice(0, 18);
-    if (!filtered.length) { sec.style.display='none'; return; }
+    const filtered = _claim(mixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)), 18);
+    if (filtered.length < 10) { sec.style.display='none'; return; }
     row.innerHTML = filtered.map(m => makeCard(m, m.media_type)).join('');
   } catch { sec.style.display = 'none'; }
 }
@@ -336,11 +341,10 @@ export async function loadDeepCuts() {
     ]);
     const movies = mv.status==='fulfilled' ? (mv.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
     const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
-    const all = [...movies,...shows]
+    const all = _claim([...movies,...shows]
       .filter(m => !watchedIds.has(m.id) && !likedIds.has(m.id) && !dislikedIds.has(m.id) && !recentIds.has(m.id))
-      .sort((a,b) => (b.vote_average||0) - (a.vote_average||0))
-      .slice(0, 18);
-    if (!all.length) { sec.style.display='none'; return; }
+      .sort((a,b) => (b.vote_average||0) - (a.vote_average||0)), 18);
+    if (all.length < 10) { sec.style.display='none'; return; }
     row.innerHTML = all.map(m => makeCard(m, m.media_type)).join('');
   } catch { sec.style.display = 'none'; }
 }
@@ -384,11 +388,10 @@ export async function loadHistoryMix() {
     );
     const allRecs = recResults.flatMap(r => r.status==='fulfilled' ? r.value : []);
     const uniqSeen = new Set();
-    const filtered = allRecs
+    const filtered = _claim(allRecs
       .filter(m => m.id && !dislikedIds.has(m.id) && !watchedIds.has(m.id) && !uniqSeen.has(m.id) && uniqSeen.add(m.id))
-      .sort((a,b) => (b.popularity||0)-(a.popularity||0))
-      .slice(0, 18);
-    if (!filtered.length) { sec.style.display='none'; return; }
+      .sort((a,b) => (b.popularity||0)-(a.popularity||0)), 18);
+    if (filtered.length < 10) { sec.style.display='none'; return; }
     row.innerHTML = filtered.map(m => makeCard(m, m.media_type || (m.title ? 'movie' : 'tv'))).join('');
   } catch { sec.style.display = 'none'; }
 }
@@ -453,9 +456,8 @@ export async function loadBecauseYouWatched() {
         ...(recD.status === 'fulfilled' ? recD.value.results || [] : []),
         ...(simD.status === 'fulfilled' ? simD.value.results || [] : []),
       ].filter(m => m.id && !mSeen.has(m.id) && mSeen.add(m.id));
-      const results = merged
-        .filter(m => !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id))
-        .slice(0, 14);
+      const results = _claim(merged
+        .filter(m => !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
       if (results.length < 10) { sec.style.display='none'; continue; }
       renderRow(rowId, results, type);
     } catch { sec.style.display = 'none'; }

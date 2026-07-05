@@ -1197,12 +1197,57 @@ function _kwRow(keyword, fallbackParams, extra = {}) {
   };
 }
 
+/* Pride Month fetch — merged from the old June seasonal row. Curated
+   title list (guaranteed-right picks) + keyword discovery, rotated so the
+   row differs between visits. Used by the HUGE tier "Pride Month" row. */
+async function _prideFetch() {
+  const rPage = Math.floor(Math.random() * 5) + 1;
+  const prideMovieTitles = [
+    'Brokeback Mountain', 'Moonlight', 'Call Me by Your Name', 'Carol',
+    'Love, Simon', 'Portrait of a Lady on Fire', 'The Danish Girl', 'Milk',
+    'The Birdcage', 'Blue Is the Warmest Colour', 'The Kids Are All Right',
+    'Beautiful Thing', "God's Own Country", 'Weekend', 'Holding the Man',
+    'Pride', 'Pariah', 'The Normal Heart', 'Philadelphia',
+    'Rocketman', 'Bohemian Rhapsody', 'The Way He Looks', 'Handsome Devil',
+    'Freeheld', 'A Single Man', 'Keep the Lights On',
+  ];
+  const prideTvTitles = [
+    'Heartstopper', 'Pose', 'Sex Education', "Schitt's Creek",
+    'Orange Is the New Black', "It's a Sin", 'Queer as Folk', "RuPaul's Drag Race",
+    'Euphoria', 'Looking', 'The L Word', 'Brothers and Sisters',
+    'Will and Grace', 'Modern Family', 'Glee', 'Sense8',
+    'Cucumber', 'Banana', 'Years and Years',
+  ];
+  const searchMovie = t => tmdb('/search/movie', { query: t }).then(d => d.results?.[0] ? { ...d.results[0], media_type: 'movie' } : null).catch(() => null);
+  const searchTv = t => tmdb('/search/tv', { query: t }).then(d => d.results?.[0] ? { ...d.results[0], media_type: 'tv' } : null).catch(() => null);
+  const mStart = (rPage - 1) * 4 % prideMovieTitles.length;
+  const tStart = (rPage - 1) * 3 % prideTvTitles.length;
+  const mTitles = [...prideMovieTitles.slice(mStart), ...prideMovieTitles.slice(0, mStart)].slice(0, 8);
+  const tTitles = [...prideTvTitles.slice(tStart), ...prideTvTitles.slice(0, tStart)].slice(0, 6);
+  const [movieResults, tvResults, kwMovies, kwTv] = await Promise.all([
+    Promise.all(mTitles.map(searchMovie)),
+    Promise.all(tTitles.map(searchTv)),
+    tmdb('/discover/movie', { with_keywords: '158718,3799,209726,155310', sort_by: 'vote_average.desc', 'vote_count.gte': 100, page: rPage }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))).catch(() => []),
+    tmdb('/discover/tv', { with_keywords: '158718,3799,209726', sort_by: 'vote_average.desc', 'vote_count.gte': 50, page: rPage }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'tv' }))).catch(() => []),
+  ]);
+  const seenIds = new Set();
+  const combined = [];
+  const movies_ok = movieResults.filter(Boolean), tv_ok = tvResults.filter(Boolean);
+  for (let i = 0; i < Math.max(movies_ok.length, tv_ok.length); i++) {
+    const m = movies_ok[i], t = tv_ok[i];
+    if (m && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
+    if (t && !seenIds.has(t.id)) { seenIds.add(t.id); combined.push(t); }
+  }
+  [...kwMovies, ...kwTv].forEach(x => { if (x?.id && !seenIds.has(x.id)) { seenIds.add(x.id); combined.push(x); } });
+  return combined.slice(0, 20);
+}
+
 const HOLIDAY_ROWS = [
   /* ── HUGE tier — cultural months & flagship seasons ─────────────── */
   { tier: 'huge', id: 'row-hol-blackhistory', title: 'Black History Month', icon: 'history_edu', from: [2, 1], to: [2, 29],
     fn: _kwRow('african american', { with_genres: '36|18', sort_by: 'vote_average.desc', 'vote_count.gte': 400 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }) },
-  { tier: 'huge', id: 'row-hol-pride',        title: 'Pride Month',         icon: 'diversity_3', from: [6, 1], to: [6, 30],
-    fn: _disc({ with_keywords: '158718|3799|209726', sort_by: 'vote_average.desc', 'vote_count.gte': 150 }) },
+  { tier: 'huge', id: 'row-hol-pride',        title: 'Pride Month 🌈',      icon: 'diversity_3', from: [6, 1], to: [6, 30],
+    fn: _prideFetch },
   { tier: 'huge', id: 'row-hol-hispanic',     title: 'Hispanic Heritage Month', icon: 'festival', from: [9, 15], to: [10, 15],
     fn: _disc({ with_original_language: 'es', 'vote_count.gte': 300 }) },
   { tier: 'huge', id: 'row-hol-halloween',    title: 'Halloween Season',    icon: 'nightlight',  from: [10, 1], to: [10, 31],
@@ -1231,6 +1276,13 @@ const HOLIDAY_ROWS = [
     fn: _disc({ with_genres: '10751|35', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }) },
   { tier: 'big', id: 'row-hol-yearend',   title: "Year-End Best Of",          icon: 'stars',         from: [12, 1],  to: [12, 25],
     fn: () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'primary_release_date.gte': `${new Date().getFullYear()}-01-01`, 'vote_count.gte': 200 }).then(d => d.results || []) },
+  // Overlapping bigs — rotate daily with the row above them for variety
+  { tier: 'big', id: 'row-hol-winterwarm', title: 'Winter Warmers',           icon: 'fireplace',     from: [1, 2],   to: [1, 31],
+    fn: _disc({ with_genres: '35|10751', sort_by: 'vote_average.desc', 'vote_count.gte': 600 }) },
+  { tier: 'big', id: 'row-hol-summernights', title: 'Summer Nights: Thrills After Dark', icon: 'bedtime', from: [6, 15], to: [8, 15],
+    fn: _disc({ with_genres: '53|27', sort_by: 'vote_average.desc', 'vote_count.gte': 800 }) },
+  { tier: 'big', id: 'row-hol-fallprestige', title: 'Fall Prestige Picks',    icon: 'auto_stories',  from: [9, 21],  to: [11, 15],
+    fn: _disc({ with_genres: '18', sort_by: 'vote_average.desc', 'vote_count.gte': 3000 }) },
 
   /* ── SMALL tier — short holidays (3–14 days) chained all year ──── */
   { tier: 'small', id: 'row-hol-nyeparty',   title: "New Year's Eve Party Films",     icon: 'nightlife',       from: [12, 27], to: [1, 2],
@@ -1323,6 +1375,21 @@ const HOLIDAY_ROWS = [
     fn: _kwRow('christmas romance', { with_genres: '10749|35' }) },
   { tier: 'small', id: 'row-hol-longestnight', title: 'Longest Night: Epic Marathons', icon: 'hourglass_bottom', from: [12, 16], to: [12, 26],
     fn: _disc({ 'with_runtime.gte': 150, sort_by: 'vote_average.desc', 'vote_count.gte': 2000 }) },
+  // Day-specific holidays — overlap existing smalls and rotate in daily
+  { tier: 'small', id: 'row-hol-groundhog',  title: 'Groundhog Day: Time Loops',      icon: 'replay',          from: [2, 2],   to: [2, 3],
+    fn: _kwRow('time loop', { with_genres: '878|35' }) },
+  { tier: 'small', id: 'row-hol-womensday',  title: "Women Who Lead (Int'l Women's Day)", icon: 'female',      from: [3, 7],   to: [3, 9],
+    fn: _kwRow('strong female lead', { with_genres: '18|28', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }) },
+  { tier: 'small', id: 'row-hol-piday',      title: 'Pi Day: Mind-Benders',           icon: 'calculate',       from: [3, 14],  to: [3, 15],
+    fn: _disc({ with_genres: '878|9648', sort_by: 'vote_average.desc', 'vote_count.gte': 1500 }) },
+  { tier: 'small', id: 'row-hol-cincodemayo', title: 'Cinco de Mayo: Mexican Cinema', icon: 'celebration',     from: [5, 5],   to: [5, 6],
+    fn: _disc({ with_original_language: 'es', region: 'MX', sort_by: 'vote_average.desc', 'vote_count.gte': 200 }) },
+  { tier: 'small', id: 'row-hol-ufoday',     title: 'World UFO Day: Alien Encounters', icon: 'travel_explore', from: [7, 2],   to: [7, 3],
+    fn: _kwRow('ufo', { with_genres: '878' }) },
+  { tier: 'small', id: 'row-hol-gamesday',   title: 'Video Game Day: Adaptations',    icon: 'sports_esports',  from: [9, 12],  to: [9, 13],
+    fn: _kwRow('video game', { with_genres: '28|12' }) },
+  { tier: 'small', id: 'row-hol-pirateday',  title: 'Talk Like a Pirate Day',         icon: 'sailing',         from: [9, 18],  to: [9, 20],
+    fn: _kwRow('pirate', { with_genres: '12' }) },
 ];
 
 function _holidayActive(def, now = new Date()) {
@@ -1353,9 +1420,20 @@ function _ensureHolidaySection(def) {
 
 function _loadHolidayRows() {
   // Display rules: 1 Huge (when one is active) + 1 Big + 1 Small.
-  // With no Huge active it's just 1 Big + 1 Small. Within a tier the
-  // first active row in list order wins.
-  const pick = tier => HOLIDAY_ROWS.find(r => r.tier === tier && _holidayActive(r));
+  // With no Huge active it's just 1 Big + 1 Small. When several rows of a
+  // tier overlap (e.g. day-specific holidays inside a longer small window),
+  // they ROTATE daily so every overlapping row gets its turn.
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const pick = tier => {
+    const active = HOLIDAY_ROWS.filter(r => r.tier === tier && _holidayActive(r));
+    if (!active.length) return null;
+    // Day-specific rows (windows ≤ 3 days) always win their day — that IS the holiday
+    const daySpecific = active.find(r => {
+      const span = (r.to[0] * 100 + r.to[1]) - (r.from[0] * 100 + r.from[1]);
+      return span >= 0 && span <= 2;
+    });
+    return daySpecific || active[dayOfYear % active.length];
+  };
   [pick('huge'), pick('big'), pick('small')].filter(Boolean).forEach(def => {
     if (_ensureHolidaySection(def)) _scheduleRowLoad(def.id, `sec-${def.id}`, def.fn, def.type || 'movie');
   });
@@ -1371,8 +1449,15 @@ function _homeSectionKind(sec) {
   if (id.startsWith('sec-row-hol-')) return 'holiday';
   if (id.startsWith('sec-because-') || id.startsWith('sec-watched-') || id === 'sec-history-mix') return 'title';
   if (id.startsWith('sec-on-')) return 'provider';
-  if (['sec-action', 'sec-comedy', 'sec-horror', 'sec-drama', 'sec-scifi', 'sec-romance', 'sec-superhero', 'sec-dark-comedy', 'sec-mystery-film'].includes(id)) return 'genre';
-  if (['sec-tv-pop', 'sec-airing', 'sec-thriller-tv', 'sec-crime-tv', 'sec-comedy-tv', 'sec-sci-fi-tv', 'sec-prestige-tv', 'sec-retro-tv', 'sec-binge-drama', 'sec-teen-drama', 'sec-tv-faves'].includes(id)) return 'tvgenre';
+  // "Trending in Japan/UK/…" + Trending/Trending-in-genre — never adjacent
+  if (id.startsWith('sec-trend-') || id === 'sec-trending' || id === 'sec-genre-trending') return 'trending';
+  if (['sec-90s-nostalgia', 'sec-2000s', 'sec-retro-tv', 'sec-classics'].includes(id)) return 'era';
+  if (['sec-heist', 'sec-time-travel', 'sec-post-apoc', 'sec-space', 'sec-superhero'].includes(id)) return 'concept';
+  if (['sec-action', 'sec-comedy', 'sec-horror', 'sec-drama', 'sec-scifi', 'sec-romance', 'sec-dark-comedy', 'sec-mystery-film', 'sec-musicals'].includes(id)) return 'genre';
+  if (['sec-tv-pop', 'sec-airing', 'sec-thriller-tv', 'sec-crime-tv', 'sec-comedy-tv', 'sec-sci-fi-tv', 'sec-prestige-tv', 'sec-binge-drama', 'sec-teen-drama', 'sec-tv-faves', 'sec-miniseries', 'sec-one-season'].includes(id)) return 'tvgenre';
+  // Fallback: any row whose visible title starts with "Trending" counts too
+  const t = sec.querySelector('.sec-title')?.textContent?.trim() || '';
+  if (/^trending/i.test(t)) return 'trending';
   return 'std';
 }
 
@@ -1401,6 +1486,20 @@ function _scheduleSpread() {
   _spreadTimer = setTimeout(_spreadHomeSections, 900);
 }
 window._svSpreadSections = _scheduleSpread; // recommendations.js calls this after inserting rows
+
+/* Global home-page title claim — ANY row that renders on home should pass
+   its items through here so the same title never appears in more than one
+   row. Returns up to `cap` unclaimed items and registers them as shown. */
+window._svClaimHomeItems = (items, cap = 14) => {
+  const out = [];
+  for (const m of items || []) {
+    if (!m?.id || _homeSeenIds.has(m.id)) continue;
+    _homeSeenIds.add(m.id);
+    out.push(m);
+    if (out.length >= cap) break;
+  }
+  return out;
+};
 
 /* Dev page: shows EVERY holiday/seasonal row at once, in calendar order,
    grouped by tier. Built on demand, navigable via goPage('holidayrows'). */
@@ -1898,6 +1997,24 @@ const ROW_CATALOG = [
     labels: ['90s Nostalgia', 'Take Me Back', 'Throwback to the 90s', 'Before Streaming', 'That 90s Feeling', 'VHS Era Classics'] },
   { id: 'row-anime-mix',    sec: 'sec-anime-mix',     type: 'anime', persona: true,
     labels: ["Anime You'll Actually Finish", 'Anime Starter Pack', 'Gateway Anime', 'For Everyone', 'Start Here with Anime', 'Accessible Anime'] },
+  { id: 'row-indie-cinema', sec: 'sec-indie-cinema',  type: 'movie', persona: false,
+    labels: ['Modern Indie Cinema', 'A24 & Friends', 'Festival Favorites', 'Small Budget, Big Impact', 'Indie Darlings', 'Arthouse Hits'] },
+  { id: 'row-heist',        sec: 'sec-heist',         type: 'movie', persona: false,
+    labels: ['The Perfect Heist', 'One Last Job', 'Steal the Show', 'Master Plans', 'In & Out Clean', 'The Crew Assembles'] },
+  { id: 'row-time-travel',  sec: 'sec-time-travel',   type: null,   persona: false,
+    labels: ['Time Travel & Paradoxes', 'Breaking the Timeline', 'Past, Present, Future', 'Rewind & Repeat', "Don't Touch Anything", 'Temporal Chaos'] },
+  { id: 'row-post-apoc',    sec: 'sec-post-apoc',     type: null,   persona: true,
+    labels: ['After the End', 'Post-Apocalyptic Picks', 'When It All Falls Apart', 'The World After', 'Survivors Only', 'End of Days'] },
+  { id: 'row-adult-animation', sec: 'sec-adult-animation', type: null, persona: false,
+    labels: ['Animation for Grown-Ups', 'Not for Kids', 'Animated & Unfiltered', 'Cartoons After Dark', 'Grown-Up Animation', 'Drawn for Adults'] },
+  { id: 'row-space',        sec: 'sec-space',         type: 'movie', persona: false,
+    labels: ['Into the Void: Space', 'Beyond the Stars', 'Lost in Space', 'Cosmic Journeys', 'To Infinity', 'Space: The Final Binge'] },
+  { id: 'row-musicals',     sec: 'sec-musicals',      type: 'movie', persona: false,
+    labels: ['Musicals & Music Films', 'Sing It Out', 'The Soundtrack Slaps', 'Movies That Sing', 'All the Feels & Music', 'Showtunes & Stories'] },
+  { id: 'row-2000s',        sec: 'sec-2000s',         type: null,   persona: false,
+    labels: ['Y2K Era (2000s)', 'The 2000s Called', 'Flip-Phone Cinema', 'Early Internet Age', 'Millennium Movies', '2000s Throwbacks'] },
+  { id: 'row-one-season',   sec: 'sec-one-season',    type: 'tv',   persona: false,
+    labels: ['One-Season Wonders', 'Short & Complete', 'No 5-Season Commitment', 'Done in a Week', 'Single Season Gems', 'Quick TV Wins'] },
 ];
 
 // Labels are picked randomly per session (stored so they don't change mid-session)
@@ -1929,7 +2046,9 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
     selected = JSON.parse(sessionStorage.getItem(sessionKey) || '[]');
   } catch {}
   if (!selected.length) {
-    selected = shuffled.slice(0, 5 + Math.floor(Math.random() * 3)).map(r => r.id);
+    // 9–12 optional rows per day (catalog is 32+ now — plenty of variety
+    // without showing everything at once)
+    selected = shuffled.slice(0, 9 + Math.floor(Math.random() * 4)).map(r => r.id);
     sessionStorage.setItem(sessionKey, JSON.stringify(selected));
   }
 
@@ -1944,6 +2063,14 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
     ['row-documentary', 'row-based-on'],    // both "real events"
     ['row-binge-drama', 'row-prestige-tv'], // both drama TV
     ['row-sci-fi-tv',   'row-superhero'],   // both genre TV
+    ['row-90s-nostalgia', 'row-2000s'],     // both throwback eras
+    ['row-retro-tv',    'row-2000s'],       // both old-era content
+    ['row-sci-fi-tv',   'row-space'],       // both sci-fi
+    ['row-space',       'row-time-travel'], // both sci-fi concepts
+    ['row-time-travel', 'row-post-apoc'],   // both sci-fi concepts
+    ['row-miniseries',  'row-one-season'],  // both short-commitment TV
+    ['row-hidden-gems', 'row-indie-cinema'],// both under-the-radar
+    ['row-intense',     'row-heist'],       // both tension-driven
   ];
   CONFLICTS.forEach(([a, b]) => {
     if (selected.includes(a) && selected.includes(b)) {
@@ -2046,6 +2173,33 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
       return out;
     },
     'row-anime-mix':     () => aniQuery(`query{Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`).then(d => (d?.data?.Page?.media||[]).map(normalizeAnime)),
+    'row-indie-cinema':  () => tmdb('/discover/movie', { with_companies: '41077|90733', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: pRng2 }).then(d => d.results || []), // A24 + Neon
+    'row-heist':         () => tmdb('/discover/movie', { with_keywords: '10051', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: pRng2 }).then(d => d.results || []),
+    'row-time-travel':   () => tmdb('/discover/movie', { with_keywords: '4379', sort_by: 'popularity.desc', 'vote_count.gte': 100, page: pRng2 }).then(d => d.results || []),
+    'row-post-apoc':     () => tmdb('/discover/movie', { with_keywords: '4458|186565', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }).then(d => d.results || []),
+    'row-adult-animation': async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_genres: '16', without_genres: '10751', 'certification_country': 'US', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }),
+        tmdb('/discover/tv',    { with_genres: '16', without_genres: '10762|10751', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }),
+      ]);
+      const m = mv.status==='fulfilled'?(mv.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const t = tv.status==='fulfilled'?(tv.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(m.length,t.length);i++){if(m[i])out.push(m[i]);if(t[i])out.push(t[i]);}
+      return out;
+    },
+    'row-space':         () => tmdb('/discover/movie', { with_keywords: '9882|305447', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }).then(d => d.results || []),
+    'row-musicals':      () => tmdb('/discover/movie', { with_genres: '10402', sort_by: 'popularity.desc', 'vote_count.gte': 200, page: pRng2 }).then(d => d.results || []),
+    'row-2000s':         async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { 'primary_release_date.gte':'2000-01-01','primary_release_date.lte':'2009-12-31', sort_by:'popularity.desc','vote_count.gte':400, page: pRng2 }),
+        tmdb('/discover/tv',    { 'first_air_date.gte':'2000-01-01','first_air_date.lte':'2009-12-31', sort_by:'popularity.desc','vote_count.gte':200, page: pRng2 }),
+      ]);
+      const m = mv.status==='fulfilled'?(mv.value.results||[]).map(x=>({...x,media_type:'movie'})):[];
+      const t = tv.status==='fulfilled'?(tv.value.results||[]).map(x=>({...x,media_type:'tv'})):[];
+      const out=[]; for(let i=0;i<Math.max(m.length,t.length);i++){if(m[i])out.push(m[i]);if(t[i])out.push(t[i]);}
+      return out;
+    },
+    'row-one-season':    () => tmdb('/discover/tv', { with_status: '3', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: pRng2 }).then(d => d.results || []),
   };
 
   // Load each active row
@@ -2056,6 +2210,7 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
       _scheduleRowLoad(rowId, meta.sec, fn, meta.type || null);
     }
   });
+  _scheduleSpread(); // interleave kinds once the visible set is known
 }
 
 /* ── SEASONAL ROW ────────────────────────────────────────────────── */
@@ -2065,10 +2220,10 @@ const SEASONAL_THEMES = {
   3:  { label: 'Spring Blockbusters', icon: 'local_florist', genres: '28|12', type: 'movie' },
   4:  { label: 'Spring Picks', icon: 'sunny', genres: '35|12', type: 'movie' },
   5:  { label: 'Mind-Bending Thrillers', icon: 'psychology', genres: '53|9648', type: 'movie' },
-  6:  { label: 'Pride Month 🌈', icon: 'diversity_3', type: null,
-       keywords: '158718', // LGBTQ on TMDB
-       genres: '35|18|10749',
-       special: 'lgbtq' },
+  // June's Pride content lives in the HUGE holiday tier ("Pride Month" row,
+  // curated titles + keyword discovery) — the monthly seasonal row shows a
+  // different theme so the two never duplicate.
+  6:  { label: 'Summer Kickoff', icon: 'beach_access', genres: '12|35', type: 'movie' },
   7:  { label: 'Summer Action', icon: 'beach_access', genres: '28|12|35', type: 'movie' },
   8:  { label: 'Late Summer Thrillers', icon: 'thunderstorm', genres: '53|27', type: 'movie' },
   9:  { label: 'Back to School Drama', icon: 'school', genres: '18|10762', type: 'tv' },
@@ -2089,76 +2244,6 @@ async function loadSeasonalRow() {
   if (labelEl) labelEl.textContent = theme.label;
   if (iconEl) iconEl.textContent = theme.icon;
   if (secEl) secEl.style.display = '';
-
-  if (theme.special === 'lgbtq') {
-    const lgbtqFetch = async () => {
-      // Rotate pages each view so content is mostly different each time
-      const rPage = Math.floor(Math.random() * 5) + 1;
-
-      // Pride Month: search by exact title — most reliable approach
-      // Using TMDB search guarantees we get the right movie, not a wrong-ID result
-      // Comprehensive LGBTQ+ film/TV list — expanded with more variety
-      const prideMovieTitles = [
-        'Brokeback Mountain', 'Moonlight', 'Call Me by Your Name', 'Carol',
-        'Love, Simon', 'Portrait of a Lady on Fire', 'The Danish Girl', 'Milk',
-        'The Birdcage', 'Blue Is the Warmest Colour', 'The Kids Are All Right',
-        'Beautiful Thing', "God's Own Country", 'Weekend', 'Holding the Man',
-        'Pride', 'Pariah', 'The Normal Heart', 'Philadelphia',
-        'Rocketman', 'Bohemian Rhapsody', 'The Way He Looks', 'Handsome Devil',
-        'Freeheld', 'A Single Man', 'Keep the Lights On',
-      ];
-      const prideTvTitles = [
-        'Heartstopper', 'Pose', 'Sex Education', "Schitt's Creek",
-        'Orange Is the New Black', "It's a Sin", 'Queer as Folk', "RuPaul's Drag Race",
-        'Euphoria', 'Looking', 'The L Word', 'Brothers and Sisters',
-        'Will and Grace', 'Modern Family', 'Glee', 'Sense8',
-        'Cucumber', 'Banana', 'Years and Years',
-      ];
-
-      const searchMovie = (title) => tmdb('/search/movie', { query: title }).then(d => {
-        const r = d.results?.[0];
-        return r ? {...r, media_type:'movie'} : null;
-      }).catch(() => null);
-      const searchTv = (title) => tmdb('/search/tv', { query: title }).then(d => {
-        const r = d.results?.[0];
-        return r ? {...r, media_type:'tv'} : null;
-      }).catch(() => null);
-
-      // Rotate which titles show based on rPage seed (different each view)
-      const mStart = (rPage - 1) * 4 % prideMovieTitles.length;
-      const tStart = (rPage - 1) * 3 % prideTvTitles.length;
-      const mTitles = [...prideMovieTitles.slice(mStart), ...prideMovieTitles.slice(0, mStart)].slice(0, 8);
-      const tTitles = [...prideTvTitles.slice(tStart), ...prideTvTitles.slice(0, tStart)].slice(0, 6);
-
-      // Search hardcoded titles + keyword discovery in parallel
-      const [movieResults, tvResults, kwMovies, kwTv] = await Promise.all([
-        Promise.all(mTitles.map(searchMovie)),
-        Promise.all(tTitles.map(searchTv)),
-        // TMDB keyword search: "coming out" (158718), "male homosexuality" (3799), "sexual identity" (209726)
-        tmdb('/discover/movie', { with_keywords:'158718,3799,209726,155310', sort_by:'vote_average.desc', 'vote_count.gte':100, page: rPage }).then(d=>(d.results||[]).map(x=>({...x,media_type:'movie'}))).catch(()=>[]),
-        tmdb('/discover/tv',    { with_keywords:'158718,3799,209726', sort_by:'vote_average.desc', 'vote_count.gte':50, page: rPage }).then(d=>(d.results||[]).map(x=>({...x,media_type:'tv'}))).catch(()=>[]),
-      ]);
-
-      const movies_ok = movieResults.filter(Boolean);
-      const tv_ok     = tvResults.filter(Boolean);
-
-      // Interleave + deduplicate by id
-      const seenIds = new Set();
-      const combined = [];
-      for (let i = 0; i < Math.max(movies_ok.length, tv_ok.length); i++) {
-        const m = movies_ok[i], t = tv_ok[i];
-        if (m && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
-        if (t && !seenIds.has(t.id)) { seenIds.add(t.id); combined.push(t); }
-      }
-      // Supplement with keyword-discovered content if we have room
-      [...kwMovies, ...kwTv].forEach(x => {
-        if (x?.id && !seenIds.has(x.id)) { seenIds.add(x.id); combined.push(x); }
-      });
-      return combined.slice(0, 20);
-    };
-    _scheduleRowLoad('row-seasonal', null, lgbtqFetch, null);
-    return;
-  }
 
   const params = {
     sort_by: 'popularity.desc',
