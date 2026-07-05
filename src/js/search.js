@@ -1064,6 +1064,45 @@ function _applyTypedFilters(q) {
 }
 
 /* ── SEARCH ──────────────────────────────────────────────────────── */
+/* Search diagnostics log — last 100 searches with what the engine did to
+   them (correction used, result count). Included in "Export All Data" so
+   real-world queries can drive search improvements. */
+function _logSearch(entry) {
+  try {
+    const log = JSON.parse(localStorage.getItem('sv_search_log') || '[]');
+    log.unshift({ ...entry, ts: Date.now() });
+    localStorage.setItem('sv_search_log', JSON.stringify(log.slice(0, 100)));
+  } catch {}
+}
+
+/* Space-variant candidates for the weak-result retry ladder.
+   "wall e"      → "walle"          (they added a space the title doesn't have)
+   "moonknight"  → "moon knight"    (they merged words the title separates)
+   "spiderman2"  → "spiderman 2"    (digits usually stand apart in titles)
+   Capped at 3 candidates so a bad query costs at most 3 extra requests. */
+function _spaceVariantCandidates(q) {
+  const t = String(q || '').trim();
+  const out = [];
+  if (/\s/.test(t)) {
+    out.push(t.replace(/\s+/g, '')); // try the no-space spelling
+  } else {
+    const digitSplit = t.replace(/(\d+)/g, ' $1 ').replace(/\s+/g, ' ').trim();
+    if (digitSplit !== t) out.push(digitSplit);
+    // Try one artificial split: prefer a break before a common title word,
+    // otherwise split in the middle
+    if (t.length >= 6 && t.length <= 18) {
+      const common = ['man', 'men', 'woman', 'girl', 'boy', 'war', 'wars', 'world', 'king', 'house', 'game', 'story', 'night', 'day', 'land', 'ball', 'fall', 'walker', 'runner', 'hunter'];
+      let split = null;
+      for (const w of common) {
+        const at = t.length - w.length;
+        if (at >= 3 && t.endsWith(w)) { split = t.slice(0, at) + ' ' + w; break; }
+      }
+      out.push(split || t.slice(0, Math.ceil(t.length / 2)) + ' ' + t.slice(Math.ceil(t.length / 2)));
+    }
+  }
+  return [...new Set(out)].filter(v => v && v.toLowerCase() !== t.toLowerCase()).slice(0, 3);
+}
+
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
@@ -1167,6 +1206,23 @@ export async function doSearch(q) {
       }
     }
 
+    // Still weak → space-variant ladder: the user may have guessed wrong
+    // about where (or whether) the title has spaces. Try removing all
+    // spaces, then inserting artificial ones ("spiderman2" → "spiderman 2",
+    // "moonknight" → "moon knight"). Max 3 extra requests, stops early.
+    if (items.length < 3) {
+      for (const cand of _spaceVariantCandidates(effectiveQ)) {
+        const alt = await fetchSearchPage(cand, 1).catch(() => []);
+        if (alt.length > items.length) {
+          correctionUsed = { from: q, to: cand };
+          items = alt;
+          effectiveQ = cand;
+          _searchState.query = cand;
+          if (alt.length >= 5) break; // good enough — stop burning requests
+        }
+      }
+    }
+
     // Filter anime from search results if hideAnime is enabled
     try {
       const svSettings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
@@ -1174,6 +1230,14 @@ export async function doSearch(q) {
     } catch {}
     _searchState.results = items;
     _searchState.loading = false;
+
+    _logSearch({
+      q,
+      effective: effectiveQ !== q ? effectiveQ : undefined,
+      corrected: correctionUsed ? correctionUsed.to : undefined,
+      aliased: prep.aliased || undefined,
+      n: items.length,
+    });
 
     if (!items.length) {
       // Check if filters are active — if so, try without filters as "Did you mean"

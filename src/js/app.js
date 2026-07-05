@@ -615,7 +615,7 @@ function applyLoadingScreenState() {
   document.body.classList.add('ls-open');
   const enterBtn = document.getElementById('ls-enter');
   if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
-  setTimeout(dismissLoadingScreen, 2500);
+  setTimeout(dismissLoadingScreen, 1600);
 }
 
 function dismissLoadingScreen() {
@@ -623,6 +623,108 @@ function dismissLoadingScreen() {
   if (!ls || ls.classList.contains('out')) return;
   ls.classList.add('out');
   document.body.classList.remove('ls-open');
+  // First launch: flow straight into the taste picker (it covers row loading)
+  maybeShowOnboarding();
+}
+
+/* ── FIRST-START ONBOARDING (taste picker) ───────────────────────────
+   Shown once, right after the loading screen on a brand-new install.
+   Doubles as a curtain while the home rows load behind it. Picks feed
+   prefGenres + liked titles, then dissolves into the CYF page. */
+async function maybeShowOnboarding() {
+  if (localStorage.getItem('sv_onboarded')) return;
+  localStorage.setItem('sv_onboarded', '1');
+
+  const ob = document.createElement('div');
+  ob.id = 'onboard-screen';
+  ob.innerHTML = `
+    <button class="ob-skip" id="ob-skip">Skip <span class="material-icons-round">arrow_forward</span></button>
+    <div class="ob-inner">
+      <h1 class="ob-title">What do you love?</h1>
+      <p class="ob-sub">Tap anything that looks good — your feed builds itself around it. No account, ever.</p>
+      <div class="ob-chips" id="ob-chips"></div>
+      <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(12)}</div>
+      <button class="ob-done" id="ob-done">Start watching</button>
+    </div>`;
+  document.body.appendChild(ob);
+  requestAnimationFrame(() => ob.classList.add('ob-in'));
+
+  const pickedGenres = new Set();
+  const pickedTitles = new Map(); // id → item
+
+  // Genre chips
+  const chipsEl = ob.querySelector('#ob-chips');
+  chipsEl.innerHTML = GENRES.slice(0, 12).map(g =>
+    `<button class="ob-chip" data-gid="${g.id}"><span class="material-icons-round">${g.icon}</span>${g.name}</button>`).join('');
+  chipsEl.addEventListener('click', e => {
+    const chip = e.target.closest('.ob-chip');
+    if (!chip) return;
+    const gid = chip.dataset.gid;
+    if (pickedGenres.has(gid)) pickedGenres.delete(gid); else pickedGenres.add(gid);
+    chip.classList.toggle('picked', pickedGenres.has(gid));
+    syncDone();
+  });
+
+  const doneBtn = ob.querySelector('#ob-done');
+  const syncDone = () => {
+    const n = pickedGenres.size + pickedTitles.size;
+    doneBtn.textContent = n ? `Start watching (${n} picked)` : 'Start watching';
+  };
+
+  // Title tiles — trending movies + shows, most recognizable first
+  try {
+    const [mv, tv] = await Promise.allSettled([
+      tmdb('/trending/movie/week'), tmdb('/trending/tv/week'),
+    ]);
+    const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
+    const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+    const mixed = [];
+    for (let i = 0; i < Math.max(m.length, t.length) && mixed.length < 18; i++) {
+      if (m[i]?.poster_path) mixed.push(m[i]);
+      if (t[i]?.poster_path && mixed.length < 18) mixed.push(t[i]);
+    }
+    const grid = ob.querySelector('#ob-grid');
+    grid.innerHTML = mixed.map(x => `
+      <button class="ob-tile" data-oid="${x.id}" aria-pressed="false">
+        <img src="${imgUrl(x.poster_path, 'w185')}" alt="${(x.title || x.name || '').replace(/"/g, '&quot;')}" loading="lazy">
+        <span class="ob-tile-check material-icons-round">check_circle</span>
+      </button>`).join('');
+    grid.addEventListener('click', e => {
+      const tile = e.target.closest('.ob-tile');
+      if (!tile || !tile.dataset.oid) return;
+      const item = mixed.find(x => String(x.id) === tile.dataset.oid);
+      if (!item) return;
+      if (pickedTitles.has(item.id)) pickedTitles.delete(item.id); else pickedTitles.set(item.id, item);
+      tile.classList.toggle('picked', pickedTitles.has(item.id));
+      tile.setAttribute('aria-pressed', pickedTitles.has(item.id));
+      syncDone();
+    });
+  } catch { /* tiles are optional — chips still work */ }
+
+  const finish = (skipped) => {
+    // Apply picks to the feed
+    pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
+    if (pickedGenres.size) persist('prefGenres');
+    pickedTitles.forEach(item => {
+      if (!isLiked(item.id)) toggleLike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null });
+    });
+    const n = pickedGenres.size + pickedTitles.size;
+    // Dissolve into CYF when they picked things; straight to home on skip
+    if (!skipped && n) {
+      goPage('prefs');
+      toast(`${n} picks saved — fine-tune anything here`, 'tune');
+      if (typeof window._autoApplyFeed === 'function') window._autoApplyFeed();
+    }
+    ob.classList.remove('ob-in');
+    ob.classList.add('ob-out');
+    setTimeout(() => ob.remove(), 800);
+    document.removeEventListener('keydown', escSkip);
+  };
+  const escSkip = e => { if (e.key === 'Escape') finish(true); };
+
+  ob.querySelector('#ob-skip').addEventListener('click', () => finish(true));
+  doneBtn.addEventListener('click', () => finish(false));
+  document.addEventListener('keydown', escSkip);
 }
 
 /* ── HEADER SCROLL ───────────────────────────────────────────────── */
@@ -954,11 +1056,28 @@ function _loadRow(rowId, secId, fetchFn, type) {
       // Apply impression filter (hide over-shown content based on setting)
       const impressionFiltered = filterByImpressions(items);
 
-      // Dedup: skip items already shown in rows above
+      // Dedup: skip items already shown in rows above so concurrent rows
+      // show a real mix, not the same titles over and over
       // Cross-session dedup: only filter in maximum repeat tolerance mode
       const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
       const deduped = impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id) && !shownData[m.id]);
-      const toRender = deduped.length >= 4 ? deduped : impressionFiltered.filter(m => m.id);
+
+      // Rows must feel full — 10 items minimum. Backfill from the wider
+      // pool when cross-row dedup leaves the row thin; if even the raw
+      // fetch can't reach 10, hide the row instead of showing a stub.
+      const toRender = [...deduped];
+      const have = new Set(toRender.map(m => m.id));
+      const backfill = pool => pool.forEach(m => {
+        if (m?.id && !have.has(m.id) && toRender.length < 14) { have.add(m.id); toRender.push(m); }
+      });
+      if (toRender.length < 10) backfill(impressionFiltered);
+      if (toRender.length < 10) backfill(items);
+      if (toRender.length < 10) {
+        console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<10) — hiding section`);
+        if (sec) sec.style.display = 'none';
+        else { const r = document.getElementById(rowId); if (r) r.innerHTML = ''; }
+        return;
+      }
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
       // Ensure row is at position 0 before rendering — prevents 3px scroll drift
@@ -1035,14 +1154,19 @@ function _markShown(id) {
 }
 
 /* ── HOLIDAY / SEASONAL ROWS ─────────────────────────────────────────
-   Two tiers, so there are almost always exactly TWO seasonal rows live:
+   Three priority tiers. At any moment the home page shows at most:
+     1 Huge (when active) + 1 Big + 1 Small.
 
-   • tier "big"   — long seasonal windows (2 weeks – 6 weeks) that chain
+   • tier "huge"  — major month-long / culturally important periods
+                    (Pride, Hispanic Heritage, Black History, Christmas
+                    season, Halloween season). Never removed — promoted.
+   • tier "big"   — seasonal blocks and multi-week themes that chain
                     contiguously across the whole year: one is ALWAYS active.
-   • tier "small" — short, specific holidays (May the 4th, Shark Week…)
-                    chained so that nearly every day also has one.
+   • tier "small" — short holidays/events, 3–14 days each, chained so
+                    every day also has one.
 
    Windows use [month, day] (1-based) and may wrap across New Year.
+   Within a tier the FIRST active row in list order wins.
    All are summonable from the dev panel regardless of date. */
 const _kwCache = (() => { try { return JSON.parse(localStorage.getItem('sv_kw_ids') || '{}'); } catch { return {}; } })();
 async function _kwId(name) {
@@ -1074,7 +1198,19 @@ function _kwRow(keyword, fallbackParams, extra = {}) {
 }
 
 const HOLIDAY_ROWS = [
-  /* ── BIG tier — contiguous, covers all 365 days ────────────────── */
+  /* ── HUGE tier — cultural months & flagship seasons ─────────────── */
+  { tier: 'huge', id: 'row-hol-blackhistory', title: 'Black History Month', icon: 'history_edu', from: [2, 1], to: [2, 29],
+    fn: _kwRow('african american', { with_genres: '36|18', sort_by: 'vote_average.desc', 'vote_count.gte': 400 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }) },
+  { tier: 'huge', id: 'row-hol-pride',        title: 'Pride Month',         icon: 'diversity_3', from: [6, 1], to: [6, 30],
+    fn: _disc({ with_keywords: '158718|3799|209726', sort_by: 'vote_average.desc', 'vote_count.gte': 150 }) },
+  { tier: 'huge', id: 'row-hol-hispanic',     title: 'Hispanic Heritage Month', icon: 'festival', from: [9, 15], to: [10, 15],
+    fn: _disc({ with_original_language: 'es', 'vote_count.gte': 300 }) },
+  { tier: 'huge', id: 'row-hol-halloween',    title: 'Halloween Season',    icon: 'nightlight',  from: [10, 1], to: [10, 31],
+    fn: _kwRow('halloween', { with_genres: '27|35|10751' }) },
+  { tier: 'huge', id: 'row-hol-christmas',    title: 'Christmas Season',    icon: 'ac_unit',     from: [12, 1], to: [12, 26],
+    fn: _kwRow('christmas', { with_genres: '10751|35' }) },
+
+  /* ── BIG tier — seasonal blocks, contiguous across all 365 days ── */
   { tier: 'big', id: 'row-hol-newyear',   title: 'New Year, New Favorites',   icon: 'celebration',   from: [12, 26], to: [1, 24],
     fn: () => tmdb('/discover/movie', { sort_by: 'popularity.desc', 'primary_release_date.gte': `${new Date().getFullYear() - 1}-01-01`, 'vote_average.gte': 7, 'vote_count.gte': 300 }).then(d => d.results || []) },
   { tier: 'big', id: 'row-hol-valentine', title: 'Valentine Romance',         icon: 'favorite',      from: [1, 25],  to: [2, 14],
@@ -1085,9 +1221,7 @@ const HOLIDAY_ROWS = [
     fn: _disc({ with_genres: '12' }) },
   { tier: 'big', id: 'row-hol-mayaction', title: 'Blockbuster Season Kickoff', icon: 'local_fire_department', from: [5, 1], to: [5, 31],
     fn: _disc({ with_genres: '28|12', 'primary_release_date.gte': '2010-01-01', 'vote_count.gte': 1000 }) },
-  { tier: 'big', id: 'row-hol-pride',     title: 'Pride Month Picks',         icon: 'diversity_3',   from: [6, 1],   to: [6, 30],
-    fn: _disc({ with_keywords: '158718|3799|209726', sort_by: 'vote_average.desc', 'vote_count.gte': 150 }) },
-  { tier: 'big', id: 'row-hol-summer',    title: 'Summer Blockbusters',       icon: 'wb_sunny',      from: [7, 1],   to: [8, 15],
+  { tier: 'big', id: 'row-hol-summer',    title: 'Summer Blockbusters',       icon: 'wb_sunny',      from: [6, 1],   to: [8, 15],
     fn: _disc({ sort_by: 'revenue.desc', 'primary_release_date.gte': '2000-01-01', 'vote_count.gte': 3000 }) },
   { tier: 'big', id: 'row-hol-school',    title: 'Back to School',            icon: 'school',        from: [8, 16],  to: [9, 20],
     fn: _kwRow('high school', { with_genres: '35|18' }) },
@@ -1095,10 +1229,10 @@ const HOLIDAY_ROWS = [
     fn: _disc({ with_genres: '27' }) },
   { tier: 'big', id: 'row-hol-fall',      title: 'Cozy Fall Feel-Goods',      icon: 'eco',           from: [11, 1],  to: [11, 30],
     fn: _disc({ with_genres: '10751|35', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }) },
-  { tier: 'big', id: 'row-hol-christmas', title: 'Christmas Collection',      icon: 'ac_unit',       from: [12, 1],  to: [12, 25],
-    fn: _kwRow('christmas', { with_genres: '10751|35' }) },
+  { tier: 'big', id: 'row-hol-yearend',   title: "Year-End Best Of",          icon: 'stars',         from: [12, 1],  to: [12, 25],
+    fn: () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'primary_release_date.gte': `${new Date().getFullYear()}-01-01`, 'vote_count.gte': 200 }).then(d => d.results || []) },
 
-  /* ── SMALL tier — short, specific holidays chained through the year ─ */
+  /* ── SMALL tier — short holidays (3–14 days) chained all year ──── */
   { tier: 'small', id: 'row-hol-nyeparty',   title: "New Year's Eve Party Films",     icon: 'nightlife',       from: [12, 27], to: [1, 2],
     fn: _kwRow("new year's eve", { with_genres: '35|10749' }) },
   { tier: 'small', id: 'row-hol-resolution', title: 'New Year Reset: True Stories',   icon: 'fitness_center',  from: [1, 3],   to: [1, 12],
@@ -1111,8 +1245,8 @@ const HOLIDAY_ROWS = [
     fn: _kwRow('american football', { with_genres: '18', sort_by: 'vote_average.desc', 'vote_count.gte': 300 }) },
   { tier: 'small', id: 'row-hol-antivalentine', title: 'Anti-Valentine Club',         icon: 'heart_broken',    from: [2, 10],  to: [2, 16],
     fn: _kwRow('breakup', { with_genres: '35' }) },
-  { tier: 'small', id: 'row-hol-blackhistory', title: 'Black History Month Spotlight', icon: 'history_edu',    from: [2, 17],  to: [2, 29],
-    fn: _kwRow('african american', { with_genres: '36|18', sort_by: 'vote_average.desc', 'vote_count.gte': 400 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }) },
+  { tier: 'small', id: 'row-hol-oscarnoms',  title: 'Oscar Contenders Marathon',      icon: 'workspace_premium', from: [2, 17], to: [2, 29],
+    fn: _disc({ sort_by: 'vote_average.desc', 'primary_release_date.gte': '2015-01-01', 'vote_count.gte': 3000 }) },
   { tier: 'small', id: 'row-hol-oscars',     title: 'Oscars Weekend: All-Time Greats', icon: 'military_tech',  from: [3, 1],   to: [3, 10],
     fn: _disc({ sort_by: 'vote_average.desc', 'vote_count.gte': 8000 }) },
   { tier: 'small', id: 'row-hol-stpatricks', title: "St. Patrick's Day: Irish Picks", icon: 'local_bar',       from: [3, 11],  to: [3, 17],
@@ -1125,7 +1259,10 @@ const HOLIDAY_ROWS = [
     fn: _disc({ with_genres: '10751|16', sort_by: 'vote_average.desc', 'vote_count.gte': 800 }) },
   { tier: 'small', id: 'row-hol-earthday',   title: 'Earth Day: Our Planet',          icon: 'public',          from: [4, 15],  to: [4, 22],
     fn: _kwRow('nature documentary', { with_genres: '99', sort_by: 'vote_average.desc', 'vote_count.gte': 100 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 100, with_genres: '99' }) },
-  { tier: 'small', id: 'row-hol-maythe4th',  title: 'May the 4th Be With You',        icon: 'rocket_launch',   from: [4, 23],  to: [5, 10],
+  { tier: 'small', id: 'row-hol-animespring', title: 'Spring Anime Spotlight',        icon: 'auto_awesome',    from: [4, 23],  to: [4, 28],
+    type: 'anime',
+    fn: () => aniQuery(`query{Page(perPage:14){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)).catch(() => []) },
+  { tier: 'small', id: 'row-hol-maythe4th',  title: 'May the 4th Be With You',        icon: 'rocket_launch',   from: [4, 29],  to: [5, 10],
     fn: async () => {
       const d = await tmdb('/search/collection', { query: 'star wars' }).catch(() => null);
       const col = (d?.results || []).find(c => /star wars/i.test(c.name));
@@ -1154,27 +1291,33 @@ const HOLIDAY_ROWS = [
     fn: _disc({ with_genres: '28', sort_by: 'revenue.desc', 'vote_count.gte': 2000 }) },
   { tier: 'small', id: 'row-hol-sharkweek',  title: 'Shark Week',                     icon: 'set_meal',        from: [7, 8],   to: [7, 20],
     fn: _kwRow('shark', { with_genres: '27|53' }) },
-  { tier: 'small', id: 'row-hol-dogdays',    title: 'Dog Days of Summer',             icon: 'sunny',           from: [7, 21],  to: [8, 9],
+  { tier: 'small', id: 'row-hol-dogdays',    title: 'Dog Days of Summer',             icon: 'sunny',           from: [7, 21],  to: [8, 3],
     fn: _kwRow('summer', { with_genres: '35|12' }) },
-  { tier: 'small', id: 'row-hol-friendship', title: 'Friendship Day: Buddy Movies',   icon: 'group',           from: [8, 10],  to: [8, 20],
+  { tier: 'small', id: 'row-hol-friendship', title: 'Friendship Day: Buddy Movies',   icon: 'group',           from: [8, 4],   to: [8, 13],
     fn: _kwRow('buddy comedy', { with_genres: '35|12' }) },
-  { tier: 'small', id: 'row-hol-labor',      title: 'Labor Day Weekend Binge',        icon: 'weekend',         from: [8, 21],  to: [9, 7],
+  { tier: 'small', id: 'row-hol-latesummer', title: 'Late Summer Thrills',            icon: 'thunderstorm',    from: [8, 14],  to: [8, 24],
+    fn: _disc({ with_genres: '53', 'vote_count.gte': 800 }) },
+  { tier: 'small', id: 'row-hol-labor',      title: 'Labor Day Weekend Binge',        icon: 'weekend',         from: [8, 25],  to: [9, 7],
     type: 'tv',
     fn: _disc({ 'vote_count.gte': 500 }, '/discover/tv') },
   { tier: 'small', id: 'row-hol-falltv',     title: 'Fall TV Premiere Week',          icon: 'live_tv',         from: [9, 8],   to: [9, 14],
     type: 'tv',
     fn: () => tmdb('/tv/on_the_air').then(d => d.results || []).catch(() => []) },
-  { tier: 'small', id: 'row-hol-hispanic',   title: 'Hispanic Heritage Spotlight',    icon: 'festival',        from: [9, 15],  to: [10, 15],
-    fn: _disc({ with_original_language: 'es', 'vote_count.gte': 300 }) },
-  { tier: 'small', id: 'row-hol-cultclassics', title: 'Halloween Countdown: Cult Classics', icon: 'psychology_alt', from: [10, 16], to: [10, 27],
+  { tier: 'small', id: 'row-hol-intlcinema', title: 'World Cinema Spotlight',         icon: 'language',        from: [9, 15],  to: [9, 24],
+    fn: _disc({ with_original_language: 'ko', sort_by: 'vote_average.desc', 'vote_count.gte': 300 }) },
+  { tier: 'small', id: 'row-hol-oktoberfest', title: 'Oktoberfest: Comedy Nights',    icon: 'sports_bar',      from: [9, 25],  to: [10, 5],
+    fn: _kwRow('oktoberfest', { with_genres: '35', 'vote_count.gte': 500 }) },
+  { tier: 'small', id: 'row-hol-slashers',   title: 'Slasher Marathon',               icon: 'psychology_alt',  from: [10, 6],  to: [10, 15],
+    fn: _kwRow('slasher', { with_genres: '27', sort_by: 'vote_average.desc', 'vote_count.gte': 400 }) },
+  { tier: 'small', id: 'row-hol-cultclassics', title: 'Halloween Countdown: Cult Classics', icon: 'theater_comedy', from: [10, 16], to: [10, 27],
     fn: _kwRow('cult film', { with_genres: '27', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }, { sort_by: 'vote_average.desc', 'vote_count.gte': 300 }) },
   { tier: 'small', id: 'row-hol-muertos',    title: 'Día de los Muertos',             icon: 'local_fire_department', from: [10, 28], to: [11, 4],
     fn: _kwRow('day of the dead', { with_genres: '16|10751', with_original_language: 'es' }) },
   { tier: 'small', id: 'row-hol-veterans',   title: 'Veterans Day: War Stories',      icon: 'military_tech',   from: [11, 5],  to: [11, 11],
     fn: _disc({ with_genres: '10752', sort_by: 'vote_average.desc', 'vote_count.gte': 600 }) },
-  { tier: 'small', id: 'row-hol-thanksgiving', title: 'Thanksgiving Table',           icon: 'restaurant',      from: [11, 12], to: [11, 26],
+  { tier: 'small', id: 'row-hol-thanksgiving', title: 'Thanksgiving Table',           icon: 'restaurant',      from: [11, 12], to: [11, 25],
     fn: _kwRow('thanksgiving', { with_genres: '35|10751' }) },
-  { tier: 'small', id: 'row-hol-blackfriday', title: 'Black Friday: Heist Movies',    icon: 'local_mall',      from: [11, 27], to: [12, 3],
+  { tier: 'small', id: 'row-hol-blackfriday', title: 'Black Friday: Heist Movies',    icon: 'local_mall',      from: [11, 26], to: [12, 3],
     fn: _kwRow('heist', { with_genres: '80|53' }) },
   { tier: 'small', id: 'row-hol-holidayromance', title: 'Cheesy Holiday Romance',     icon: 'redeem',          from: [12, 4],  to: [12, 15],
     fn: _kwRow('christmas romance', { with_genres: '10749|35' }) },
@@ -1209,14 +1352,55 @@ function _ensureHolidaySection(def) {
 }
 
 function _loadHolidayRows() {
-  // Exactly one row per tier at a time: one big seasonal + one small holiday.
-  // When windows overlap within a tier, the first match in the list wins.
-  const bigs = HOLIDAY_ROWS.filter(r => r.tier === 'big' && _holidayActive(r));
-  const smalls = HOLIDAY_ROWS.filter(r => r.tier === 'small' && _holidayActive(r));
-  [bigs[0], smalls[0]].filter(Boolean).forEach(def => {
+  // Display rules: 1 Huge (when one is active) + 1 Big + 1 Small.
+  // With no Huge active it's just 1 Big + 1 Small. Within a tier the
+  // first active row in list order wins.
+  const pick = tier => HOLIDAY_ROWS.find(r => r.tier === tier && _holidayActive(r));
+  [pick('huge'), pick('big'), pick('small')].filter(Boolean).forEach(def => {
     if (_ensureHolidaySection(def)) _scheduleRowLoad(def.id, `sec-${def.id}`, def.fn, def.type || 'movie');
   });
+  _scheduleSpread();
 }
+
+/* ── HOME SECTION INTERLEAVING ───────────────────────────────────────
+   Never show two rows of the same *kind* back to back: title-referencing
+   rows ("Because you liked X", "More Like X"), provider rows, holiday
+   rows, and same-medium genre blocks all get spread apart. */
+function _homeSectionKind(sec) {
+  const id = sec.id || '';
+  if (id.startsWith('sec-row-hol-')) return 'holiday';
+  if (id.startsWith('sec-because-') || id.startsWith('sec-watched-') || id === 'sec-history-mix') return 'title';
+  if (id.startsWith('sec-on-')) return 'provider';
+  if (['sec-action', 'sec-comedy', 'sec-horror', 'sec-drama', 'sec-scifi', 'sec-romance', 'sec-superhero', 'sec-dark-comedy', 'sec-mystery-film'].includes(id)) return 'genre';
+  if (['sec-tv-pop', 'sec-airing', 'sec-thriller-tv', 'sec-crime-tv', 'sec-comedy-tv', 'sec-sci-fi-tv', 'sec-prestige-tv', 'sec-retro-tv', 'sec-binge-drama', 'sec-teen-drama', 'sec-tv-faves'].includes(id)) return 'tvgenre';
+  return 'std';
+}
+
+function _spreadHomeSections() {
+  const home = document.getElementById('page-home');
+  if (!home) return;
+  const secs = [...home.querySelectorAll('.section')]
+    .filter(s => s.parentElement === home || s.parentElement?.parentElement === home)
+    .filter(s => s.style.display !== 'none');
+  for (let i = 1; i < secs.length; i++) {
+    const kind = _homeSectionKind(secs[i]);
+    if (kind === 'std') continue;
+    if (_homeSectionKind(secs[i - 1]) !== kind) continue;
+    // Two same-kind rows adjacent → pull the next different-kind section up
+    let j = i + 1;
+    while (j < secs.length && _homeSectionKind(secs[j]) === kind) j++;
+    if (j >= secs.length) break;
+    secs[i].parentNode.insertBefore(secs[j], secs[i]);
+    secs.splice(i, 0, secs.splice(j, 1)[0]);
+  }
+}
+
+let _spreadTimer = null;
+function _scheduleSpread() {
+  clearTimeout(_spreadTimer);
+  _spreadTimer = setTimeout(_spreadHomeSections, 900);
+}
+window._svSpreadSections = _scheduleSpread; // recommendations.js calls this after inserting rows
 
 /* Dev page: shows EVERY holiday/seasonal row at once, in calendar order,
    grouped by tier. Built on demand, navigable via goPage('holidayrows'). */
@@ -1244,21 +1428,24 @@ window._svOpenHolidayPage = function () {
     </section>`;
   };
 
+  const huges = HOLIDAY_ROWS.filter(r => r.tier === 'huge').slice().sort(byStart);
   const bigs = HOLIDAY_ROWS.filter(r => r.tier === 'big').slice().sort(byStart);
   const smalls = HOLIDAY_ROWS.filter(r => r.tier === 'small').slice().sort(byStart);
   page.innerHTML = `
     <div style="padding:1.2rem 0 .2rem">
       <h1 style="font-size:1.4rem;font-weight:800;margin-bottom:.2rem">Holiday Rows — All ${HOLIDAY_ROWS.length}</h1>
-      <p style="font-size:.82rem;opacity:.7">Every seasonal row in calendar order. Dev preview — normally only one Big + one Small show at a time.</p>
+      <p style="font-size:.82rem;opacity:.7">Every seasonal row in calendar order. Dev preview — normally at most 1 Huge + 1 Big + 1 Small show at a time.</p>
     </div>
-    <h2 style="font-size:1.05rem;font-weight:800;margin:.8rem 0 .2rem">Big Seasonal (${bigs.length})</h2>
+    <h2 style="font-size:1.05rem;font-weight:800;margin:.8rem 0 .2rem">Huge — Cultural Months (${huges.length})</h2>
+    ${huges.map(section).join('')}
+    <h2 style="font-size:1.05rem;font-weight:800;margin:1.4rem 0 .2rem">Big — Seasonal Blocks (${bigs.length})</h2>
     ${bigs.map(section).join('')}
-    <h2 style="font-size:1.05rem;font-weight:800;margin:1.4rem 0 .2rem">Small Holidays (${smalls.length})</h2>
+    <h2 style="font-size:1.05rem;font-weight:800;margin:1.4rem 0 .2rem">Small — Short Holidays (${smalls.length})</h2>
     ${smalls.map(section).join('')}`;
 
   goPage('holidayrows');
   // Lazy-load every row (IntersectionObserver defers off-screen ones)
-  [...bigs, ...smalls].forEach(def =>
+  [...huges, ...bigs, ...smalls].forEach(def =>
     _scheduleRowLoad(`all-${def.id}`, `sec-all-${def.id}`, def.fn, def.type || 'movie'));
   toast(`Holiday Rows page — ${HOLIDAY_ROWS.length} rows`, 'calendar_month');
 };
@@ -2079,7 +2266,9 @@ function renderRecentRow() {
     return;
   }
   if (sec) sec.style.display = '';
-  row.innerHTML = items.map(m => makeCard(m, m.type || 'movie')).join('');
+  // Recently viewed = quick re-access, not discovery → smaller compact cards
+  row.classList.add('row-compact');
+  row.innerHTML = items.map(m => makeCard(m, m.type || 'movie', { compact: true, showProgress: false })).join('');
 }
 
 /* ── PERSONALIZED "FOR YOU" ROW for sub-pages ────────────────────── */
@@ -3903,6 +4092,22 @@ function initEventDelegation() {
       prefTagDislikes:  state.prefTagDislikes,
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
+      // Diagnostics — safe to share, helps improve search & recommendations
+      diagnostics: (() => {
+        const ls = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
+        return {
+          searchLog:      ls('sv_search_log') || [],        // last 100 searches + what the engine did
+          searchFlags: ['spellcheck', 'fuzzy', 'aliases', 'localindex']
+            .reduce((o, f) => (o[f] = localStorage.getItem(`sv_flag_${f}`) !== '0', o), {}),
+          theme:          localStorage.getItem('sv_theme') || 'dark',
+          settings:       ls('sv_settings') || {},
+          impressions:    Object.keys(ls('sv_impressions') || {}).length, // count only, not content
+          shownIds:       Object.keys(ls('sv_shown_ids') || {}).length,
+          clipsDwell:     (() => { try { return JSON.parse(sessionStorage.getItem('sv_clips_dwell') || '[]'); } catch { return []; } })(),
+          ua:             navigator.userAgent,
+          viewport:       `${window.innerWidth}x${window.innerHeight}`,
+        };
+      })(),
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -7160,10 +7365,13 @@ function populateTestPanel() {
         return `<button class="dev-btn${active ? ' dev-btn-active' : ''}" data-summon-row="${r.id}" title="${win}${active ? ' — currently in season' : ' — out of season, summon to test'}">
           <span class="material-icons-round" style="font-size:.85rem;vertical-align:-2px">${r.icon}</span> ${r.title}</button>`;
       };
+      const _tierHdr = label => `<div style="flex-basis:100%;font-size:.68rem;opacity:.6;margin:.3rem 0 .15rem">${label}</div>`;
       rowsRow.innerHTML =
-        `<div style="flex-basis:100%;font-size:.68rem;opacity:.6;margin:.15rem 0">Big seasonal (one always active)</div>` +
+        _tierHdr('Huge — cultural months (1 shows when active)') +
+        HOLIDAY_ROWS.filter(r => r.tier === 'huge').map(_rowBtn).join('') +
+        _tierHdr('Big — seasonal blocks (1 always active)') +
         HOLIDAY_ROWS.filter(r => r.tier === 'big').map(_rowBtn).join('') +
-        `<div style="flex-basis:100%;font-size:.68rem;opacity:.6;margin:.35rem 0 .15rem">Small holidays</div>` +
+        _tierHdr('Small — short holidays (1 always active)') +
         HOLIDAY_ROWS.filter(r => r.tier === 'small').map(_rowBtn).join('');
       rowsRow.addEventListener('click', e => {
         const btn = e.target.closest('[data-summon-row]');

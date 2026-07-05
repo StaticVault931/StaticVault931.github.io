@@ -9,6 +9,33 @@ export function renderLibrary() {
   renderWatchlistSection();
   renderLikedSection();
   renderRecentSection();
+  ensureLibJumpFab();
+}
+
+/* Floating jump button — the library gets LONG; one tap to the bottom
+   (or back to the top once you're there). Only visible on the library page. */
+function ensureLibJumpFab() {
+  if (document.getElementById('lib-jump-fab')) return;
+  const fab = document.createElement('button');
+  fab.id = 'lib-jump-fab';
+  fab.setAttribute('aria-label', 'Jump to bottom');
+  fab.innerHTML = '<span class="material-icons-round">keyboard_double_arrow_down</span>';
+  document.getElementById('page-library')?.appendChild(fab);
+
+  const atBottom = () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 120;
+  const sync = () => {
+    const down = !atBottom();
+    fab.querySelector('.material-icons-round').textContent =
+      down ? 'keyboard_double_arrow_down' : 'keyboard_double_arrow_up';
+    fab.setAttribute('aria-label', down ? 'Jump to bottom' : 'Back to top');
+  };
+  fab.addEventListener('click', () => {
+    window.scrollTo({ top: atBottom() ? 0 : document.documentElement.scrollHeight, behavior: 'smooth' });
+  });
+  window.addEventListener('scroll', () => {
+    if (document.getElementById('page-library')?.classList.contains('active')) sync();
+  }, { passive: true });
+  sync();
 }
 
 function renderContinueSection() {
@@ -88,8 +115,8 @@ function renderRecentSection() {
   }
   if (sec) sec.style.display = '';
 
-  grid.classList.remove('lib-grid-compact');
-  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie')).join('');
+  grid.classList.add('lib-grid-compact');
+  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie', { compact: true, showProgress: false })).join('');
 }
 
 /* ── SEE ALL PAGE ────────────────────────────────────────────────── */

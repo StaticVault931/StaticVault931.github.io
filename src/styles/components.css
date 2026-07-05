@@ -2796,12 +2796,11 @@ img[alt]::after {
 }
 .trailer-slide-iframe {
   position: absolute;
-  /* Oversized ~24% vertically: crops YouTube's title bar (top) and
-     watermark/"watch later" chrome (bottom) out of view */
-  top: -12%;
-  left: 0;
+  /* Exactly the slide's box — no oversizing/cropping. Cropping caused the
+     video to bleed past slide edges and made overlap issues worse. */
+  inset: 0;
   width: 100%;
-  height: 124%;
+  height: 100%;
   border: none;
   z-index: 1;
   pointer-events: none; /* prevents iframe from stealing scroll/wheel events */

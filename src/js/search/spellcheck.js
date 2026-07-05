@@ -54,6 +54,18 @@ function _tightForm(term) {
   return _foldForm(term).replace(/ /g, '');
 }
 
+/* Vowel-squashed form: every vowel run becomes a single "a". Catches
+   complicated spellings where the consonants are right but the vowels are
+   guessed — "hermoine"/"hermione", "gladietor"/"gladiator", "nerto"/"naruto".
+   Both dictionary terms and queries are squashed, so a-vs-e (and any other
+   vowel confusion) meet at the same indexed form. Consonant skeletons must
+   still verify by edit distance, so unrelated words don't collide. */
+function _vowelForm(term) {
+  const folded = _foldForm(term);
+  const squashed = folded.replace(/[aeiouy]+/g, 'a');
+  return squashed !== folded ? squashed : '';
+}
+
 /* Create lookup variants for one dictionary term.
    Variants cover apostrophes, hyphens as spaces, hyphens removed, and no-space
    phrase forms. All variants point back to the canonical dictionary term. */
@@ -75,6 +87,14 @@ function _termForms(term) {
 
   const tight = _tightForm(raw);
   if (tight && tight !== folded) forms.add(tight);
+
+  // Vowel-squashed forms of the folded + tight spellings (a/e/i/o/u/y all
+  // collapse to "a" so any vowel guess still finds the term)
+  const vf = _vowelForm(raw);
+  if (vf) forms.add(vf);
+  const vfTight = vf.replace(/ /g, '');
+  if (vfTight && vfTight !== vf) forms.add(vfTight);
+
   return [...forms].filter(form => form.length >= 2);
 }
 
@@ -95,6 +115,12 @@ function _queryForms(query) {
     if (hyphenAsSpace) forms.add(hyphenAsSpace);
     if (hyphenless) forms.add(hyphenless);
   }
+
+  // Vowel-squashed query forms — meet the dictionary's squashed index
+  const vf = _vowelForm(raw);
+  if (vf) forms.add(vf);
+  const vfTight = vf.replace(/ /g, '');
+  if (vfTight && vfTight !== vf) forms.add(vfTight);
 
   return [...forms].filter(Boolean);
 }

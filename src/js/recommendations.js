@@ -2,6 +2,11 @@ import { state, AGE_LEVELS, getImpressionPenalty } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from './ui.js';
 
+/* Shared between the title-referencing rows ("Because you liked X",
+   "Because you watched X", "More Like X") so the SAME title never anchors
+   two rows — each row must reference a different title. */
+const _usedTitleIds = new Set();
+
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
 function passesAgeFilter(m) {
@@ -163,12 +168,17 @@ export async function loadBecauseYouLiked() {
     ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 5),
   ];
 
-  // Dedupe by id
+  // Dedupe by id + skip titles already anchoring another row
   const seen = new Set();
-  const unique = candidates.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+  const unique = candidates.filter(x => {
+    if (seen.has(x.id) || _usedTitleIds.has(x.id)) return false;
+    seen.add(x.id);
+    return true;
+  });
 
   // Use top 3
   const picks = unique.slice(0, 3);
+  picks.forEach(p => _usedTitleIds.add(p.id));
 
   for (const item of picks) {
     const secId = `sec-because-${item.id}`;
@@ -226,13 +236,24 @@ export async function loadBecauseYouLiked() {
 
     try {
       const type = item.type || 'movie';
-      const d = await tmdb(`/${type}/${item.id}/recommendations`);
-      const results = (d.results || [])
+      // Recommendations + similar in parallel — one endpoint alone often
+      // returns too few; a row needs 10+ items to feel real
+      const [recD, simD] = await Promise.allSettled([
+        tmdb(`/${type}/${item.id}/recommendations`),
+        tmdb(`/${type}/${item.id}/similar`),
+      ]);
+      const merged = [];
+      const mSeen = new Set();
+      [...(recD.status === 'fulfilled' ? recD.value.results || [] : []),
+       ...(simD.status === 'fulfilled' ? simD.value.results || [] : [])].forEach(m => {
+        if (m.id && !mSeen.has(m.id)) { mSeen.add(m.id); merged.push(m); }
+      });
+      const results = merged
         .filter(m => !state.disliked.some(d => d.id === m.id))
         .slice(0, 14);
 
-      if (!results.length) {
-        sec.style.display = 'none';
+      if (results.length < 10) {
+        sec.style.display = 'none'; // thin rows look broken — skip
       } else {
         renderRow(rowId, results, type);
       }
@@ -240,6 +261,7 @@ export async function loadBecauseYouLiked() {
       sec.style.display = 'none';
     }
   }
+  window._svSpreadSections?.();
 }
 
 /* ── TRENDING IN YOUR GENRE ──────────────────────────────────────── */
@@ -336,11 +358,15 @@ export async function loadHistoryMix() {
     ...(state.recentlyViewed || []).slice(0, 4),
   ];
   const seen = new Set();
-  const candidates = history.filter(x => x.id && !seen.has(x.id) && seen.add(x.id)).slice(0, 3);
+  const candidates = history
+    .filter(x => x.id && !_usedTitleIds.has(x.id) && !seen.has(x.id) && seen.add(x.id))
+    .slice(0, 3);
   if (!candidates.length) return;
 
-  // Use first item as the "anchor" label
+  // Use first item as the "anchor" label — and claim it so no other
+  // title-referencing row uses the same title
   const anchor = candidates[0];
+  _usedTitleIds.add(anchor.id);
   const anchorName = anchor.title || anchor.name || '';
   if (titleEl && anchorName) {
     titleEl.textContent = `More Like "${anchorName}"`;
@@ -369,13 +395,15 @@ export async function loadHistoryMix() {
 
 /* ── BECAUSE YOU WATCHED [Title] rows ───────────────────────────── */
 export async function loadBecauseYouWatched() {
-  // Take top 2 recently-watched items (that aren't already covered by BecauseYouLiked)
+  // Take top 2 recently-watched items — skipping any title that already
+  // anchors a "Because you liked" or "More Like" row
   const likedIds = new Set([...(state.prefLikes||[]), ...(state.liked||[])].map(x => x.id));
   const candidates = (state.watched || [])
     .slice().reverse()
-    .filter(x => x.id && !likedIds.has(x.id) && x.type !== 'anime')
+    .filter(x => x.id && !likedIds.has(x.id) && !_usedTitleIds.has(x.id) && x.type !== 'anime')
     .slice(0, 2);
   if (!candidates.length) return;
+  candidates.forEach(c => _usedTitleIds.add(c.id));
 
   for (const item of candidates) {
     const secId = `sec-watched-${item.id}`;
@@ -401,8 +429,12 @@ export async function loadBecauseYouWatched() {
             <button data-scroll-row="${rowId}" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button>
           </div>
         </div>`;
-      // Insert after sec-history-mix or sec-toprated
-      const anchor = document.getElementById('sec-history-mix') || document.getElementById('sec-toprated');
+      // Scatter these far apart — and far from the other title-referencing
+      // rows (Because you liked → sec-new/action/drama/scifi, More Like →
+      // sec-history-mix). These anchor deep in the page instead.
+      const anchors = ['sec-boxoffice', 'sec-hidden-gems', 'sec-classics'];
+      const anchorId = anchors[candidates.indexOf(item) % anchors.length];
+      const anchor = document.getElementById(anchorId) || document.getElementById('sec-toprated');
       if (anchor?.parentNode) anchor.parentNode.insertBefore(sec, anchor.nextSibling);
       else document.getElementById('page-home')?.appendChild(sec);
     }
@@ -411,14 +443,24 @@ export async function loadBecauseYouWatched() {
     rowEl.innerHTML = skelCards(8);
     try {
       const type = item.type || item.media_type || 'movie';
-      const d = await tmdb(`/${type}/${item.id}/recommendations`);
-      const results = (d.results || [])
+      // recommendations + similar merged → rows always have enough items
+      const [recD, simD] = await Promise.allSettled([
+        tmdb(`/${type}/${item.id}/recommendations`),
+        tmdb(`/${type}/${item.id}/similar`),
+      ]);
+      const mSeen = new Set();
+      const merged = [
+        ...(recD.status === 'fulfilled' ? recD.value.results || [] : []),
+        ...(simD.status === 'fulfilled' ? simD.value.results || [] : []),
+      ].filter(m => m.id && !mSeen.has(m.id) && mSeen.add(m.id));
+      const results = merged
         .filter(m => !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id))
         .slice(0, 14);
-      if (!results.length) { sec.style.display='none'; continue; }
+      if (results.length < 10) { sec.style.display='none'; continue; }
       renderRow(rowId, results, type);
     } catch { sec.style.display = 'none'; }
   }
+  window._svSpreadSections?.();
 }
 
 /* ── GENRE ROW ───────────────────────────────────────────────────── */
