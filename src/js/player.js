@@ -502,7 +502,7 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
     if (iframe.src && !loading.classList.contains('hidden') && !loading.querySelector('.btn-next-source')) {
       loading.classList.add('hidden');
     }
-  }, 5000);
+  }, 3500);
 
   iframe.onerror = () => showProviderError();
 

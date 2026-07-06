@@ -883,10 +883,11 @@
 }
 /* The overlay must NEVER block the player's own controls (pause, quality,
    fullscreen). Only its buttons are interactive; everything else lets
-   clicks pass straight through to the iframe. */
-.player-loading { pointer-events: none; }
+   clicks/hover pass straight through to the iframe — and once hidden it is
+   fully removed from hit-testing AND rendering. */
+.player-loading { pointer-events: none; transition: opacity .3s, visibility .3s; }
 .player-loading button { pointer-events: auto; }
-.player-loading.hidden { opacity: 0; }
+.player-loading.hidden { opacity: 0; visibility: hidden; }
 .player-loading p { font-size: .82rem; color: var(--muted); }
 .player-err-msg { font-size: .84rem; color: var(--muted); max-width: 460px; }
 .player-err-sub { font-size: .74rem; color: var(--dim); max-width: 460px; line-height: 1.5; }
@@ -1864,6 +1865,33 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 .wt-skip-btn:hover { background: #f6121d; box-shadow: 0 4px 18px rgba(229,9,20,.4); transform: scale(1.04); }
 
 /* ── DEV PANEL: floating / foldable ──────────────────────────────── */
+/* Docked dev panel: sections lay out in two columns on wide screens so
+   the right half of the panel isn't dead space (header spans both) */
+@media (min-width: 980px) {
+  body.test-mode #page-library #dev-test-panel:not(.dev-floating),
+  body.test-mode > #dev-test-panel:not(.dev-floating) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 1.4rem;
+    align-items: start;
+  }
+  #dev-test-panel:not(.dev-floating) .dev-panel-header { grid-column: 1 / -1; }
+}
+/* Row summoner: 63 buttons — scroll inside its fold instead of dominating */
+#dev-rows-row { max-height: 250px; overflow-y: auto; padding-right: .3rem; }
+.dev-fold-count {
+  display: inline-block;
+  margin-left: .45rem;
+  padding: 0 .42rem;
+  border-radius: 999px;
+  background: rgba(229,9,20,.18);
+  color: var(--red);
+  font-size: .62rem;
+  font-weight: 900;
+  vertical-align: 1px;
+}
+.dev-fold:not([open]) .dev-fold-sum { opacity: .75; }
+.dev-fold-sum:hover { color: var(--text); }
 .dev-fold-sum {
   cursor: pointer;
   font-size: .72rem;
@@ -2953,12 +2981,17 @@ body:has(#page-clips.active) #footer { display: none; }
   transition: background .15s, transform .1s;
   flex-shrink: 0;
 }
-.trailer-icon-btn:hover { background: rgba(255,255,255,.3); }
+/* Hover styles ONLY on devices that truly hover — on touch screens the
+   :hover state sticks after a tap and buttons looked permanently pressed */
+@media (hover: hover) {
+  .trailer-icon-btn:hover { background: rgba(255,255,255,.3); }
+  .trailer-icon-dislike:hover { background: rgba(239,68,68,.35); }
+}
 .trailer-icon-btn:active { transform: scale(.9); }
 .trailer-icon-btn.on { background: var(--red); }
+.trailer-icon-btn:focus:not(:focus-visible) { outline: none; }
 .trailer-icon-btn .material-icons-round { font-size: 1.25rem; }
 .trailer-icon-dislike { background: rgba(255,255,255,.1); }
-.trailer-icon-dislike:hover { background: rgba(239,68,68,.35); }
 
 /* Pause/play tap indicator (shows briefly on video area click) */
 .trailer-slide-pause-ind {

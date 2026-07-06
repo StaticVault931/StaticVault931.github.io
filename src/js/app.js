@@ -215,13 +215,16 @@ const SV_SETTINGS = [
   { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
   { id: 'darkPlayer',        label: 'Dark Player BG',         desc: 'Show dark background behind the player iframe',               default: true,  icon: 'dark_mode',        group: 'Display' },
   // Accessibility
-  { id: 'textSize',          label: 'Text Size',              desc: 'Scale text, buttons, and controls across the whole site',     default: 'default', icon: 'format_size', group: 'Accessibility', type: 'slider3', options: ['default', 'large', 'xl'], optLabels: ['Default', 'Large (+12%)', 'Extra Large (+28%)'], keywords: 'font size bigger larger text zoom scale readability' },
+  { id: 'textSize',          label: 'Text Size',              desc: 'Scale text, buttons, and controls across the whole site',     default: 'default', icon: 'format_size', group: 'Accessibility', type: 'slider3', options: ['default', 'large', 'xl', 'xxl', 'max'], optLabels: ['Default', '+12%', '+28%', '+40%', '+50%'], keywords: 'font size bigger larger text zoom scale readability huge' },
   { id: 'highContrast',      label: 'High Contrast',          desc: 'Stronger text/background contrast for low vision',            default: false, icon: 'contrast',         group: 'Accessibility', keywords: 'contrast vision low-vision brightness readability' },
   { id: 'boldText',          label: 'Bold Text',              desc: 'Heavier font weight everywhere for easier reading',           default: false, icon: 'format_bold',      group: 'Accessibility', keywords: 'bold heavy weight font readability' },
   { id: 'underlineLinks',    label: 'Underline Links',        desc: 'Always underline links and clickable text',                   default: false, icon: 'format_underlined', group: 'Accessibility', keywords: 'links underline clickable buttons visible' },
   { id: 'reduceTransparency', label: 'Reduce Transparency',   desc: 'Solid backgrounds instead of blur/glass effects',             default: false, icon: 'blur_off',         group: 'Accessibility', keywords: 'transparency blur glass solid opaque backdrop' },
   { id: 'bigTargets',        label: 'Larger Click Targets',   desc: 'Bigger buttons and touch targets throughout',                 default: false, icon: 'touch_app',        group: 'Accessibility', keywords: 'buttons touch targets big tap click motor accessibility' },
   { id: 'focusOutlines',     label: 'Always Show Focus',      desc: 'Visible outline on the focused element at all times',         default: false, icon: 'center_focus_strong', group: 'Accessibility', keywords: 'focus outline keyboard navigation tab visible' },
+  { id: 'readableFont',      label: 'Readable Font',          desc: 'Plain system font with wider letter spacing (dyslexia-friendly)', default: false, icon: 'spellcheck',    group: 'Accessibility', keywords: 'dyslexia font readable letters spacing typeface' },
+  { id: 'lineSpacing',       label: 'Extra Line Spacing',     desc: 'More room between lines of text for easier tracking',         default: false, icon: 'format_line_spacing', group: 'Accessibility', keywords: 'line height spacing paragraph readability tracking' },
+  { id: 'dimImages',         label: 'Dim Images',             desc: 'Slightly darken posters and backgrounds to reduce glare',     default: false, icon: 'brightness_medium', group: 'Accessibility', keywords: 'dim dark glare brightness images photosensitive' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
@@ -398,10 +401,8 @@ const SHORTCUTS = [
   { key: 'T / 0',      desc: 'Cycle theme',                  group: 'Navigation' },
   { key: '1–6',        desc: 'Jump to page by number',       group: 'Navigation' },
   { key: '/',          desc: 'Jump to search',               group: 'Navigation' },
-  { key: '↑↑↓↓←→←→BA', desc: 'A classic surprise',           group: 'Fun' },
-  { key: '7× logo',    desc: 'Click the logo rapidly…',      group: 'Fun' },
-  { key: '"surprise me"', desc: 'Search it — random great pick', group: 'Fun' },
   { key: '7',          desc: 'Open search',                  group: 'Navigation' },
+  { key: 'Right-click', desc: 'Reset any setting/tile/chip to default', group: 'Tips' },
   { key: 'W / ↑',      desc: 'Scroll up',                    group: 'Navigation' },
   { key: 'S / ↓',      desc: 'Scroll down',                  group: 'Navigation' },
   { key: '/ or F',     desc: 'Open search',                  group: 'Navigation' },
@@ -430,6 +431,41 @@ const SHORTCUTS = [
   { key: 'X',           desc: 'Not Interested (hide clip)',  group: 'Clips' },
 ];
 
+/* ── RIGHT-CLICK = RESET TO DEFAULT ──────────────────────────────────
+   Right-clicking any setting, onboarding tile/chip, or preference tag
+   resets that one thing to its default (listed in the shortcuts screen).
+   Elements we don't manage keep the normal browser context menu. */
+function initRightClickReset() {
+  document.addEventListener('contextmenu', e => {
+    // Settings rows → reset that setting to its default value
+    const wrap = e.target.closest?.('.sv-setting-wrap');
+    if (wrap?.dataset.sid) {
+      e.preventDefault();
+      const s = SV_SETTINGS.find(x => x.id === wrap.dataset.sid);
+      if (s) {
+        setSetting(s.id, s.default);
+        buildSettingsUI();
+        toast(`${s.label} reset to default`, 'restart_alt');
+      }
+      return;
+    }
+    // Onboarding tiles + chips → handled inside the onboarding via event
+    const obEl = e.target.closest?.('.ob-tile, .ob-chip');
+    if (obEl && document.getElementById('onboard-screen')) {
+      e.preventDefault();
+      obEl.dispatchEvent(new CustomEvent('sv:reset', { bubbles: true }));
+      return;
+    }
+    // CYF preference tags / keyword chips → remove (default = not present)
+    const tag = e.target.closest?.('.pref-tag');
+    const tagBtn = tag?.querySelector('.pref-tag-remove');
+    if (tagBtn) { e.preventDefault(); tagBtn.click(); return; }
+    const kw = e.target.closest?.('.pref-keyword-chip');
+    const kwBtn = kw?.querySelector('.pref-kw-remove');
+    if (kwBtn) { e.preventDefault(); kwBtn.click(); return; }
+  });
+}
+
 /* ── CARD LOGO OBSERVER (declared here so init() IIFE can access before
      the observer helpers are defined at module scope below) ─────── */
 let _cardLogoObserver = null;
@@ -457,6 +493,7 @@ let _cardLogoMutObs   = null;
   initProfilesUI();
   initFunEggs();
   initBottomSearchBar();
+  initRightClickReset();
   // Show profile selector on start if setting is enabled
   if (getSetting('showAccountsOnStart')) {
     setTimeout(() => openProfilesOverlay(), 700);
@@ -533,7 +570,7 @@ let _cardLogoMutObs   = null;
     // Has ?id= but it's not a valid number (NaN, empty, text)
     if (watchId && (isNaN(+watchId) || +watchId <= 0)) return true;
     // Has ?page= but it's not a known page
-    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider'].includes(pageParam)) return true;
+    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider','clips','holidayrows'].includes(pageParam)) return true;
     // Has no useful params but also has garbage (avoid 404ing clean URLs)
     return false;
   };
@@ -675,12 +712,9 @@ async function maybeShowOnboarding() {
         <div class="ob-steps" aria-hidden="true"><span class="ob-step-dot on" data-dot="1"></span><span class="ob-step-dot" data-dot="2"></span></div>
       </div>
 
-      <!-- STEP 1: taste — big grid LEFT, menu column RIGHT -->
+      <!-- STEP 1: taste — menu column LEFT, big grid RIGHT -->
       <div id="ob-step1">
         <div class="ob-cols">
-          <div class="ob-main">
-            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(32)}</div>
-          </div>
           <div class="ob-side">
             <div class="ob-block">
               <div class="ob-label"><span class="material-icons-round">search</span>Add anything you love</div>
@@ -701,18 +735,25 @@ async function maybeShowOnboarding() {
               <div class="ob-chips" id="ob-ages"></div>
             </div>
           </div>
+          <div class="ob-main">
+            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(40)}</div>
+          </div>
         </div>
       </div>
 
-      <!-- STEP 2: full profile & comfort -->
+      <!-- STEP 2: profile creation (mirrors the real profile editor) + comfort -->
       <div id="ob-step2" style="display:none">
-        <div class="ob-step2-cols">
-          <div class="ob-block">
+        <div class="ob-step2-wrap">
+          <div class="ob-block ob-profile-card">
             <div class="ob-label"><span class="material-icons-round">person</span>Your profile</div>
-            <input type="text" class="ob-search" id="ob-profile-name" placeholder="Profile name — e.g. Alex" maxlength="20" autocomplete="off">
-            <div class="ob-label" style="margin-top:.9rem"><span class="material-icons-round">palette</span>Profile color</div>
-            <div class="ob-chips" id="ob-profile-colors"></div>
-            <div class="ob-hint">This names YOUR profile (the one you're using now). You can add more profiles later from the top-right menu so everyone gets their own feed.</div>
+            <div class="ob-profile-row">
+              <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
+              <div class="ob-profile-fields">
+                <input type="text" class="ob-search" id="ob-profile-name" placeholder="Profile name — e.g. Alex" maxlength="20" autocomplete="off">
+                <div class="ob-chips" id="ob-profile-colors" style="margin-top:.6rem"></div>
+              </div>
+            </div>
+            <div class="ob-hint">This is YOUR profile (the one you're using now) — your picks, watchlist, and settings live here. Add more profiles later from the top-right menu.</div>
           </div>
           <div class="ob-block">
             <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
@@ -768,9 +809,44 @@ async function maybeShowOnboarding() {
   nextBtn.addEventListener('click', () => gotoStep(2));
   backBtn.addEventListener('click', () => gotoStep(1));
 
-  // Genre chips — cycle: neutral → love → avoid → neutral (same as CYF)
+  // Right-click reset (dispatched by the global contextmenu handler)
+  ob.addEventListener('sv:reset', e => {
+    const el = e.target;
+    if (el.classList?.contains('ob-tile')) { setTileState(el, 'none'); return; }
+    if (!el.classList?.contains('ob-chip')) return;
+    if (el.dataset.gid) { // genre → neutral
+      pickedGenres.delete(el.dataset.gid); dislikedGenres.delete(el.dataset.gid);
+      el.classList.remove('picked', 'dis'); syncDone(); return;
+    }
+    if (el.dataset.lang) { // language → default is English-only
+      if (el.dataset.lang !== 'en') { pickedLangs.delete(el.dataset.lang); el.classList.remove('picked'); }
+      else { pickedLangs.add('en'); el.classList.add('picked'); }
+      return;
+    }
+    if (el.dataset.age) { // rating → PG-13 default
+      pickedAge = 'PG-13';
+      el.parentElement.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === 'PG-13'));
+      return;
+    }
+    if (el.dataset.a11y) { // accessibility → off/default
+      const conf = OB_A11Y.find(([id]) => id === el.dataset.a11y);
+      if (conf) { setSetting(conf[0], conf[3]); el.classList.remove('picked'); }
+      return;
+    }
+    if (el.dataset.color) { // profile color → default red
+      pickedColor = '#e50914';
+      el.parentElement.querySelectorAll('.ob-color-chip').forEach(c => c.classList.toggle('picked', c.dataset.color === pickedColor));
+    }
+  });
+
+  // Genre chips — cycle: neutral → love → avoid → neutral (same as CYF).
+  // Family & Kids are always included so gentle tastes are one tap away.
+  const obGenres = [
+    ...GENRES.filter(g => g.id === 10751 || g.id === 10762),
+    ...GENRES.filter(g => g.id !== 10751 && g.id !== 10762).slice(0, 12),
+  ];
   const chipsEl = ob.querySelector('#ob-chips');
-  chipsEl.innerHTML = GENRES.slice(0, 12).map(g =>
+  chipsEl.innerHTML = obGenres.map(g =>
     `<button class="ob-chip" data-gid="${g.id}"><span class="material-icons-round">${g.icon}</span>${g.name}</button>`).join('');
   chipsEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
@@ -807,8 +883,22 @@ async function maybeShowOnboarding() {
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
   });
 
-  // Profile color swatches (step 2)
-  let pickedColor = '#e50914';
+  // Profile card (step 2) — prefilled from the ACTIVE profile: if they
+  // already named it (e.g. created it from Who's Watching), it shows here
+  const _activeProf = (getProfiles() || []).find(p => p.id === getActiveProfileId());
+  let pickedColor = _activeProf?.color && _activeProf.color !== 'transparent' ? _activeProf.color : '#e50914';
+  const nameInput = ob.querySelector('#ob-profile-name');
+  if (nameInput && _activeProf?.name && _activeProf.name !== 'Me') nameInput.value = _activeProf.name;
+  const avatarPrev = ob.querySelector('#ob-avatar-preview');
+  const syncAvatar = () => {
+    if (!avatarPrev) return;
+    avatarPrev.style.background = pickedColor;
+    const initial = (nameInput?.value.trim() || _activeProf?.name || '')[0];
+    avatarPrev.innerHTML = initial
+      ? `<span class="ob-avatar-initial">${esc(initial.toUpperCase())}</span>`
+      : '<span class="material-icons-round">person</span>';
+  };
+  nameInput?.addEventListener('input', syncAvatar);
   const colorsEl = ob.querySelector('#ob-profile-colors');
   if (colorsEl) {
     colorsEl.innerHTML = PROFILE_COLORS.map(c =>
@@ -818,8 +908,10 @@ async function maybeShowOnboarding() {
       if (!chip) return;
       pickedColor = chip.dataset.color;
       colorsEl.querySelectorAll('.ob-color-chip').forEach(c => c.classList.toggle('picked', c.dataset.color === pickedColor));
+      syncAvatar();
     });
   }
+  syncAvatar();
 
   // Accessibility chips (multi-toggle, applied instantly so users can see;
   // these are REAL settings — they show up in Settings → Accessibility too)
@@ -893,18 +985,20 @@ async function maybeShowOnboarding() {
     if (tile?.dataset.oid) { e.preventDefault(); cycleTile(tile); }
   });
 
-  // Tiles: 24 titles spanning the whole taste spectrum, sorted by vote
+  // Tiles: 40 titles spanning the whole taste spectrum, sorted by vote
   // COUNT (the most widely SEEN titles, not this week's theater releases):
-  //   • 10 all-time classics (5 movies + 5 shows)
-  //   • 5 cozy/gentle (family & comedy — for people who hate scary)
-  //   • 5 intense (horror/thriller — for people who love it)
+  //   • 20 all-time classics (10 movies + 10 shows)
+  //   • 8 kids & family (G/PG animated + family — the light end)
+  //   • 4 cozy/gentle comedies
+  //   • 4 intense (horror/thriller — for people who love it)
   //   • 4 currently trending (a couple of fresh faces)
   try {
     const cutoff = `${new Date().getFullYear() - 3}-01-01`;
-    const [cm, ct, cozy, intense, trend] = await Promise.allSettled([
+    const [cm, ct, kids, cozy, intense, trend] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff }),
-      tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '10751|35', without_genres: '27|53', 'primary_release_date.lte': cutoff }),
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '10751', certification_country: 'US', 'certification.lte': 'PG', 'primary_release_date.lte': cutoff }),
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '35', without_genres: '27|53', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '27|53', 'primary_release_date.lte': cutoff }),
       tmdb('/trending/all/week'),
     ]);
@@ -923,10 +1017,11 @@ async function maybeShowOnboarding() {
       return out;
     };
     const pool = [
-      ...take(grab(cm, 'movie'), 9),
-      ...take(grab(ct, 'tv'), 9),
-      ...take(grab(cozy, 'movie'), 6),
-      ...take(grab(intense, 'movie'), 6),
+      ...take(grab(kids, 'movie'), 8),
+      ...take(grab(cm, 'movie'), 10),
+      ...take(grab(ct, 'tv'), 10),
+      ...take(grab(cozy, 'movie'), 4),
+      ...take(grab(intense, 'movie'), 4),
       ...take(grab(trend), 4),
     ];
     // Order the grid from lightest (kid-friendly) to most adult — no labels,
@@ -938,7 +1033,7 @@ async function maybeShowOnboarding() {
       const peak = gs.length ? Math.max(...gs) : 4;
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
-    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 32);
+    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 40);
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
   } catch (err) {
@@ -1341,10 +1436,29 @@ function shouldShow(id) {
   }
 }
 
+/* Kid-safety heuristic for rows that CAN'T be certification-filtered at
+   the API (trending, top-10, keyword rows). Genre-based:
+   G-level profiles only see family-friendly genres; PG drops horror;
+   PG-13 drops adult-flagged items. Discover rows are already capped
+   server-side (see api.js). */
+function _ageSafeItem(m) {
+  const lvl = AGE_LEVELS[state.ageRating] ?? 4;
+  if (lvl >= 5) return true; // R / no limit
+  if (m.adult) return false;
+  const g = m.genre_ids || [];
+  if (lvl <= 2) { // G and below: whitelist gentle genres
+    const gentle = [10751, 16, 10762, 12, 35, 14, 10402, 99];
+    return g.length === 0 || g.some(x => gentle.includes(x));
+  }
+  if (lvl === 3) return !g.includes(27); // PG: no horror
+  return true; // PG-13: adult flag already excluded
+}
+
 function filterByImpressions(items) {
+  const ageSafe = items.filter(m => m?.id && _ageSafeItem(m));
   // Keep at least 6 items even if all are "seen" — prevents empty rows
-  const filtered = items.filter(m => m?.id && shouldShow(m.id));
-  return filtered.length >= 4 ? filtered : items.slice(0, Math.max(filtered.length + 4, 8));
+  const filtered = ageSafe.filter(m => shouldShow(m.id));
+  return filtered.length >= 4 ? filtered : ageSafe.slice(0, Math.max(filtered.length + 4, 8));
 }
 
 /* ── SCHEDULE ROW LOAD (defer off-screen rows to scroll trigger) ─── */
@@ -1947,6 +2061,10 @@ document.addEventListener('click', e => {
     const rec = _rowDwell.get(rowEl.id);
     if (rec) rec.clicked = true;
   }
+  // Reaction buttons: drop focus after activation so they never look
+  // "stuck" pressed (focus ring + sticky hover on touch)
+  const rBtn = e.target.closest?.('.trailer-icon-btn, .card-ov-actions button');
+  if (rBtn) setTimeout(() => rBtn.blur(), 120);
 }, { capture: true, passive: true });
 
 /* Reset the global home dedup registry — hero titles stay registered
@@ -3276,6 +3394,8 @@ function applySetting(id, val) {
   if (id === 'textSize') {
     document.body.classList.toggle('sv-text-large', val === 'large');
     document.body.classList.toggle('sv-text-xl', val === 'xl');
+    document.body.classList.toggle('sv-text-xxl', val === 'xxl');
+    document.body.classList.toggle('sv-text-max', val === 'max');
   }
   if (id === 'highContrast')       document.body.classList.toggle('sv-high-contrast', !!val);
   if (id === 'boldText')           document.body.classList.toggle('sv-bold-text', !!val);
@@ -3283,6 +3403,9 @@ function applySetting(id, val) {
   if (id === 'reduceTransparency') document.body.classList.toggle('sv-no-transparency', !!val);
   if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
+  if (id === 'readableFont')       document.body.classList.toggle('sv-readable-font', !!val);
+  if (id === 'lineSpacing')        document.body.classList.toggle('sv-line-spacing', !!val);
+  if (id === 'dimImages')          document.body.classList.toggle('sv-dim-images', !!val);
   if (id === 'personalizeContent') {
     // Clear row label cache so they refresh with/without personalization markers
     const keys = [];
@@ -3520,10 +3643,11 @@ function buildSettingsUI() {
   const renderSetting = s => {
     const val = getSetting(s.id);
 
-    // 3-position slider (e.g. animation level)
-    if (s.type === 'slider3' && s.options?.length === 3) {
+    // Notched slider — works for any number of options (3, 5, …)
+    if (s.type === 'slider3' && s.options?.length >= 3) {
       const idx = s.options.indexOf(val);
-      const cur = idx < 0 ? 2 : idx; // default to last (right-most)
+      const cur = idx < 0 ? Math.max(0, s.options.indexOf(s.default)) : idx;
+      const maxI = s.options.length - 1;
       return `<div class="sv-setting-row sv-setting-slider3" title="${esc(s.desc)}" data-setting="${esc(s.id)}">
         <span class="material-icons-round sv-setting-icon">${s.icon}</span>
         <div class="sv-setting-info">
@@ -3534,11 +3658,11 @@ function buildSettingsUI() {
           <div class="sv-slider3-labels" aria-hidden="true">
             ${s.optLabels ? s.optLabels.map(l => `<span>${esc(l)}</span>`).join('') : s.options.map(o => `<span>${esc(o)}</span>`).join('')}
           </div>
-          <input type="range" class="sv-slider3-input" min="0" max="2" step="1" value="${cur}"
+          <input type="range" class="sv-slider3-input" min="0" max="${maxI}" step="1" value="${cur}"
             data-setting="${esc(s.id)}" data-options="${esc(JSON.stringify(s.options))}"
             aria-label="${esc(s.label)}" aria-valuetext="${esc(s.optLabels?.[cur] || s.options[cur])}">
           <div class="sv-slider3-track" aria-hidden="true">
-            ${[0,1,2].map(i => `<div class="sv-slider3-notch${i === cur ? ' active' : ''}"></div>`).join('')}
+            ${s.options.map((_, i) => `<div class="sv-slider3-notch${i === cur ? ' active' : ''}"></div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -3630,12 +3754,21 @@ const _prefEmpty = (icon, text) => `
     <p class="muted-note" style="font-size:.78rem;margin-top:.4rem">${text}</p>
   </div>`;
 
+// Poster can be a full URL or a bare TMDB path ("/abc.jpg") depending on
+// where the title was added from — normalize, and hide broken images
+// instead of showing a broken-file bubble
+function _prefPosterImg(poster) {
+  if (!poster) return '';
+  const src = String(poster).startsWith('/') ? `https://image.tmdb.org/t/p/w92${poster}` : poster;
+  return `<img src="${esc(src)}" alt="" class="pref-tag-poster" onerror="this.remove()">`;
+}
+
 function renderPrefLists() {
   const ll = document.getElementById('pref-likes-list');
   if (ll) {
     ll.innerHTML = state.prefLikes.map(x => `
       <div class="pref-tag pref-tag-like">
-        ${x.poster ? `<img src="${esc(x.poster)}" alt="" class="pref-tag-poster">` : ''}
+        ${_prefPosterImg(x.poster || x.poster_path)}
         <span>${esc(x.title || x.name || '')}</span>
         <button class="pref-tag-remove" data-pref-remove-like="${esc(x.id)}" aria-label="Remove">
           <span class="material-icons-round">close</span>
@@ -3647,7 +3780,7 @@ function renderPrefLists() {
   if (dl) {
     dl.innerHTML = state.prefDislikes.map(x => `
       <div class="pref-tag pref-tag-dis">
-        ${x.poster ? `<img src="${esc(x.poster)}" alt="" class="pref-tag-poster">` : ''}
+        ${_prefPosterImg(x.poster || x.poster_path)}
         <span>${esc(x.title || x.name || '')}</span>
         <button class="pref-tag-remove" data-pref-remove-dis="${esc(x.id)}" aria-label="Remove">
           <span class="material-icons-round">close</span>
@@ -7331,9 +7464,6 @@ function initShortcutsModal() {
     if (!grid) return;
     const disabled = state.disabledShortcuts || {};
     const groups = [...new Set(SHORTCUTS.map(s => s.group))];
-    const half = Math.ceil(groups.length / 2);
-    const leftGroups  = groups.slice(0, half);
-    const rightGroups = groups.slice(half);
 
     const renderGroup = (g) => `
       <div class="sc-group">
@@ -7348,12 +7478,13 @@ function initShortcutsModal() {
         }).join('')}
       </div>`;
 
+    // Horizontal layout: each group is a column card; they wrap into as
+    // many columns as fit the overlay width
     grid.innerHTML = `
-      <div class="sc-col">${leftGroups.map(renderGroup).join('')}</div>
-      <div class="sc-col">${rightGroups.map(renderGroup).join('')}</div>
-      <div style="grid-column:1/-1;margin-top:.7rem;padding:.55rem .8rem;background:rgba(255,255,255,.04);border-radius:8px;font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+      <div class="sc-columns">${groups.map(renderGroup).join('')}</div>
+      <div style="margin-top:.7rem;padding:.55rem .8rem;background:rgba(255,255,255,.04);border-radius:8px;font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
         <span class="material-icons-round" style="font-size:.9rem;flex-shrink:0;color:var(--red)">touch_app</span>
-        <span>Click any shortcut to <strong style="color:var(--text)">disable</strong> it. It shows grayed out. Click again to re-enable.</span>
+        <span>Click any shortcut to <strong style="color:var(--text)">disable</strong> it. Click again to re-enable. <strong style="color:var(--text)">Right-click</strong> any setting, tile, or chip anywhere on the site to reset it to its default.</span>
         ${Object.keys(disabled).length > 0 ? `<button id="reset-shortcuts-btn" style="margin-left:auto;background:rgba(229,9,20,.15);border:1px solid rgba(229,9,20,.3);color:var(--red);font-size:.68rem;font-weight:800;padding:.2rem .55rem;border-radius:4px;cursor:pointer">Reset all</button>` : ''}
       </div>`;
 
@@ -8120,16 +8251,27 @@ function populateTestPanel() {
       });
     }
 
-    // ── Foldable sections (collapse to save space in floating mode) ──
+    // ── Foldable sections — bulky sections start COLLAPSED (click to
+    // unhide); light/frequently-used ones start open ──────────────────
+    const START_CLOSED = ['Row Summoner', 'Row System', 'Themes', 'Source Testing'];
     panel.querySelectorAll('.dev-section').forEach(sec => {
       const title = sec.querySelector('.dev-sec-title');
       if (!title) return;
       const det = document.createElement('details');
       det.className = 'dev-fold';
-      det.open = true;
+      const titleText = title.textContent || '';
+      det.open = !START_CLOSED.some(t => titleText.includes(t));
       const sum = document.createElement('summary');
       sum.className = 'dev-fold-sum';
       sum.append(...title.childNodes);
+      // Count badge so collapsed sections still tell you what's inside
+      const btnCount = sec.querySelectorAll('button, .dev-btn').length;
+      if (btnCount > 3) {
+        const badge = document.createElement('span');
+        badge.className = 'dev-fold-count';
+        badge.textContent = btnCount;
+        sum.appendChild(badge);
+      }
       det.appendChild(sum);
       let node = title.nextSibling;
       while (node) { const next = node.nextSibling; det.appendChild(node); node = next; }

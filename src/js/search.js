@@ -1228,6 +1228,21 @@ export async function doSearch(q) {
       const svSettings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
       if (svSettings.hideAnime) items = items.filter(m => m._type !== 'anime' && m.media_type !== 'anime');
     } catch {}
+    // Kid-safety search demotion: with a restrictive age rating, likely-
+    // mature results sink toward the bottom — UNLESS they're a really
+    // close title match (still findable, just not surfaced casually)
+    try {
+      const lvl = { 'TV-Y': 0, 'TV-Y7': 1, 'G': 2, 'TV-G': 2, 'PG': 3, 'TV-PG': 3, 'PG-13': 4, 'TV-14': 4 }[state.ageRating];
+      if (lvl !== undefined && lvl <= 4) {
+        const mature = m => m.adult || (lvl <= 3 && (m.genre_ids || []).includes(27));
+        const closeMatch = m => titleScore(effectiveQ, m.title || m.name || '') >= 88;
+        const safe = [], demoted = [];
+        items.forEach(m => (mature(m) && !closeMatch(m) ? demoted : safe).push(m));
+        items = [...safe, ...demoted];
+        if (lvl <= 2) items = items.filter(m => !m.adult); // G: adult never shows
+      }
+    } catch {}
+
     _searchState.results = items;
     _searchState.loading = false;
 

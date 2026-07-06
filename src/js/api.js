@@ -118,7 +118,28 @@ function cacheSet(key, data) {
 }
 
 /* ── TMDB ────────────────────────────────────────────────────────── */
+/* Kid-safety: when the profile's age rating is restrictive, movie discover
+   calls are certification-capped AT THE API so mature titles never even
+   arrive. (An adult should still supervise — ratings are guidance only.) */
+function _certCap() {
+  try {
+    const { state, AGE_LEVELS } = _stateRef || {};
+    if (!state) return null;
+    const lvl = AGE_LEVELS[state.ageRating] ?? 4;
+    if (lvl <= 2) return 'G';
+    if (lvl === 3) return 'PG';
+    if (lvl === 4) return 'PG-13';
+    return null; // R / NC-17 / no limit — no cap
+  } catch { return null; }
+}
+let _stateRef = null;
+import('./state.js').then(m => { _stateRef = m; }).catch(() => {});
+
 export async function tmdb(path, params = {}) {
+  const cap = (path === '/discover/movie' && !('certification.lte' in params)) ? _certCap() : null;
+  if (cap) {
+    params = { ...params, certification_country: 'US', 'certification.lte': cap };
+  }
   const key = cacheKey(path, params);
   const cached = cacheGet(key);
   if (cached) return cached;

@@ -135,7 +135,7 @@
 .ob-skip:hover { background: rgba(60,60,60,.8); transform: scale(1.04); }
 .ob-skip .material-icons-round { font-size: 1rem; }
 .ob-inner {
-  max-width: 1340px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2.2rem 1.4rem 2rem;
   animation: lsFade .5s var(--ease) .15s both;
@@ -148,13 +148,12 @@
   color: var(--text);
 }
 .ob-sub { font-size: .9rem; color: var(--muted); margin-top: .3rem; }
-/* Big poster grid LEFT, menu column RIGHT. Both columns stretch to the
+/* Menu column LEFT, big poster grid RIGHT. Both columns stretch to the
    same height and the menu blocks spread out so the two columns END even
    with each other. */
-.ob-cols { display: grid; grid-template-columns: 1fr 340px; gap: 1.6rem; align-items: stretch; }
+.ob-cols { display: grid; grid-template-columns: 360px 1fr; gap: 1.7rem; align-items: stretch; }
 @media (max-width: 880px) {
   .ob-cols { grid-template-columns: 1fr; }
-  .ob-side { order: -1; } /* controls first on small screens */
 }
 .ob-side {
   display: flex;
@@ -234,18 +233,50 @@
 .ob-steps { display: flex; justify-content: center; gap: .45rem; margin-top: .7rem; }
 .ob-step-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--s3, #333); transition: background .2s, transform .2s; }
 .ob-step-dot.on { background: var(--red); transform: scale(1.25); }
-.ob-step2-cols {
+.ob-step2-wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.1rem;
-  max-width: 720px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.2rem;
+  max-width: 860px;
   margin: 0 auto;
 }
+.ob-profile-row { display: flex; align-items: flex-start; gap: 1rem; }
+.ob-profile-fields { flex: 1; min-width: 0; }
+.ob-avatar-preview {
+  width: 84px;
+  height: 84px;
+  border-radius: 14px;
+  background: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 8px 26px rgba(0,0,0,.4);
+  transition: background .25s;
+}
+.ob-avatar-preview .material-icons-round { font-size: 2.4rem; }
+.ob-avatar-initial { font-size: 2.2rem; font-weight: 900; }
 .ob-main { min-height: 62vh; }
 .ob-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
-  gap: .7rem;
+  /* Bigger posters — 5 columns of ~124px+ in the 1fr track, still ending
+     level with the sidebar because both columns stretch */
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+  gap: .75rem;
+}
+/* Tiles cascade in — subtle, fast, respects reduced-motion via global kill */
+.ob-grid .ob-tile { animation: obTileIn .35s var(--ease) backwards; }
+.ob-grid .ob-tile:nth-child(5n+2) { animation-delay: .04s; }
+.ob-grid .ob-tile:nth-child(5n+3) { animation-delay: .08s; }
+.ob-grid .ob-tile:nth-child(5n+4) { animation-delay: .12s; }
+.ob-grid .ob-tile:nth-child(5n)   { animation-delay: .16s; }
+@keyframes obTileIn { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+@media (max-width: 560px) {
+  .ob-grid { grid-template-columns: repeat(3, 1fr) !important; gap: .55rem; }
+  .ob-block { padding: .75rem; }
+  .ob-inner { padding-top: 4.4rem; } /* clear the big Skip button */
+  .ob-footer { flex-wrap: wrap; }
 }
 .ob-tile {
   position: relative;
@@ -2039,6 +2070,21 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
   gap: .6rem;
 }
 
+/* ── SHORTCUTS: horizontal column-card layout ────────────────────── */
+.sc-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: .9rem;
+  align-items: start;
+}
+.sc-columns .sc-group {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .7rem .8rem;
+  margin: 0;
+}
+
 /* ── SETTINGS SEARCH ─────────────────────────────────────────────── */
 #sv-settings-search {
   display: flex;
@@ -2072,8 +2118,17 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
    buttons, chips, inputs, and menus together. */
 body.sv-text-large { font-size: 112.5%; }
 body.sv-text-xl    { font-size: 128%; }
+body.sv-text-xxl   { font-size: 140%; }
+body.sv-text-max   { font-size: 150%; }
 body.sv-text-large .material-icons-round,
-body.sv-text-xl .material-icons-round { font-size: 1.35em; }
+body.sv-text-xl .material-icons-round,
+body.sv-text-xxl .material-icons-round,
+body.sv-text-max .material-icons-round { font-size: 1.35em; }
+/* At the biggest sizes, layouts must wrap rather than overflow */
+body.sv-text-xxl .sv-setting-row,
+body.sv-text-max .sv-setting-row { flex-wrap: wrap; }
+body.sv-text-xxl .nav-tabs,
+body.sv-text-max .nav-tabs { overflow-x: auto; scrollbar-width: none; }
 
 body.sv-high-contrast {
   --text: #ffffff;
@@ -2116,6 +2171,22 @@ body.sv-focus-outlines :focus {
   outline: 3px solid var(--red) !important;
   outline-offset: 2px !important;
 }
+
+body.sv-readable-font,
+body.sv-readable-font button,
+body.sv-readable-font input {
+  font-family: Verdana, 'Segoe UI', Arial, sans-serif !important;
+  letter-spacing: .02em;
+  word-spacing: .06em;
+}
+body.sv-line-spacing p,
+body.sv-line-spacing .sv-setting-desc,
+body.sv-line-spacing .modal-plot,
+body.sv-line-spacing .info-overview { line-height: 1.9 !important; }
+body.sv-line-spacing { line-height: 1.7; }
+body.sv-dim-images img,
+body.sv-dim-images .card-poster,
+body.sv-dim-images .hero-bg { filter: brightness(.78); }
 
 /* Layout resilience: whatever combination of text size / bold / big
    targets is active, rows wrap instead of overflowing and flex children
