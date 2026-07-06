@@ -27,9 +27,9 @@ export const GENRES = [
   { id: 10762, name: 'Kids',        icon: 'child_care' },
   { id: 10402, name: 'Music',       icon: 'music_note' },
   { id: 9648,  name: 'Mystery',     icon: 'search' },
-  { id: 36,    name: 'History',     icon: 'history_edu' },
-  { id: 10752, name: 'War',         icon: 'military_tech' },
-  { id: 37,    name: 'Western',     icon: 'landscape' },
+  { id: 10764, name: 'Reality TV',  icon: 'videocam' },
+  { id: 10759, name: 'Action & Adventure', icon: 'explore' },
+  { id: 10765, name: 'Sci-Fi & Fantasy',   icon: 'auto_fix_high' },
 ];
 
 export const AGE_LEVELS = {

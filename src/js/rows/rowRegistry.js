@@ -66,6 +66,7 @@ export const ROW_REGISTRY = [
   R('row-crime-tv',    'tv',    'std', 30, { cooldownDays: 2 }),
   R('row-comedy-tv',   'tv',    'std', 29, { cooldownDays: 2 }),
   R('row-anime-home2', 'anime', 'std', 28, { cooldownDays: 2 }),
+  R('row-for-kids',    'genre', 'std', 30, { cooldownDays: 2, tags: ['kids', 'family'] }),
 
   // ── Country trending ─────────────────────────────────────────────
   R('row-trend-jp', 'country', 'country', 26, { cooldownDays: 3, tags: ['trending'] }),

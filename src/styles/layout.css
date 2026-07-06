@@ -140,7 +140,12 @@
   padding: 2.2rem 1.4rem 2rem;
   animation: lsFade .5s var(--ease) .15s both;
 }
-.ob-head { text-align: center; margin-bottom: 1.4rem; }
+.ob-head { text-align: center; margin-bottom: 1.2rem; }
+/* Step 1 on desktop: the heading sits over the poster grid (right of the
+   menu column) so it lines up with the content instead of floating left */
+@media (min-width: 881px) {
+  .ob-head.ob-head-grid { text-align: left; padding-left: calc(360px + 1.7rem); }
+}
 .ob-title {
   font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
   font-size: clamp(2.2rem, 6vw, 3.4rem);
@@ -158,9 +163,11 @@
 .ob-side {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-  justify-content: space-between; /* blocks spread → column ends match grid */
+  gap: 1rem; /* consistent gaps — no space-between (it made random holes) */
 }
+/* Only the LAST block stretches so the column still ends level with the
+   grid, without gaps between the others */
+.ob-side .ob-block:last-child { flex: 1; }
 .ob-block { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); padding: .9rem; }
 .ob-label { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 800; color: var(--text); margin-bottom: .6rem; }
 .ob-label .material-icons-round { font-size: 1rem; color: var(--red); }
@@ -369,7 +376,19 @@
   border-width: 3px !important;
 }
 .ob-color-chip.picked { outline: 3px solid #fff; outline-offset: 2px; }
-.ob-footer { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.6rem; }
+/* Sticky footer: Next / Start is ALWAYS in view — no scrolling to find it */
+.ob-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.2rem;
+  padding: .9rem 0 1rem;
+  background: linear-gradient(to top, #070707 55%, transparent);
+}
 .ob-more {
   border: none;
   background: none;
@@ -1453,18 +1472,31 @@
   max-height: 160px; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--s4) transparent;
 }
+/* Title chips: rounded rectangle with a proper poster thumbnail — the old
+   squeezed pill with a tiny 24px sliver looked broken */
 .pref-tag {
   display: flex;
   align-items: center;
-  gap: .35rem;
-  padding: .32rem .7rem .32rem .5rem;
-  border-radius: 999px;
-  font-size: .78rem;
+  gap: .55rem;
+  padding: .3rem .75rem .3rem .3rem;
+  border-radius: 10px;
+  font-size: .8rem;
   font-weight: 700;
+  max-width: 100%;
+  transition: transform .14s, border-color .14s;
 }
-.pref-tag-like { background: rgba(229,9,20,.12); color: #ff6b6b; border: 1px solid rgba(229,9,20,.22); }
-.pref-tag-dis  { background: rgba(100,100,255,.1); color: #8888ff; border: 1px solid rgba(100,100,255,.2); }
-.pref-tag-poster { width: 24px; height: 34px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+.pref-tag:hover { transform: translateY(-1px); }
+.pref-tag span:not(.material-icons-round) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 190px;
+}
+.pref-tag-like { background: rgba(229,9,20,.1); color: #ffb0b0; border: 1px solid rgba(229,9,20,.35); }
+.pref-tag-like:hover { border-color: rgba(229,9,20,.7); }
+.pref-tag-dis  { background: rgba(100,100,255,.08); color: #b9b9ff; border: 1px solid rgba(100,100,255,.3); }
+.pref-tag-dis:hover { border-color: rgba(100,100,255,.6); }
+.pref-tag-poster { width: 32px; height: 46px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .pref-tag-remove {
   background: none;
   border: none;

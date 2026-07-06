@@ -88,12 +88,12 @@ const LEGAL_CONTENT = {
   privacy: {
     title: 'Privacy Policy',
     body: `
-      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 5, 2026</p>
       <h3>1. Overview</h3>
       <p>StaticVault931 ("we", "us", "our") is committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights regarding that data. By using StaticVault931 you agree to this policy.</p>
       <h3>2. Data We Collect</h3>
       <p><strong>Locally stored data (never leaves your device):</strong></p>
-      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, content rating, liked/disliked titles)<br>• Continue-watching progress<br>• Recent searches<br>• Theme and display settings<br>• Provider preferences</p>
+      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, languages, content rating, liked/disliked titles, kid-guided mode)<br>• Profiles (names, colors, avatars) and per-profile data<br>• Continue-watching progress<br>• Recent searches and a local search log (last 100 searches, used to improve search)<br>• Row statistics (which rows are shown, clicked, or skipped — used to pick better rows)<br>• Theme, display, and accessibility settings<br>• Provider preferences</p>
       <p>All of the above is stored exclusively in your browser's <code>localStorage</code> and <code>sessionStorage</code>. It is never transmitted to StaticVault931 or any third party by us.</p>
       <h3>3. Third-Party Services</h3>
       <p><strong>The Movie Database (TMDB):</strong> We query the TMDB API for movie, TV show, and metadata. TMDB may log API requests. See <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener">TMDB Privacy Policy</a>.</p>
@@ -113,8 +113,8 @@ const LEGAL_CONTENT = {
       <p>Embed providers may set cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers, but cannot guarantee complete coverage.</p>
       <h3>5. Analytics</h3>
       <p>StaticVault931 uses <strong>Google Analytics 4 (GA4)</strong> to understand aggregate usage patterns (pageviews, session counts, general regions). This helps us improve the site. Google Analytics sets cookies in your browser. You can opt out using <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. We do not use any other analytics platform (Mixpanel, Amplitude, etc.).</p>
-      <h3>6. Children's Privacy</h3>
-      <p>StaticVault931 is not directed at children under 13. We do not knowingly collect data from children. If you believe a child has used the service inappropriately, please contact us.</p>
+      <h3>6. Children's Privacy & Kid Safety</h3>
+      <p>StaticVault931 is not directed at children under 13 and we do not knowingly collect data from children. The content-rating filter and Kid-Guided Mode refine what is shown but are <strong>guidance tools, not parental locks</strong> — a parent or guardian is responsible for supervising younger viewers. If you believe a child has used the service inappropriately, please contact us.</p>
       <h3>7. Your Rights</h3>
       <p>Because all data is stored locally in your browser, you can delete it at any time via Library → Reset All Data, or by clearing your browser's storage for this site.</p>
       <h3>8. Contact</h3>
@@ -123,7 +123,7 @@ const LEGAL_CONTENT = {
   tos: {
     title: 'Terms of Service',
     body: `
-      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 5, 2026</p>
       <h3>1. Acceptance</h3>
       <p>By accessing or using StaticVault931 ("the Service") you agree to be bound by these Terms. If you disagree with any part, you may not use the Service.</p>
       <h3>2. What StaticVault931 Is</h3>
@@ -149,7 +149,7 @@ const LEGAL_CONTENT = {
   dmca: {
     title: 'DMCA & Copyright',
     body: `
-      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 5, 2026</p>
       <h3>1. Our Position</h3>
       <p>StaticVault931 fully respects intellectual property rights. We do not host, store, or distribute any media files. All video content is embedded from independent third-party providers via publicly accessible URLs.</p>
       <h3>2. Where Content Is Hosted</h3>
@@ -168,7 +168,7 @@ const LEGAL_CONTENT = {
   disclaimer: {
     title: 'General Disclaimer',
     body: `
-      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: January 2026</p>
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 5, 2026</p>
       <h3>Content Availability</h3>
       <p>StaticVault931 is a discovery platform. Content availability depends entirely on third-party embed providers which operate independently. We cannot guarantee that any specific title will be available, playable, or of any particular quality.</p>
       <h3>No Endorsement</h3>
@@ -227,6 +227,7 @@ const SV_SETTINGS = [
   { id: 'dimImages',         label: 'Dim Images',             desc: 'Slightly darken posters and backgrounds to reduce glare',     default: false, icon: 'brightness_medium', group: 'Accessibility', keywords: 'dim dark glare brightness images photosensitive' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
+  { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
   { id: 'repeatContent',     label: 'Repeat Tolerance',       desc: 'How often to re-show content you\'ve already seen',           default: 'medium', icon: 'repeat',        group: 'Content', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
   { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
@@ -494,6 +495,13 @@ let _cardLogoMutObs   = null;
   initFunEggs();
   initBottomSearchBar();
   initRightClickReset();
+  // Footer "Taste Onboarding" — reopen the picker any time (prefs kept)
+  document.getElementById('footer-onboarding-btn')?.addEventListener('click', e => {
+    e.preventDefault();
+    window._svOpenOnboarding
+      ? window._svOpenOnboarding()
+      : (localStorage.removeItem('sv_onboarded'), maybeShowOnboarding());
+  });
   // Show profile selector on start if setting is enabled
   if (getSetting('showAccountsOnStart')) {
     setTimeout(() => openProfilesOverlay(), 700);
@@ -685,7 +693,8 @@ function dismissLoadingScreen() {
    prefGenres + liked titles, then dissolves into the CYF page. */
 async function maybeShowOnboarding() {
   if (localStorage.getItem('sv_onboarded')) return;
-  localStorage.setItem('sv_onboarded', '1');
+  // NOTE: the flag is set when the user finishes or skips — NOT here.
+  // A mid-onboarding refresh brings it right back.
 
   const OB_LANGS = [
     ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'],
@@ -706,7 +715,7 @@ async function maybeShowOnboarding() {
   ob.innerHTML = `
     <button class="ob-skip" id="ob-skip">Skip <span class="material-icons-round">arrow_forward</span></button>
     <div class="ob-inner">
-      <div class="ob-head">
+      <div class="ob-head ob-head-grid">
         <h1 class="ob-title">Make it yours</h1>
         <p class="ob-sub" id="ob-sub">Tap once to <b style="color:var(--red)">love</b>, twice to <b style="color:#94a3b8">hide</b>. Works for titles AND genres. All optional.</p>
         <div class="ob-steps" aria-hidden="true"><span class="ob-step-dot on" data-dot="1"></span><span class="ob-step-dot" data-dot="2"></span></div>
@@ -800,6 +809,7 @@ async function maybeShowOnboarding() {
     doneBtn.style.display = n === 2 ? '' : 'none';
     moreBtn.style.display = n === 2 ? '' : 'none';
     ob.querySelectorAll('.ob-step-dot').forEach(d => d.classList.toggle('on', +d.dataset.dot === n));
+    ob.querySelector('.ob-head')?.classList.toggle('ob-head-grid', n === 1);
     ob.querySelector('#ob-sub').innerHTML = n === 1
       ? 'Tap once to <b style="color:var(--red)">love</b>, twice to <b style="color:#94a3b8">hide</b>. Works for titles AND genres. All optional.'
       : 'Almost done — a profile and comfort settings, then you\'re in.';
@@ -1073,6 +1083,7 @@ async function maybeShowOnboarding() {
   });
 
   const finish = (skipped, customize = false) => {
+    localStorage.setItem('sv_onboarded', '1'); // done or skipped — either way it's over
     if (!skipped) {
       // Profile: RENAMES the profile they're already on (this IS their
       // setup) — never creates a duplicate. Dashboard updates live.
@@ -1085,9 +1096,11 @@ async function maybeShowOnboarding() {
           window._svRenderProfiles?.();
         }
       } catch (err) { console.warn('[SV Onboarding] profile update failed:', err?.message); }
-      pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
+      // NUMBERS, not strings — CYF chips and every genre comparison use
+      // numeric ids; string ids silently never matched anything
+      pickedGenres.forEach(g => { const n = +g; if (!state.prefGenres.includes(n)) state.prefGenres.push(n); });
       if (pickedGenres.size) persist('prefGenres');
-      dislikedGenres.forEach(g => { if (!state.prefGenreDislikes.includes(g)) state.prefGenreDislikes.push(g); });
+      dislikedGenres.forEach(g => { const n = +g; if (!state.prefGenreDislikes.includes(n)) state.prefGenreDislikes.push(n); });
       if (dislikedGenres.size) persist('prefGenreDislikes');
       state.prefLangs = [...pickedLangs];
       persist('prefLangs');
@@ -1309,14 +1322,26 @@ async function loadHero(attempt = 0) {
       tmdb('/trending/movie/week'),
       tmdb('/trending/tv/week'),
     ]);
+    // Hero respects the SAME safety rules as every row: age rating, kid
+    // mode, and disliked genres. A PG profile with horror disliked must
+    // never open the site to an R-rated horror banner.
+    const heroOk = x => x.backdrop_path && _ageSafeItem(x) && _prefSafeItem(x);
     const all = movRes.status === 'fulfilled'
-      ? (movRes.value.results || []).filter(x => x.backdrop_path)
+      ? (movRes.value.results || []).filter(heroOk)
       : [];
     const tvItems = tvRes.status === 'fulfilled'
-      ? (tvRes.value.results || []).filter(x => x.backdrop_path).slice(0, 3)
+      ? (tvRes.value.results || []).filter(heroOk).slice(0, 3)
       : [];
 
-    const items = [...all.slice(0, 5), ...tvItems].slice(0, 8);
+    let items = [...all.slice(0, 5), ...tvItems].slice(0, 8);
+    // Restrictive profiles may thin the pool — top up with capped discover
+    if (items.length < 4 && _effAgeLevel() <= 4) {
+      const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300 }).catch(() => null);
+      const have = new Set(items.map(m => m.id));
+      (extra?.results || []).forEach(m => {
+        if (items.length < 8 && !have.has(m.id) && heroOk(m)) { have.add(m.id); items.push({ ...m, media_type: 'movie' }); }
+      });
+    }
 
     if (!items.length) {
       // No items — retry once after 3s (network hiccup), then give up
@@ -1436,29 +1461,49 @@ function shouldShow(id) {
   }
 }
 
+/* Effective maturity level: the profile's age rating, hard-capped at G
+   when Kid-Guided Mode is on. */
+function _effAgeLevel() {
+  if (getSetting('kidsMode')) return 2; // kid-guided → everything G-ish
+  return AGE_LEVELS[state.ageRating] ?? 4;
+}
+
 /* Kid-safety heuristic for rows that CAN'T be certification-filtered at
-   the API (trending, top-10, keyword rows). Genre-based:
-   G-level profiles only see family-friendly genres; PG drops horror;
-   PG-13 drops adult-flagged items. Discover rows are already capped
-   server-side (see api.js). */
+   the API (trending, top-10, keyword rows). Discover rows are already
+   capped server-side (api.js). Strict by level:
+     ≤G   : gentle-genre WHITELIST only (family/animation/kids/…)
+     PG   : no horror, no thriller, no crime, no war, no mystery-horror
+     PG-13: no horror unless clearly mainstream-safe, no adult flag */
 function _ageSafeItem(m) {
-  const lvl = AGE_LEVELS[state.ageRating] ?? 4;
+  const lvl = _effAgeLevel();
   if (lvl >= 5) return true; // R / no limit
   if (m.adult) return false;
   const g = m.genre_ids || [];
-  if (lvl <= 2) { // G and below: whitelist gentle genres
-    const gentle = [10751, 16, 10762, 12, 35, 14, 10402, 99];
-    return g.length === 0 || g.some(x => gentle.includes(x));
+  if (lvl <= 2) { // G and below: whitelist gentle genres — nothing else
+    const gentle = [10751, 16, 10762, 12, 35, 14, 10402, 99, 10759, 10765];
+    return g.length > 0 && g.some(x => gentle.includes(x)) &&
+           !g.some(x => [27, 53, 80, 10752, 9648, 18, 10768].includes(x));
   }
-  if (lvl === 3) return !g.includes(27); // PG: no horror
-  return true; // PG-13: adult flag already excluded
+  if (lvl === 3) { // PG: block the whole mature cluster
+    return !g.some(x => [27, 53, 80, 10752].includes(x));
+  }
+  return !g.includes(27) || (m.vote_count || 0) > 3000; // PG-13: niche horror out
+}
+
+/* Hard preference filter: any title carrying a genre the user DISLIKES
+   never appears in a row. (They said no — believe them.) */
+function _prefSafeItem(m) {
+  const dis = state.prefGenreDislikes || [];
+  if (!dis.length) return true;
+  return !(m.genre_ids || []).some(g => dis.includes(g) || dis.includes(String(g)));
 }
 
 function filterByImpressions(items) {
-  const ageSafe = items.filter(m => m?.id && _ageSafeItem(m));
-  // Keep at least 6 items even if all are "seen" — prevents empty rows
-  const filtered = ageSafe.filter(m => shouldShow(m.id));
-  return filtered.length >= 4 ? filtered : ageSafe.slice(0, Math.max(filtered.length + 4, 8));
+  const safe = items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m));
+  // Keep at least 6 items even if all are "seen" — prevents empty rows.
+  // NEVER backfill with unsafe items — a thin safe row beats an unsafe one.
+  const filtered = safe.filter(m => shouldShow(m.id));
+  return filtered.length >= 4 ? filtered : safe.slice(0, Math.max(filtered.length + 4, 8));
 }
 
 /* ── SCHEDULE ROW LOAD (defer off-screen rows to scroll trigger) ─── */
@@ -2024,6 +2069,13 @@ function _applyRowOrder() {
     else home.insertBefore(sec, home.querySelector('.section'));
     cursor = sec;
   });
+  // Recently Viewed is a "come back to it" row — always among the LAST 5
+  const recent = document.getElementById('sec-recent');
+  if (recent?.parentElement === home) {
+    const visible = [...home.querySelectorAll('.section')].filter(s => s.style.display !== 'none' && s !== recent);
+    const anchor = visible[Math.max(0, visible.length - 5)];
+    if (anchor) anchor.before(recent);
+  }
   _scheduleSpread();
 }
 
@@ -2320,10 +2372,31 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Trending + For You first
   await Promise.allSettled([
-    tmdb('/trending/all/week').then(d => {
-      const allTrending = d.results || [];
-      // Keep authentic trending order — always show top 14 (position in page changes per view, not content)
-      const items = allTrending.slice(0, 14);
+    tmdb('/trending/all/week').then(async d => {
+      // SAFETY GATE: trending bypasses _loadRow, so it must filter here —
+      // age rating, kid mode, and disliked genres all apply. Raw trending
+      // was the main way R-rated content leaked onto restricted profiles.
+      const lvl = _effAgeLevel();
+      let pool = (d.results || []).filter(m =>
+        m.media_type !== 'person' && _ageSafeItem(m) && _prefSafeItem(m));
+      // Restrictive profiles: top up with certification-capped popular
+      // titles so "Trending" is a full, genuinely kid-appropriate chart
+      if (pool.length < 12 && lvl <= 4) {
+        const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 200 }).catch(() => null);
+        const have = new Set(pool.map(m => m.id));
+        (extra?.results || []).forEach(m => {
+          if (!have.has(m.id) && _ageSafeItem(m) && _prefSafeItem(m)) { have.add(m.id); pool.push({ ...m, media_type: 'movie' }); }
+        });
+      }
+      const items = pool.slice(0, 14);
+      // Rename the row so restricted profiles see what they're getting
+      const trendTitle = document.querySelector('#sec-trending .sec-title');
+      if (trendTitle) {
+        const label = lvl <= 2 ? 'Trending for Kids' : lvl === 3 ? 'Trending (Family-Friendly)' : 'Trending This Week';
+        const icon = trendTitle.querySelector('.material-icons-round, .sec-icon');
+        trendTitle.textContent = label;
+        if (icon) trendTitle.prepend(icon);
+      }
       items.forEach(m => _homeSeenIds.add(m.id));
       renderRow('row-trending', items, null, true);
       _saveRowCache('row-trending', items);
@@ -2421,9 +2494,36 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   const pRng = state._randomPage || 1;
   const prefGenreStr = prefG.length ? prefG.slice(0, 2).join('|') : '';
 
-  // Top 10 — daily trending (always shown)
-  _scheduleRowLoad('row-top10', 'sec-top10', () =>
-    tmdb('/trending/all/day', { page: 1 }).then(d => (d.results || []).slice(0, 10)), null);
+  // Top 10 — daily trending (always shown; safety-filtered like everything,
+  // topped up with certification-capped popular titles when filtering thins it)
+  _scheduleRowLoad('row-top10', 'sec-top10', async () => {
+    const d = await tmdb('/trending/all/day', { page: 1 });
+    let pool = (d.results || []).filter(m => m.media_type !== 'person' && _ageSafeItem(m) && _prefSafeItem(m));
+    if (pool.length < 10) {
+      const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 200 }).catch(() => null);
+      const have = new Set(pool.map(m => m.id));
+      (extra?.results || []).forEach(m => {
+        if (pool.length < 12 && !have.has(m.id) && _ageSafeItem(m) && _prefSafeItem(m)) { have.add(m.id); pool.push({ ...m, media_type: 'movie' }); }
+      });
+    }
+    return pool.slice(0, 10);
+  }, null);
+
+  // For Kids — pinned for restricted / kid-guided profiles, part of the
+  // normal rotation otherwise. G-certified family + kids TV only.
+  if (_effAgeLevel() <= 3 || _rowSelected('row-for-kids')) {
+    _scheduleRowLoad('row-for-kids', 'sec-for-kids', async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_genres: '10751|16', certification_country: 'US', 'certification.lte': 'G', sort_by: 'popularity.desc', 'vote_count.gte': 100 }),
+        tmdb('/discover/tv',    { with_genres: '10762', sort_by: 'popularity.desc', 'vote_count.gte': 50 }),
+      ]);
+      const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
+      const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+      const out = [];
+      for (let i = 0; i < Math.max(m.length, t.length); i++) { if (m[i]) out.push(m[i]); if (t[i]) out.push(t[i]); }
+      return out;
+    }, null);
+  }
 
   // Recently Added Movies (from vidsrc-embed.ru)
   _scheduleRowLoad('row-recently-added', 'sec-recently-added', async () => {
@@ -3403,6 +3503,7 @@ function applySetting(id, val) {
   if (id === 'reduceTransparency') document.body.classList.toggle('sv-no-transparency', !!val);
   if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
+  if (id === 'kidsMode') { _clearRowCache(); } // safety change → fresh rows
   if (id === 'readableFont')       document.body.classList.toggle('sv-readable-font', !!val);
   if (id === 'lineSpacing')        document.body.classList.toggle('sv-line-spacing', !!val);
   if (id === 'dimImages')          document.body.classList.toggle('sv-dim-images', !!val);
@@ -5916,6 +6017,10 @@ export async function openInfoPage(id, type, hint = {}) {
         const playYouTubeInfo = (vidKey, isFallback = false) => {
           if (state.currentInfoMedia?.id !== _trailerToken) return;
           trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&iv_load_policy=3&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+          // CRITICAL: without the "listening" handshake YouTube never sends
+          // state events, _trailerStarted stayed false forever, and the 9s
+          // timeout replaced a PLAYING trailer with the fallback image.
+          trailerFrame.addEventListener('load', () => _ytListen(trailerFrame), { once: true });
 
           let _trailerStarted = false;
           const infoMsgHandler = (e) => {
@@ -7535,9 +7640,8 @@ function initProfilesUI() {
   document.getElementById('profiles-add-btn')?.addEventListener('click', () => openProfileEditor(null));
   document.getElementById('profile-save-btn')?.addEventListener('click', saveProfileFromEditor);
   document.getElementById('profile-delete-btn')?.addEventListener('click', deleteProfileFromEditor);
-  // Restart the full taste onboarding for the profile being edited
-  document.getElementById('profile-onboard-btn')?.addEventListener('click', () => {
-    const targetId = _editingProfileId || getActiveProfileId();
+  // "Onboarding": just go BACK to the taste picker — preferences stay
+  const _openOnboardingFor = (targetId) => {
     closeProfileEditor();
     closeProfilesOverlay();
     if (targetId && targetId !== getActiveProfileId()) {
@@ -7546,7 +7650,23 @@ function initProfilesUI() {
     }
     localStorage.removeItem('sv_onboarded');
     maybeShowOnboarding();
+  };
+  document.getElementById('profile-onboard-btn')?.addEventListener('click', () => {
+    _openOnboardingFor(_editingProfileId || getActiveProfileId());
   });
+  // "Reset & Redo": clears ALL taste preferences first, then onboarding
+  document.getElementById('profile-onboard-reset-btn')?.addEventListener('click', async () => {
+    if (!await showConfirm('Reset & Redo Onboarding',
+      'Clear ALL taste preferences for this profile — genres, languages, loved and hidden titles — and start onboarding fresh?')) return;
+    state.prefGenres = []; persist('prefGenres');
+    state.prefGenreDislikes = []; persist('prefGenreDislikes');
+    state.prefLangs = []; persist('prefLangs');
+    state.prefLikes = []; persist('prefLikes');
+    state.prefDislikes = []; persist('prefDislikes');
+    _clearRowCache();
+    _openOnboardingFor(_editingProfileId || getActiveProfileId());
+  });
+  window._svOpenOnboarding = () => _openOnboardingFor(getActiveProfileId()); // footer / CYF entry point
   // Color picker
   const colorRow = document.getElementById('profile-color-row');
   if (colorRow) {

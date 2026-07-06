@@ -125,7 +125,9 @@ function _certCap() {
   try {
     const { state, AGE_LEVELS } = _stateRef || {};
     if (!state) return null;
-    const lvl = AGE_LEVELS[state.ageRating] ?? 4;
+    let kidsMode = false;
+    try { kidsMode = !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; } catch {}
+    const lvl = kidsMode ? 2 : (AGE_LEVELS[state.ageRating] ?? 4);
     if (lvl <= 2) return 'G';
     if (lvl === 3) return 'PG';
     if (lvl === 4) return 'PG-13';
