@@ -282,14 +282,25 @@ export function providersFor(type, opts = {}) {
   return list.filter(p => !disabled.includes(p.id));
 }
 
-/* ── SANDBOX FORCE OVERRIDE ──────────────────────────────────────── */
+/* ── SANDBOX FORCE OVERRIDE ──────────────────────────────────────────
+   DEFAULT: forced ON (the safe choice — blocks popups/redirects in every
+   provider). "Auto" (off for providers that need it) is opt-in, "Off" is
+   the last resort. Persisted so the choice sticks. */
 // null = auto per-provider, false = always off, true = always on
-let _sandboxForce = null;
+let _sandboxForce = (() => {
+  try {
+    const v = localStorage.getItem('sv_sandbox_force');
+    if (v === 'off')  return false;
+    if (v === 'auto') return null;
+    return true; // 'on' or unset — sandbox ON by default
+  } catch { return true; }
+})();
 
 export function getSandboxForce() { return _sandboxForce; }
 
 export function setSandboxForce(val) {
   _sandboxForce = val;
+  try { localStorage.setItem('sv_sandbox_force', val === true ? 'on' : val === false ? 'off' : 'auto'); } catch {}
   const iframe = document.getElementById('player-frame');
   if (!iframe) return;
   if (val === false) {
@@ -301,10 +312,10 @@ export function setSandboxForce(val) {
 }
 
 export function cycleSandboxForce() {
-  // Cycle: auto → force off → force on → auto
-  if (_sandboxForce === null)  setSandboxForce(false);
-  else if (_sandboxForce === false) setSandboxForce(true);
-  else setSandboxForce(null);
+  // Cycle: on (default) → auto → off → on
+  if (_sandboxForce === true) setSandboxForce(null);
+  else if (_sandboxForce === null) setSandboxForce(false);
+  else setSandboxForce(true);
   return _sandboxForce;
 }
 
@@ -382,7 +393,7 @@ export function buildProviderBar(mediaId, type, season, episode) {
     `<button class="prov-btn prov-next" id="prov-next-btn" title="Try next source">
        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg> Next
      </button>` +
-    `<button class="prov-btn prov-sandbox${sbClass}" id="prov-sandbox-btn" title="Cycle sandbox mode: Auto → Off → On\nAuto: off for VidLink/MultiEmbed/2Embed/VidSrc.ru, on for others\nOff: removes sandbox for all providers\nOn: forces sandbox on for all providers">${sbIcon} ${sbLabel}</button>` +
+    `<button class="prov-btn prov-sandbox${sbClass}" id="prov-sandbox-btn" title="Cycle sandbox mode: On → Auto → Off\nOn (default): sandbox forced on for all providers — safest\nAuto: off only for providers that require it (VidLink/MultiEmbed/2Embed/VidSrc.ru)\nOff: removes sandbox everywhere — expect popups">${sbIcon} ${sbLabel}</button>` +
     mainList.map(_provBtn).join('') +
     moreToggleHtml;
 
@@ -485,6 +496,13 @@ export function loadPlayer(mediaId, type, season = 1, episode = 1) {
     clearTimeout(_providerTimer);
     loading.classList.add('hidden');
   };
+  // Failsafe: some embeds never fire onload cross-origin even though the
+  // video plays fine — hide the spinner so it can't sit over the player
+  setTimeout(() => {
+    if (iframe.src && !loading.classList.contains('hidden') && !loading.querySelector('.btn-next-source')) {
+      loading.classList.add('hidden');
+    }
+  }, 5000);
 
   iframe.onerror = () => showProviderError();
 

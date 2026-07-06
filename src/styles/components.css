@@ -580,9 +580,11 @@
   font-size: .6rem !important;
   color: var(--muted) !important;
 }
-.prov-sandbox-off { color: #4ade80 !important; border-color: rgba(74,222,128,.3) !important; background: rgba(74,222,128,.07) !important; }
-.prov-sandbox-on  { color: #f59e0b !important; border-color: rgba(245,158,11,.3) !important; background: rgba(245,158,11,.07) !important; }
-.prov-sandbox-auto { opacity: .6; }
+/* Sandbox state must read at a glance: ON = green (protected),
+   OFF = red (popups possible), AUTO = amber (depends on provider) */
+.prov-sandbox-on  { color: #4ade80 !important; border-color: rgba(74,222,128,.4) !important; background: rgba(74,222,128,.08) !important; }
+.prov-sandbox-off { color: #f87171 !important; border-color: rgba(248,113,113,.45) !important; background: rgba(248,113,113,.09) !important; font-weight: 800; }
+.prov-sandbox-auto { color: #f59e0b !important; border-color: rgba(245,158,11,.3) !important; background: rgba(245,158,11,.06) !important; }
 .prov-sandbox:hover { opacity: 1 !important; }
 /* Sandbox-disabled warning banner — sits between top bar and modal body */
 .prov-sandbox-warn {
@@ -879,7 +881,12 @@
   text-align: center;
   padding: 1.5rem;
 }
-.player-loading.hidden { opacity: 0; pointer-events: none; }
+/* The overlay must NEVER block the player's own controls (pause, quality,
+   fullscreen). Only its buttons are interactive; everything else lets
+   clicks pass straight through to the iframe. */
+.player-loading { pointer-events: none; }
+.player-loading button { pointer-events: auto; }
+.player-loading.hidden { opacity: 0; }
 .player-loading p { font-size: .82rem; color: var(--muted); }
 .player-err-msg { font-size: .84rem; color: var(--muted); max-width: 460px; }
 .player-err-sub { font-size: .74rem; color: var(--dim); max-width: 460px; line-height: 1.5; }
@@ -2686,6 +2693,9 @@ img[alt]::after {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* The tutorial must FIT the slide — never crop the example buttons or
+     the start button on short screens */
+  overflow: hidden;
 }
 .clips-tut-bg {
   position: absolute;
@@ -2697,9 +2707,22 @@ img[alt]::after {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: 2rem 1.5rem;
+  padding: 1.4rem 1.5rem;
   max-width: 640px;
   width: 100%;
+  /* Fit within the slide: scroll internally rather than getting cropped */
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.clips-tut-content::-webkit-scrollbar { display: none; }
+@media (max-height: 760px) {
+  .clips-tut-icon .material-icons-round { font-size: 3rem !important; }
+  .clips-tut-title { font-size: clamp(1.7rem, 5vw, 2.4rem) !important; }
+  .clips-tut-desc { font-size: .85rem !important; margin-bottom: .8rem !important; }
+  .clips-tut-example { margin-bottom: .9rem !important; gap: .8rem !important; }
+  .clips-tut-tips { gap: .35rem !important; }
+  .clips-tut-tip { font-size: .74rem !important; }
 }
 .clips-tut-icon { margin-bottom: 1rem; }
 .clips-tut-icon .material-icons-round { font-size: 4.5rem; color: var(--red); filter: drop-shadow(0 4px 20px var(--red-glow)); }

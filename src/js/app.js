@@ -215,9 +215,13 @@ const SV_SETTINGS = [
   { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
   { id: 'darkPlayer',        label: 'Dark Player BG',         desc: 'Show dark background behind the player iframe',               default: true,  icon: 'dark_mode',        group: 'Display' },
   // Accessibility
-  { id: 'reduceMotion',      label: 'Reduce Motion',          desc: 'Minimize animations and transitions throughout the site',     default: false, icon: 'motion_photos_off', group: 'Display' },
-  { id: 'largerText',        label: 'Larger Text',            desc: 'Increase base text size ~12% for readability',                default: false, icon: 'text_increase',    group: 'Display' },
-  { id: 'highContrast',      label: 'High Contrast',          desc: 'Stronger text/background contrast for low vision',            default: false, icon: 'contrast',         group: 'Display' },
+  { id: 'textSize',          label: 'Text Size',              desc: 'Scale text, buttons, and controls across the whole site',     default: 'default', icon: 'format_size', group: 'Accessibility', type: 'slider3', options: ['default', 'large', 'xl'], optLabels: ['Default', 'Large (+12%)', 'Extra Large (+28%)'], keywords: 'font size bigger larger text zoom scale readability' },
+  { id: 'highContrast',      label: 'High Contrast',          desc: 'Stronger text/background contrast for low vision',            default: false, icon: 'contrast',         group: 'Accessibility', keywords: 'contrast vision low-vision brightness readability' },
+  { id: 'boldText',          label: 'Bold Text',              desc: 'Heavier font weight everywhere for easier reading',           default: false, icon: 'format_bold',      group: 'Accessibility', keywords: 'bold heavy weight font readability' },
+  { id: 'underlineLinks',    label: 'Underline Links',        desc: 'Always underline links and clickable text',                   default: false, icon: 'format_underlined', group: 'Accessibility', keywords: 'links underline clickable buttons visible' },
+  { id: 'reduceTransparency', label: 'Reduce Transparency',   desc: 'Solid backgrounds instead of blur/glass effects',             default: false, icon: 'blur_off',         group: 'Accessibility', keywords: 'transparency blur glass solid opaque backdrop' },
+  { id: 'bigTargets',        label: 'Larger Click Targets',   desc: 'Bigger buttons and touch targets throughout',                 default: false, icon: 'touch_app',        group: 'Accessibility', keywords: 'buttons touch targets big tap click motor accessibility' },
+  { id: 'focusOutlines',     label: 'Always Show Focus',      desc: 'Visible outline on the focused element at all times',         default: false, icon: 'center_focus_strong', group: 'Accessibility', keywords: 'focus outline keyboard navigation tab visible' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
@@ -622,7 +626,11 @@ function applyLoadingScreenState() {
   document.body.classList.add('ls-open');
   const enterBtn = document.getElementById('ls-enter');
   if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
-  setTimeout(dismissLoadingScreen, 700);
+  // The loading screen is only as long as the real work behind it: when
+  // onboarding follows (its content is one light fetch), get out of the
+  // way almost immediately — onboarding is the curtain for everything else
+  const willOnboard = !localStorage.getItem('sv_onboarded');
+  setTimeout(dismissLoadingScreen, willOnboard ? 350 : 700);
 }
 
 function dismissLoadingScreen() {
@@ -648,7 +656,13 @@ async function maybeShowOnboarding() {
     ['hi', 'Hindi'], ['zh', 'Chinese'],
   ];
   const OB_AGES = [['G', 'G'], ['PG', 'PG'], ['PG-13', 'PG-13'], ['R', 'R'], ['NC-17', 'No limit']];
-  const OB_A11Y = [['reduceMotion', 'Reduce motion'], ['largerText', 'Larger text'], ['highContrast', 'High contrast']];
+  // [settingId, label, onValue, offValue] — applied instantly as preview
+  const OB_A11Y = [
+    ['motionLevel', 'Reduce motion', 'minimal', 'default'],
+    ['textSize', 'Larger text', 'large', 'default'],
+    ['highContrast', 'High contrast', true, false],
+    ['bigTargets', 'Bigger buttons', true, false],
+  ];
 
   const ob = document.createElement('div');
   ob.id = 'onboard-screen';
@@ -657,51 +671,67 @@ async function maybeShowOnboarding() {
     <div class="ob-inner">
       <div class="ob-head">
         <h1 class="ob-title">Make it yours</h1>
-        <p class="ob-sub">Tap once to <b style="color:var(--red)">love</b> something, twice to <b style="color:#94a3b8">hide</b> it. Everything is optional.</p>
+        <p class="ob-sub" id="ob-sub">Tap once to <b style="color:var(--red)">love</b>, twice to <b style="color:#94a3b8">hide</b>. Works for titles AND genres. All optional.</p>
+        <div class="ob-steps" aria-hidden="true"><span class="ob-step-dot on" data-dot="1"></span><span class="ob-step-dot" data-dot="2"></span></div>
       </div>
-      <div class="ob-cols">
-        <div class="ob-side">
-          <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">search</span>Add anything you love</div>
-            <input type="search" class="ob-search" id="ob-search" placeholder="Type a movie or show…" autocomplete="off">
-            <div class="ob-search-results" id="ob-search-results"></div>
+
+      <!-- STEP 1: taste -->
+      <div id="ob-step1">
+        <div class="ob-cols">
+          <div class="ob-side">
+            <div class="ob-block">
+              <div class="ob-label"><span class="material-icons-round">search</span>Add anything you love</div>
+              <input type="search" class="ob-search" id="ob-search" placeholder="Type a movie or show…" autocomplete="off">
+              <div class="ob-search-results" id="ob-search-results"></div>
+            </div>
+            <div class="ob-block">
+              <div class="ob-label"><span class="material-icons-round">category</span>Genres — tap once to love, twice to avoid</div>
+              <div class="ob-chips" id="ob-chips"></div>
+            </div>
+            <div class="ob-block">
+              <div class="ob-label"><span class="material-icons-round">translate</span>Languages you watch in</div>
+              <div class="ob-chips" id="ob-langs"></div>
+              <div class="ob-hint">Pick more than one and you'll get rows like "Titles in French"</div>
+            </div>
+            <div class="ob-block">
+              <div class="ob-label"><span class="material-icons-round">shield</span>Content rating</div>
+              <div class="ob-chips" id="ob-ages"></div>
+            </div>
           </div>
-          <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">category</span>Genres you enjoy</div>
-            <div class="ob-chips" id="ob-chips"></div>
+          <div class="ob-main">
+            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(24)}</div>
           </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: profile & comfort -->
+      <div id="ob-step2" style="display:none">
+        <div class="ob-step2-cols">
           <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">translate</span>Languages you watch in</div>
-            <div class="ob-chips" id="ob-langs"></div>
-            <div class="ob-hint">Pick more than one and you'll get rows like "Titles in French"</div>
-          </div>
-          <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">shield</span>Content rating</div>
-            <div class="ob-chips" id="ob-ages"></div>
+            <div class="ob-label"><span class="material-icons-round">person</span>Profile name (optional)</div>
+            <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
+            <div class="ob-hint">Creates a profile so several people can share this browser — each gets their own feed, watchlist, and settings</div>
           </div>
           <div class="ob-block">
             <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
             <div class="ob-chips" id="ob-a11y"></div>
+            <div class="ob-hint">Applied instantly so you can see the difference. All of these live in Settings → Accessibility too.</div>
           </div>
-          <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">person</span>Profile name (optional)</div>
-            <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
-            <div class="ob-hint">Creates a profile so several people can share this browser</div>
-          </div>
-        </div>
-        <div class="ob-main">
-          <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(24)}</div>
         </div>
       </div>
+
       <div class="ob-footer">
-        <button class="ob-done" id="ob-done">Start watching</button>
-        <button class="ob-more" id="ob-more">Customize further →</button>
+        <button class="ob-more" id="ob-back" style="display:none">← Back</button>
+        <button class="ob-done" id="ob-next">Next →</button>
+        <button class="ob-done" id="ob-done" style="display:none">Start watching</button>
+        <button class="ob-more" id="ob-more" style="display:none">Customize further →</button>
       </div>
     </div>`;
   document.body.appendChild(ob);
   requestAnimationFrame(() => ob.classList.add('ob-in'));
 
   const pickedGenres = new Set();
+  const dislikedGenres = new Set();
   const pickedLangs = new Set(['en']);
   const likedTitles = new Map();    // id → item
   const dislikedTitles = new Map(); // id → item
@@ -709,11 +739,34 @@ async function maybeShowOnboarding() {
 
   const doneBtn = ob.querySelector('#ob-done');
   const syncDone = () => {
-    const n = pickedGenres.size + likedTitles.size + dislikedTitles.size;
+    const n = pickedGenres.size + dislikedGenres.size + likedTitles.size + dislikedTitles.size;
     doneBtn.textContent = n ? `Start watching (${n} picked)` : 'Start watching';
   };
 
-  // Genre chips
+  // ── Step navigation ──────────────────────────────────────────────
+  const step1 = ob.querySelector('#ob-step1');
+  const step2 = ob.querySelector('#ob-step2');
+  const nextBtn = ob.querySelector('#ob-next');
+  const backBtn = ob.querySelector('#ob-back');
+  const moreBtn = ob.querySelector('#ob-more');
+  const gotoStep = n => {
+    step1.style.display = n === 1 ? '' : 'none';
+    step2.style.display = n === 2 ? '' : 'none';
+    nextBtn.style.display = n === 1 ? '' : 'none';
+    backBtn.style.display = n === 2 ? '' : 'none';
+    doneBtn.style.display = n === 2 ? '' : 'none';
+    moreBtn.style.display = n === 2 ? '' : 'none';
+    ob.querySelectorAll('.ob-step-dot').forEach(d => d.classList.toggle('on', +d.dataset.dot === n));
+    ob.querySelector('#ob-sub').innerHTML = n === 1
+      ? 'Tap once to <b style="color:var(--red)">love</b>, twice to <b style="color:#94a3b8">hide</b>. Works for titles AND genres. All optional.'
+      : 'Almost done — a profile and comfort settings, then you\'re in.';
+    ob.querySelector('.ob-inner').scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+  nextBtn.addEventListener('click', () => gotoStep(2));
+  backBtn.addEventListener('click', () => gotoStep(1));
+
+  // Genre chips — cycle: neutral → love → avoid → neutral (same as CYF)
   const chipsEl = ob.querySelector('#ob-chips');
   chipsEl.innerHTML = GENRES.slice(0, 12).map(g =>
     `<button class="ob-chip" data-gid="${g.id}"><span class="material-icons-round">${g.icon}</span>${g.name}</button>`).join('');
@@ -721,8 +774,11 @@ async function maybeShowOnboarding() {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
     const gid = chip.dataset.gid;
-    pickedGenres.has(gid) ? pickedGenres.delete(gid) : pickedGenres.add(gid);
+    if (pickedGenres.has(gid)) { pickedGenres.delete(gid); dislikedGenres.add(gid); }
+    else if (dislikedGenres.has(gid)) { dislikedGenres.delete(gid); }
+    else { pickedGenres.add(gid); }
     chip.classList.toggle('picked', pickedGenres.has(gid));
+    chip.classList.toggle('dis', dislikedGenres.has(gid));
     syncDone();
   });
 
@@ -749,17 +805,20 @@ async function maybeShowOnboarding() {
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
   });
 
-  // Accessibility chips (multi-toggle, applied instantly so users can see)
+  // Accessibility chips (multi-toggle, applied instantly so users can see;
+  // these are REAL settings — they show up in Settings → Accessibility too)
   const a11yEl = ob.querySelector('#ob-a11y');
   a11yEl.innerHTML = OB_A11Y.map(([id, label]) =>
     `<button class="ob-chip" data-a11y="${id}">${label}</button>`).join('');
   a11yEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
-    const id = chip.dataset.a11y;
-    const next = !getSetting(id);
-    setSetting(id, next); // applies the body class immediately — instant preview
-    chip.classList.toggle('picked', next);
+    const conf = OB_A11Y.find(([id]) => id === chip.dataset.a11y);
+    if (!conf) return;
+    const [id, , onVal, offVal] = conf;
+    const isOn = getSetting(id) === onVal;
+    setSetting(id, isOn ? offVal : onVal); // instant live preview
+    chip.classList.toggle('picked', !isOn);
   });
 
   // Title tile: cycles neutral → loved → hidden → neutral
@@ -790,35 +849,47 @@ async function maybeShowOnboarding() {
     if (tile?.dataset.oid) cycleTile(tile);
   });
 
-  // Tiles: 50/50 movie/TV, sorted by vote COUNT (= the most widely seen
-  // titles ever, not this week's theater releases nobody's watched yet),
-  // capped a few years back so it's stuff people have actually finished.
+  // Tiles: 24 titles spanning the whole taste spectrum, sorted by vote
+  // COUNT (the most widely SEEN titles, not this week's theater releases):
+  //   • 10 all-time classics (5 movies + 5 shows)
+  //   • 5 cozy/gentle (family & comedy — for people who hate scary)
+  //   • 5 intense (horror/thriller — for people who love it)
+  //   • 4 currently trending (a couple of fresh faces)
   try {
     const cutoff = `${new Date().getFullYear() - 3}-01-01`;
-    const [mv, mv2, tv, tv2] = await Promise.allSettled([
+    const [cm, ct, cozy, intense, trend] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff }),
-      tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff, page: 2 }),
       tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff }),
-      tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff, page: 2 }),
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '10751|35', without_genres: '27|53', 'primary_release_date.lte': cutoff }),
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '27|53', 'primary_release_date.lte': cutoff }),
+      tmdb('/trending/all/week'),
     ]);
-    const grab = (r, type) => r.status === 'fulfilled' ? (r.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: type })) : [];
-    const m = [...grab(mv, 'movie'), ...grab(mv2, 'movie')];
-    const t = [...grab(tv, 'tv'), ...grab(tv2, 'tv')];
-    // Spread: avoid 3+ tiles sharing a lead genre in a row
-    const spread = (list, want) => {
-      const out = []; const lastG = [];
+    const grab = (r, type = null) => r.status === 'fulfilled'
+      ? (r.value.results || []).filter(x => x.poster_path && (x.media_type !== 'person'))
+          .map(x => ({ ...x, media_type: type || x.media_type || 'movie' }))
+      : [];
+    const seen = new Set();
+    const take = (list, n) => {
+      const out = [];
       for (const x of list) {
-        const g = (x.genre_ids || [])[0];
-        if (lastG.length >= 2 && lastG.every(v => v === g)) { list.push(x); continue; }
-        out.push(x); lastG.push(g); if (lastG.length > 2) lastG.shift();
-        if (out.length >= want) break;
+        if (seen.has(x.id)) continue;
+        seen.add(x.id); out.push(x);
+        if (out.length >= n) break;
       }
-      return out.length ? out : list.slice(0, want);
+      return out;
     };
-    // Exactly even: 12 movies + 12 shows, strictly alternating
+    const pools = [
+      take(grab(cm, 'movie'), 5),
+      take(grab(ct, 'tv'), 5),
+      take(grab(cozy, 'movie'), 5),
+      take(grab(intense, 'movie'), 5),
+      take(grab(trend), 4),
+    ];
+    // Interleave the pools so no two neighbors share a vibe
     const mixed = [];
-    const ms = spread(m, 12), ts = spread(t, 12);
-    for (let i = 0; i < 12; i++) { if (ms[i]) mixed.push(ms[i]); if (ts[i]) mixed.push(ts[i]); }
+    for (let i = 0; i < 5 && mixed.length < 24; i++) {
+      pools.forEach(p => { if (p[i] && mixed.length < 24) mixed.push(p[i]); });
+    }
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
   } catch (err) {
@@ -871,6 +942,8 @@ async function maybeShowOnboarding() {
       }
       pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
       if (pickedGenres.size) persist('prefGenres');
+      dislikedGenres.forEach(g => { if (!state.prefGenreDislikes.includes(g)) state.prefGenreDislikes.push(g); });
+      if (dislikedGenres.size) persist('prefGenreDislikes');
       state.prefLangs = [...pickedLangs];
       persist('prefLangs');
       state.ageRating = pickedAge;
@@ -3150,9 +3223,16 @@ function setSetting(id, val) {
 
 function applySetting(id, val) {
   if (id === 'repeatContent') state._repeatTolerance = val;
-  if (id === 'reduceMotion') document.body.classList.toggle('sv-reduce-motion', !!val);
-  if (id === 'largerText')   document.body.classList.toggle('sv-large-text', !!val);
-  if (id === 'highContrast') document.body.classList.toggle('sv-high-contrast', !!val);
+  if (id === 'textSize') {
+    document.body.classList.toggle('sv-text-large', val === 'large');
+    document.body.classList.toggle('sv-text-xl', val === 'xl');
+  }
+  if (id === 'highContrast')       document.body.classList.toggle('sv-high-contrast', !!val);
+  if (id === 'boldText')           document.body.classList.toggle('sv-bold-text', !!val);
+  if (id === 'underlineLinks')     document.body.classList.toggle('sv-underline-links', !!val);
+  if (id === 'reduceTransparency') document.body.classList.toggle('sv-no-transparency', !!val);
+  if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
+  if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
   if (id === 'personalizeContent') {
     // Clear row label cache so they refresh with/without personalization markers
     const keys = [];
@@ -3318,6 +3398,59 @@ function applyAllSettings() {
   SV_SETTINGS.forEach(s => applySetting(s.id, getSetting(s.id)));
 }
 
+/* ── SETTINGS SEARCH ─────────────────────────────────────────────────
+   Compact search box (top-right of the settings grid). Weighted matching:
+   label match beats keyword match beats description/group match. Matching
+   rows stay visible with the best hit highlighted; empty group headers
+   hide. */
+function _wireSettingsSearch(grid) {
+  let box = document.getElementById('sv-settings-search');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'sv-settings-search';
+    box.innerHTML = `
+      <span class="material-icons-round">search</span>
+      <input type="search" id="sv-settings-search-input" placeholder="Find a setting…"
+        aria-label="Search settings" autocomplete="off">`;
+    grid.parentElement?.insertBefore(box, grid);
+  }
+  const input = box.querySelector('input');
+  const run = () => {
+    const q = input.value.trim().toLowerCase();
+    const wraps = [...grid.querySelectorAll('.sv-setting-wrap')];
+    const headers = [...grid.querySelectorAll('.settings-group-header')];
+    wraps.forEach(w => w.classList.remove('sv-search-hit', 'sv-search-best'));
+    if (!q) {
+      wraps.forEach(w => w.style.display = '');
+      headers.forEach(h => h.style.display = '');
+      return;
+    }
+    const words = q.split(/\s+/).filter(Boolean);
+    let best = null, bestScore = 0;
+    wraps.forEach(w => {
+      let score = 0;
+      for (const word of words) {
+        if (w.dataset.slabel.includes(word)) score += w.dataset.slabel.startsWith(word) ? 5 : 3;
+        else if (w.dataset.skw.includes(word)) score += 2;
+        else if (w.dataset.find.includes(word)) score += 1;
+        else { score = 0; break; } // every word must match somewhere
+      }
+      w.style.display = score ? '' : 'none';
+      if (score) {
+        w.classList.add('sv-search-hit');
+        if (score > bestScore) { bestScore = score; best = w; }
+      }
+    });
+    best?.classList.add('sv-search-best');
+    // Headers show only when their group has visible rows
+    headers.forEach(h => {
+      const has = wraps.some(w => w.dataset.sgroup === h.dataset.sgroup && w.style.display !== 'none');
+      h.style.display = has ? '' : 'none';
+    });
+  };
+  input.addEventListener('input', run);
+}
+
 function buildSettingsUI() {
   const grid = document.getElementById('sv-settings-grid');
   if (!grid) return;
@@ -3392,10 +3525,15 @@ function buildSettingsUI() {
 
   let html = '';
   for (const [groupName, settings] of Object.entries(groups)) {
-    html += `<div class="settings-group-header">${groupName}</div>`;
-    html += settings.map(renderSetting).join('');
+    html += `<div class="settings-group-header" data-sgroup="${esc(groupName)}">${groupName}</div>`;
+    html += settings.map(s => {
+      // Wrap each row with searchable metadata (label + desc + keywords + group)
+      const find = `${s.label} ${s.desc} ${s.keywords || ''} ${groupName}`.toLowerCase();
+      return `<div class="sv-setting-wrap" data-sid="${esc(s.id)}" data-sgroup="${esc(groupName)}" data-find="${esc(find)}" data-slabel="${esc(s.label.toLowerCase())}" data-skw="${esc((s.keywords || '').toLowerCase())}">${renderSetting(s)}</div>`;
+    }).join('');
   }
   grid.innerHTML = html;
+  _wireSettingsSearch(grid);
 
   grid.querySelectorAll('.sv-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -8881,7 +9019,6 @@ function _maybeShowClipsTutorial(feed) {
         <div class="clips-tut-tip"><span class="material-icons-round">swipe_vertical</span>Scroll, swipe, use the arrows, or press <kbd>↓</kbd>/<kbd>S</kbd> — whatever feels right</div>
         <div class="clips-tut-tip"><span class="material-icons-round">touch_app</span>Tap the video to pause. Tap again to resume.</div>
         <div class="clips-tut-tip"><span class="material-icons-round">play_arrow</span><kbd>P</kbd> starts watching instantly, <kbd>I</kbd> opens full info</div>
-        <div class="clips-tut-tip"><span class="material-icons-round">egg_alt</span>Psst — try searching "surprise me" or "do a barrel roll" sometime</div>
       </div>
 
       <button class="trailer-cta trailer-cta-watch clips-tut-start-btn" type="button">

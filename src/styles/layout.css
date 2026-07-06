@@ -119,14 +119,15 @@
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: .3rem;
-  padding: .5rem 1.1rem;
-  border: 1px solid rgba(255,255,255,.25);
+  gap: .4rem;
+  /* Big, unmissable — skipping must be effortless */
+  padding: .8rem 1.7rem;
+  border: 1px solid rgba(255,255,255,.3);
   border-radius: 999px;
-  background: rgba(20,20,20,.7);
+  background: rgba(20,20,20,.75);
   color: #fff;
   font-weight: 800;
-  font-size: .85rem;
+  font-size: 1rem;
   cursor: pointer;
   backdrop-filter: blur(8px);
   transition: background .2s, transform .2s;
@@ -217,6 +218,19 @@
 .ob-chip .material-icons-round { font-size: 1rem; }
 .ob-chip:hover { border-color: var(--red); transform: translateY(-1px); }
 .ob-chip.picked { background: var(--red); border-color: var(--red); color: #fff; }
+/* Second tap = avoid this genre (mirrors the CYF dislike state) */
+.ob-chip.dis { background: #334155; border-color: #475569; color: #cbd5e1; text-decoration: line-through; }
+/* Step dots + step-2 layout */
+.ob-steps { display: flex; justify-content: center; gap: .45rem; margin-top: .7rem; }
+.ob-step-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--s3, #333); transition: background .2s, transform .2s; }
+.ob-step-dot.on { background: var(--red); transform: scale(1.25); }
+.ob-step2-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.1rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
 .ob-main { min-height: 62vh; }
 .ob-grid {
   display: grid;
@@ -1969,22 +1983,83 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
   gap: .6rem;
 }
 
-/* ── ACCESSIBILITY MODES ─────────────────────────────────────────── */
-body.sv-reduce-motion *,
-body.sv-reduce-motion *::before,
-body.sv-reduce-motion *::after {
-  animation-duration: .001s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: .001s !important;
-  scroll-behavior: auto !important;
+/* ── SETTINGS SEARCH ─────────────────────────────────────────────── */
+#sv-settings-search {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: 0 0 .8rem auto;
+  max-width: 280px;
+  padding: .4rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--s2);
 }
-body.sv-large-text { font-size: 112.5%; }
+#sv-settings-search .material-icons-round { font-size: 1rem; color: var(--dim); }
+#sv-settings-search input {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: .85rem;
+  outline: none;
+}
+.sv-setting-wrap.sv-search-best .sv-setting-row {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
+  border-radius: 10px;
+  background: rgba(229,9,20,.06);
+}
+
+/* ── ACCESSIBILITY MODES ─────────────────────────────────────────────
+   Everything scales off rem/em so the text-size classes grow text,
+   buttons, chips, inputs, and menus together. */
+body.sv-text-large { font-size: 112.5%; }
+body.sv-text-xl    { font-size: 128%; }
+body.sv-text-large .material-icons-round,
+body.sv-text-xl .material-icons-round { font-size: 1.35em; }
+
 body.sv-high-contrast {
   --text: #ffffff;
-  --muted: #e2e2e2;
-  --dim: #c8c8c8;
+  --muted: #e6e6e6;
+  --dim: #cfcfcf;
+  --border: rgba(255,255,255,.35);
 }
 body.sv-high-contrast .card-img-title-name { text-shadow: 0 0 4px #000, 0 1px 10px #000; }
+
+body.sv-bold-text,
+body.sv-bold-text button,
+body.sv-bold-text input,
+body.sv-bold-text select { font-weight: 700 !important; }
+
+body.sv-underline-links a,
+body.sv-underline-links .nav-tab,
+body.sv-underline-links .see-all-btn {
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+}
+
+body.sv-no-transparency *,
+body.sv-no-transparency *::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.sv-no-transparency #header { background: var(--bg) !important; }
+body.sv-no-transparency .hdr-drop-menu,
+body.sv-no-transparency #netflix-card,
+body.sv-no-transparency .clips-nav-btn { background: var(--s1) !important; }
+
+body.sv-big-targets button,
+body.sv-big-targets .nav-tab,
+body.sv-big-targets .ob-chip,
+body.sv-big-targets .data-btn,
+body.sv-big-targets .lib-tab { padding: calc(.4em + 4px) calc(.8em + 6px); min-height: 44px; }
+body.sv-big-targets .card-ov-actions button { width: 44px; height: 44px; }
+
+body.sv-focus-outlines :focus {
+  outline: 3px solid var(--red) !important;
+  outline-offset: 2px !important;
+}
 
 /* ── CYF: SYMMETRIC PREF LISTS ───────────────────────────────────── */
 /* Likes / dislikes panels stay the same height whether empty or filled,
