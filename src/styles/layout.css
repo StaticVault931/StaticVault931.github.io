@@ -135,9 +135,9 @@
 .ob-skip:hover { background: rgba(60,60,60,.8); transform: scale(1.04); }
 .ob-skip .material-icons-round { font-size: 1rem; }
 .ob-inner {
-  max-width: 1180px;
+  max-width: 1340px;
   margin: 0 auto;
-  padding: 2.4rem 1.4rem 2rem;
+  padding: 2.2rem 1.4rem 2rem;
   animation: lsFade .5s var(--ease) .15s both;
 }
 .ob-head { text-align: center; margin-bottom: 1.4rem; }
@@ -148,10 +148,20 @@
   color: var(--text);
 }
 .ob-sub { font-size: .9rem; color: var(--muted); margin-top: .3rem; }
-/* One screen on desktop: controls left, poster grid right */
-.ob-cols { display: grid; grid-template-columns: 340px 1fr; gap: 1.6rem; align-items: start; }
-@media (max-width: 880px) { .ob-cols { grid-template-columns: 1fr; } }
-.ob-side { display: flex; flex-direction: column; gap: 1.1rem; }
+/* Big poster grid LEFT, menu column RIGHT. Both columns stretch to the
+   same height and the menu blocks spread out so the two columns END even
+   with each other. */
+.ob-cols { display: grid; grid-template-columns: 1fr 340px; gap: 1.6rem; align-items: stretch; }
+@media (max-width: 880px) {
+  .ob-cols { grid-template-columns: 1fr; }
+  .ob-side { order: -1; } /* controls first on small screens */
+}
+.ob-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  justify-content: space-between; /* blocks spread → column ends match grid */
+}
 .ob-block { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); padding: .9rem; }
 .ob-label { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 800; color: var(--text); margin-bottom: .6rem; }
 .ob-label .material-icons-round { font-size: 1rem; color: var(--red); }
@@ -282,6 +292,52 @@
 .ob-tile.hidden-pick img { opacity: .25; filter: grayscale(1); }
 .ob-tile.hidden-pick .ob-tile-cross { opacity: 1; transform: scale(1); }
 .ob-tile.picked .ob-tile-cross { opacity: 0; }
+/* Hover action row: pick a specific state without cycling */
+.ob-tile-actions {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  justify-content: center;
+  gap: .35rem;
+  padding: .35rem .2rem;
+  background: linear-gradient(to top, rgba(0,0,0,.85), transparent);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .16s, transform .16s;
+  pointer-events: none;
+}
+.ob-tile:hover .ob-tile-actions,
+.ob-tile:focus-within .ob-tile-actions {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.ob-ta {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  background: rgba(20,20,20,.85);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .14s, background .14s, border-color .14s;
+}
+.ob-ta .material-icons-round { font-size: .95rem; }
+.ob-ta:hover { transform: scale(1.15); border-color: var(--red); background: rgba(40,40,40,.95); }
+.ob-ta[data-act="liked"]:hover { color: var(--red); }
+.ob-ta[data-act="disliked"]:hover { color: #94a3b8; }
+/* Profile color swatches (onboarding step 2) */
+.ob-color-chip {
+  width: 34px;
+  height: 34px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border-width: 3px !important;
+}
+.ob-color-chip.picked { outline: 3px solid #fff; outline-offset: 2px; }
 .ob-footer { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.6rem; }
 .ob-more {
   border: none;
@@ -2060,6 +2116,17 @@ body.sv-focus-outlines :focus {
   outline: 3px solid var(--red) !important;
   outline-offset: 2px !important;
 }
+
+/* Layout resilience: whatever combination of text size / bold / big
+   targets is active, rows wrap instead of overflowing and flex children
+   are allowed to shrink */
+body.sv-text-large .sv-setting-row,
+body.sv-text-xl .sv-setting-row,
+body.sv-big-targets .sv-setting-row { flex-wrap: wrap; }
+body.sv-text-xl .ob-chips,
+body.sv-big-targets .ob-chips { gap: .55rem; }
+.ob-block, .sv-setting-info, .ob-side { min-width: 0; }
+body.sv-text-xl .nav-tabs { overflow-x: auto; scrollbar-width: none; }
 
 /* ── CYF: SYMMETRIC PREF LISTS ───────────────────────────────────── */
 /* Likes / dislikes panels stay the same height whether empty or filled,

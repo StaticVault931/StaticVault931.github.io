@@ -675,9 +675,12 @@ async function maybeShowOnboarding() {
         <div class="ob-steps" aria-hidden="true"><span class="ob-step-dot on" data-dot="1"></span><span class="ob-step-dot" data-dot="2"></span></div>
       </div>
 
-      <!-- STEP 1: taste -->
+      <!-- STEP 1: taste — big grid LEFT, menu column RIGHT -->
       <div id="ob-step1">
         <div class="ob-cols">
+          <div class="ob-main">
+            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(32)}</div>
+          </div>
           <div class="ob-side">
             <div class="ob-block">
               <div class="ob-label"><span class="material-icons-round">search</span>Add anything you love</div>
@@ -698,19 +701,18 @@ async function maybeShowOnboarding() {
               <div class="ob-chips" id="ob-ages"></div>
             </div>
           </div>
-          <div class="ob-main">
-            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(24)}</div>
-          </div>
         </div>
       </div>
 
-      <!-- STEP 2: profile & comfort -->
+      <!-- STEP 2: full profile & comfort -->
       <div id="ob-step2" style="display:none">
         <div class="ob-step2-cols">
           <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">person</span>Profile name (optional)</div>
-            <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
-            <div class="ob-hint">Creates a profile so several people can share this browser — each gets their own feed, watchlist, and settings</div>
+            <div class="ob-label"><span class="material-icons-round">person</span>Your profile</div>
+            <input type="text" class="ob-search" id="ob-profile-name" placeholder="Profile name — e.g. Alex" maxlength="20" autocomplete="off">
+            <div class="ob-label" style="margin-top:.9rem"><span class="material-icons-round">palette</span>Profile color</div>
+            <div class="ob-chips" id="ob-profile-colors"></div>
+            <div class="ob-hint">This names YOUR profile (the one you're using now). You can add more profiles later from the top-right menu so everyone gets their own feed.</div>
           </div>
           <div class="ob-block">
             <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
@@ -805,6 +807,20 @@ async function maybeShowOnboarding() {
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
   });
 
+  // Profile color swatches (step 2)
+  let pickedColor = '#e50914';
+  const colorsEl = ob.querySelector('#ob-profile-colors');
+  if (colorsEl) {
+    colorsEl.innerHTML = PROFILE_COLORS.map(c =>
+      `<button class="ob-chip ob-color-chip${c === pickedColor ? ' picked' : ''}" data-color="${c}" style="background:${c};border-color:${c}" aria-label="Profile color ${c}"></button>`).join('');
+    colorsEl.addEventListener('click', e => {
+      const chip = e.target.closest('[data-color]');
+      if (!chip) return;
+      pickedColor = chip.dataset.color;
+      colorsEl.querySelectorAll('.ob-color-chip').forEach(c => c.classList.toggle('picked', c.dataset.color === pickedColor));
+    });
+  }
+
   // Accessibility chips (multi-toggle, applied instantly so users can see;
   // these are REAL settings — they show up in Settings → Accessibility too)
   const a11yEl = ob.querySelector('#ob-a11y');
@@ -821,19 +837,32 @@ async function maybeShowOnboarding() {
     chip.classList.toggle('picked', !isOn);
   });
 
-  // Title tile: cycles neutral → loved → hidden → neutral
+  // Title tile: click cycles neutral → loved → not-my-taste → neutral,
+  // and hover reveals direct buttons: ❤ love, 👎 not my taste, 🚫 hide
   const tileHtml = x => `
-    <button class="ob-tile" data-oid="${x.id}" data-state="none">
-      <img src="${imgUrl(x.poster_path, 'w185')}" alt="${(x.title || x.name || '').replace(/"/g, '&quot;')}" loading="lazy">
+    <div class="ob-tile" data-oid="${x.id}" data-state="none" role="button" tabindex="0"
+      aria-label="${(x.title || x.name || '').replace(/"/g, '&quot;')}">
+      <img src="${imgUrl(x.poster_path, 'w185')}" alt="" loading="lazy">
       <span class="ob-tile-check material-icons-round">favorite</span>
-      <span class="ob-tile-cross material-icons-round">visibility_off</span>
-    </button>`;
+      <span class="ob-tile-cross material-icons-round">thumb_down</span>
+      <span class="ob-tile-actions">
+        <button class="ob-ta" data-act="liked" title="Love it" aria-label="Love"><span class="material-icons-round">favorite</span></button>
+        <button class="ob-ta" data-act="disliked" title="Not my taste" aria-label="Not my taste"><span class="material-icons-round">thumb_down</span></button>
+        <button class="ob-ta" data-act="hide" title="Remove from this list" aria-label="Hide"><span class="material-icons-round">visibility_off</span></button>
+      </span>
+    </div>`;
   const allItems = new Map(); // id → item, for lookups from both grid + search
 
-  const cycleTile = tile => {
+  const setTileState = (tile, next) => {
     const item = allItems.get(+tile.dataset.oid);
     if (!item) return;
-    const next = { none: 'liked', liked: 'disliked', disliked: 'none' }[tile.dataset.state || 'none'];
+    if (next === 'hide') {
+      // Just removes the tile — no recommendation signal
+      likedTitles.delete(item.id); dislikedTitles.delete(item.id);
+      tile.remove();
+      syncDone();
+      return;
+    }
     tile.dataset.state = next;
     tile.classList.toggle('picked', next === 'liked');
     tile.classList.toggle('hidden-pick', next === 'disliked');
@@ -842,11 +871,26 @@ async function maybeShowOnboarding() {
     if (next === 'disliked') dislikedTitles.set(item.id, item);
     syncDone();
   };
+  const cycleTile = tile =>
+    setTileState(tile, { none: 'liked', liked: 'disliked', disliked: 'none' }[tile.dataset.state || 'none']);
 
   const grid = ob.querySelector('#ob-grid');
   grid.addEventListener('click', e => {
     const tile = e.target.closest('.ob-tile');
-    if (tile?.dataset.oid) cycleTile(tile);
+    if (!tile?.dataset.oid) return;
+    const actBtn = e.target.closest('.ob-ta');
+    if (actBtn) {
+      const act = actBtn.dataset.act;
+      // Direct button: clicking the state you're in clears it
+      setTileState(tile, tile.dataset.state === act ? 'none' : act);
+    } else {
+      cycleTile(tile);
+    }
+  });
+  grid.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const tile = e.target.closest('.ob-tile');
+    if (tile?.dataset.oid) { e.preventDefault(); cycleTile(tile); }
   });
 
   // Tiles: 24 titles spanning the whole taste spectrum, sorted by vote
@@ -878,18 +922,23 @@ async function maybeShowOnboarding() {
       }
       return out;
     };
-    const pools = [
-      take(grab(cm, 'movie'), 5),
-      take(grab(ct, 'tv'), 5),
-      take(grab(cozy, 'movie'), 5),
-      take(grab(intense, 'movie'), 5),
-      take(grab(trend), 4),
+    const pool = [
+      ...take(grab(cm, 'movie'), 9),
+      ...take(grab(ct, 'tv'), 9),
+      ...take(grab(cozy, 'movie'), 6),
+      ...take(grab(intense, 'movie'), 6),
+      ...take(grab(trend), 4),
     ];
-    // Interleave the pools so no two neighbors share a vibe
-    const mixed = [];
-    for (let i = 0; i < 5 && mixed.length < 24; i++) {
-      pools.forEach(p => { if (p[i] && mixed.length < 24) mixed.push(p[i]); });
-    }
+    // Order the grid from lightest (kid-friendly) to most adult — no labels,
+    // no sections, just a gentle gradient down the page
+    const G_WEIGHT = { 10751: 0, 16: 1, 10402: 2, 35: 2, 12: 3, 14: 3, 10765: 3, 878: 4, 10749: 4, 10762: 0, 18: 5, 36: 5, 99: 5, 9648: 6, 10768: 6, 53: 7, 80: 7, 10752: 7, 27: 8 };
+    const maturity = x => {
+      const gs = (x.genre_ids || []).map(g => G_WEIGHT[g]).filter(v => v !== undefined);
+      const avg = gs.length ? gs.reduce((a, b) => a + b, 0) / gs.length : 4;
+      const peak = gs.length ? Math.max(...gs) : 4;
+      return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
+    };
+    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 32);
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
   } catch (err) {
@@ -930,16 +979,17 @@ async function maybeShowOnboarding() {
 
   const finish = (skipped, customize = false) => {
     if (!skipped) {
-      // Optional profile — created live so the Who's Watching dashboard
-      // shows it immediately; the user stays on it (they just made it)
+      // Profile: RENAMES the profile they're already on (this IS their
+      // setup) — never creates a duplicate. Dashboard updates live.
       const pname = ob.querySelector('#ob-profile-name')?.value.trim();
-      if (pname) {
-        try {
-          const prof = createProfile(pname);
-          if (prof?.id) switchProfile(prof.id);
+      try {
+        const activeId = getActiveProfileId();
+        if (activeId && (pname || pickedColor)) {
+          updateProfile(activeId, { ...(pname ? { name: pname } : {}), color: pickedColor });
+          updateProfileHeaderBtn?.();
           window._svRenderProfiles?.();
-        } catch (err) { console.warn('[SV Onboarding] profile create failed:', err?.message); }
-      }
+        }
+      } catch (err) { console.warn('[SV Onboarding] profile update failed:', err?.message); }
       pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
       if (pickedGenres.size) persist('prefGenres');
       dislikedGenres.forEach(g => { if (!state.prefGenreDislikes.includes(g)) state.prefGenreDislikes.push(g); });
@@ -7354,6 +7404,18 @@ function initProfilesUI() {
   document.getElementById('profiles-add-btn')?.addEventListener('click', () => openProfileEditor(null));
   document.getElementById('profile-save-btn')?.addEventListener('click', saveProfileFromEditor);
   document.getElementById('profile-delete-btn')?.addEventListener('click', deleteProfileFromEditor);
+  // Restart the full taste onboarding for the profile being edited
+  document.getElementById('profile-onboard-btn')?.addEventListener('click', () => {
+    const targetId = _editingProfileId || getActiveProfileId();
+    closeProfileEditor();
+    closeProfilesOverlay();
+    if (targetId && targetId !== getActiveProfileId()) {
+      switchProfile(targetId);
+      updateProfileHeaderBtn();
+    }
+    localStorage.removeItem('sv_onboarded');
+    maybeShowOnboarding();
+  });
   // Color picker
   const colorRow = document.getElementById('profile-color-row');
   if (colorRow) {

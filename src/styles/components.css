@@ -2663,12 +2663,21 @@ img[alt]::after {
 #page-clips.active {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box; /* padding-top stays INSIDE 100dvh — no overflow */
   height: 100vh;
   height: 100dvh; /* stable on mobile — tracks the dynamic URL bar */
   overflow: hidden;
   padding-top: 64px;
   position: relative;
 }
+/* Clips is a full-screen experience: lock document scroll (kills the stray
+   right-side scrollbar) and hide the footer that was stacking below the
+   100dvh page and forcing the page to scroll */
+html:has(#page-clips.active),
+body:has(#page-clips.active) { overflow: hidden !important; }
+body:has(#page-clips.active) #footer { display: none; }
+/* Nav arrows are always visible over everything in the feed */
+#clips-nav { display: flex !important; }
 .trailers-feed {
   flex: 1;
   /* Navigation is fully JS-driven (wheel/swipe/keys/arrows → _clipsGoTo).

@@ -498,6 +498,7 @@ export function injectOverlays() {
         </label>
         <div class="profile-editor-actions">
           <button class="ma primary" id="profile-save-btn">Save</button>
+          <button class="ma" id="profile-onboard-btn" title="Redo the taste picker from the start for this profile"><span class="material-icons-round" style="font-size:1rem">restart_alt</span> Restart Onboarding</button>
           <button class="ma danger" id="profile-delete-btn" style="display:none"><span class="material-icons-round" style="font-size:1rem">delete</span> Delete</button>
         </div>
       </div>
