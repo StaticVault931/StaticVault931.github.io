@@ -1,5 +1,5 @@
 /* ── CONFIG ──────────────────────────────────────────────────────── */
-const TMDB_RAT = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJkYTczNjY3NzU0NmZjNjc4MjgwYzQ0NmQ4YjU0YjdlYSIsIm5iZiI6MTc4MDE4MzY2NC4xOCwic3ViIjoiNmExYjcyNzAxMDQ5YTMwZjhkN2Y2ZDFlIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.yE8EJHCvta69K2M9ETHG_KvREifHmBV9X4E9vh2-CaE';
+export const TMDB_RAT = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJkYTczNjY3NzU0NmZjNjc4MjgwYzQ0NmQ4YjU0YjdlYSIsIm5iZiI6MTc4MDE4MzY2NC4xOCwic3ViIjoiNmExYjcyNzAxMDQ5YTMwZjhkN2Y2ZDFlIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.yE8EJHCvta69K2M9ETHG_KvREifHmBV9X4E9vh2-CaE';
 export const TMDB_BASE = 'https://api.themoviedb.org/3';
 export const IMG = 'https://image.tmdb.org/t/p/';
 export const ANILIST = 'https://graphql.anilist.co';

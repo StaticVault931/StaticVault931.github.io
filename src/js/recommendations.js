@@ -12,6 +12,10 @@ const _usedTitleIds = new Set();
 const _claim = (items, cap = 14) =>
   window._svClaimHomeItems ? window._svClaimHomeItems(items, cap) : (items || []).slice(0, cap);
 
+/* Day seed for occasional rows — title-referencing rows shouldn't ALL show
+   every day. Each family takes turns so the home page feels different. */
+const _daySeed = Math.floor(Date.now() / 86400000);
+
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
 function passesAgeFilter(m) {
@@ -169,6 +173,8 @@ export async function loadForYou() {
 
 /* ── BECAUSE YOU LIKED rows ──────────────────────────────────────── */
 export async function loadBecauseYouLiked() {
+  // Occasional row: shows 2 of every 3 days (skips when daySeed % 3 === 2)
+  if (_daySeed % 3 === 2) return;
   // Collect candidates: prefLikes first, then top liked items
   const candidates = [
     ...state.prefLikes.filter(x => x.id && x.type !== 'anime'),
@@ -255,14 +261,18 @@ export async function loadBecauseYouLiked() {
        ...(simD.status === 'fulfilled' ? simD.value.results || [] : [])].forEach(m => {
         if (m.id && !mSeen.has(m.id)) { mSeen.add(m.id); merged.push(m); }
       });
-      const results = _claim(merged.filter(m => !state.disliked.some(d => d.id === m.id)), 14);
+      const results = _claim(merged.filter(m =>
+        m.id !== item.id && // never show the anchor inside its own row
+        !state.disliked.some(d => d.id === m.id)), 14);
 
       if (results.length < 10) {
-        sec.style.display = 'none'; // thin rows look broken — skip
+        console.warn(`[SV BYL] "${item.title}" row too thin (${results.length} < 10) — hidden`);
+        sec.style.display = 'none';
       } else {
         renderRow(rowId, results, type);
       }
-    } catch {
+    } catch (err) {
+      console.warn(`[SV BYL] "${item.title || item.id}" row failed:`, err?.message || err);
       sec.style.display = 'none';
     }
   }
@@ -311,9 +321,15 @@ export async function loadGenreTrending() {
     const mixed = []; const ml=movies.length, sl=shows.length;
     for (let i=0;i<Math.max(ml,sl);i++) { if(movies[i])mixed.push(movies[i]); if(shows[i])mixed.push(shows[i]); }
     const filtered = _claim(mixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)), 18);
-    if (filtered.length < 10) { sec.style.display='none'; return; }
+    if (filtered.length < 10) {
+      console.warn(`[SV GenreTrending] too thin (${filtered.length} < 10) — hidden`);
+      sec.style.display='none'; return;
+    }
     row.innerHTML = filtered.map(m => makeCard(m, m.media_type)).join('');
-  } catch { sec.style.display = 'none'; }
+  } catch (err) {
+    console.warn('[SV GenreTrending] failed:', err?.message || err);
+    sec.style.display = 'none';
+  }
 }
 
 /* ── DEEP CUTS — highly rated but unseen ─────────────────────────── */
@@ -344,9 +360,15 @@ export async function loadDeepCuts() {
     const all = _claim([...movies,...shows]
       .filter(m => !watchedIds.has(m.id) && !likedIds.has(m.id) && !dislikedIds.has(m.id) && !recentIds.has(m.id))
       .sort((a,b) => (b.vote_average||0) - (a.vote_average||0)), 18);
-    if (all.length < 10) { sec.style.display='none'; return; }
+    if (all.length < 10) {
+      console.warn(`[SV DeepCuts] too thin (${all.length} < 10) — hidden`);
+      sec.style.display='none'; return;
+    }
     row.innerHTML = all.map(m => makeCard(m, m.media_type)).join('');
-  } catch { sec.style.display = 'none'; }
+  } catch (err) {
+    console.warn('[SV DeepCuts] failed:', err?.message || err);
+    sec.style.display = 'none';
+  }
 }
 
 /* ── MORE LIKE YOUR HISTORY — from recently watched ─────────────── */
@@ -355,6 +377,8 @@ export async function loadHistoryMix() {
   const row = document.getElementById('row-history-mix');
   const titleEl = document.getElementById('sec-history-mix-title');
   if (!sec || !row) return;
+  // Occasional row: shows 2 of every 3 days (different phase than BYL)
+  if (_daySeed % 3 === 1) { sec.style.display = 'none'; return; }
 
   // Pull from recently watched (not just liked) — top 4 unique items
   const history = [
@@ -388,16 +412,25 @@ export async function loadHistoryMix() {
     );
     const allRecs = recResults.flatMap(r => r.status==='fulfilled' ? r.value : []);
     const uniqSeen = new Set();
+    const anchorIds = new Set(candidates.map(c => c.id));
     const filtered = _claim(allRecs
-      .filter(m => m.id && !dislikedIds.has(m.id) && !watchedIds.has(m.id) && !uniqSeen.has(m.id) && uniqSeen.add(m.id))
+      .filter(m => m.id && !anchorIds.has(m.id) && !dislikedIds.has(m.id) && !watchedIds.has(m.id) && !uniqSeen.has(m.id) && uniqSeen.add(m.id))
       .sort((a,b) => (b.popularity||0)-(a.popularity||0)), 18);
-    if (filtered.length < 10) { sec.style.display='none'; return; }
+    if (filtered.length < 10) {
+      console.warn(`[SV HistoryMix] too thin (${filtered.length} < 10) — hidden`);
+      sec.style.display='none'; return;
+    }
     row.innerHTML = filtered.map(m => makeCard(m, m.media_type || (m.title ? 'movie' : 'tv'))).join('');
-  } catch { sec.style.display = 'none'; }
+  } catch (err) {
+    console.warn('[SV HistoryMix] failed:', err?.message || err);
+    sec.style.display = 'none';
+  }
 }
 
 /* ── BECAUSE YOU WATCHED [Title] rows ───────────────────────────── */
 export async function loadBecauseYouWatched() {
+  // Occasional row: shows every other day, offset from Because-You-Liked
+  if (_daySeed % 2 === 0) return;
   // Take top 2 recently-watched items — skipping any title that already
   // anchors a "Because you liked" or "More Like" row
   const likedIds = new Set([...(state.prefLikes||[]), ...(state.liked||[])].map(x => x.id));
@@ -457,10 +490,16 @@ export async function loadBecauseYouWatched() {
         ...(simD.status === 'fulfilled' ? simD.value.results || [] : []),
       ].filter(m => m.id && !mSeen.has(m.id) && mSeen.add(m.id));
       const results = _claim(merged
-        .filter(m => !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
-      if (results.length < 10) { sec.style.display='none'; continue; }
+        .filter(m => m.id !== item.id && !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
+      if (results.length < 10) {
+        console.warn(`[SV BYW] "${item.title || item.name}" row too thin (${results.length} < 10) — hidden`);
+        sec.style.display='none'; continue;
+      }
       renderRow(rowId, results, type);
-    } catch { sec.style.display = 'none'; }
+    } catch (err) {
+      console.warn(`[SV BYW] "${item.title || item.id}" row failed:`, err?.message || err);
+      sec.style.display = 'none';
+    }
   }
   window._svSpreadSections?.();
 }

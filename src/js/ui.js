@@ -94,6 +94,7 @@ export function makeCard(m, type, opts = {}) {
     data-rating="${esc(rating)}"
     data-poster="${esc(poster || '')}"
     data-backdrop="${esc(m.backdrop_path || '')}"
+    data-lang="${esc(m.original_language || '')}"
     aria-label="${esc(title)} (${typeLabel})">
     <div class="card-poster">
       ${imgSrc

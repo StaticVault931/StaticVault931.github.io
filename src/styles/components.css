@@ -329,7 +329,13 @@
   pointer-events: none;
   text-shadow: 0 2px 12px rgba(0,0,0,.7);
   user-select: none;
+  transition: opacity .18s;
 }
+/* Numbered cards: indent the title text past the rank digit so the two
+   never overlap; hide the digit on hover so it can't sit over buttons */
+.card:has(.card-num-overlay) .card-img-title { padding-left: 4.4rem; }
+.card:has(.card-num-overlay) .card-ov-info { padding-left: 4.4rem; }
+.card:hover .card-num-overlay { opacity: 0; }
 
 /* Card skeleton */
 @keyframes sk-shimmer {
@@ -1646,10 +1652,12 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
   opacity: 0;
   transform: scale(.82) translateY(18px);
   transition: opacity .3s var(--ease), transform .3s var(--ease);
-  /* Width is set by positionNetflixCard (≈1.4× the hovered card) — the CSS
-     cap must not fight it or the hover stops growing with bigger cards */
+  /* Width is set by positionNetflixCard (bigger than the hovered card,
+     guaranteed). NO CSS max-width — any cap here silently clamps the JS
+     width and makes the hover SMALLER than large cards. JS caps to the
+     viewport itself. */
   width: max(var(--card-w, 380px), 380px);
-  max-width: 92vw;
+  max-width: none;
   border-radius: 14px;
   overflow: hidden;
   /* Scrollable when card is capped in positionNetflixCard */
@@ -2629,7 +2637,8 @@ img[alt]::after {
 /* ── HOVER CARD (Netflix-style) ────────────────────────────────────── */
 #netflix-card {
   width: max(var(--card-w, 380px), 380px);
-  max-width: 520px;
+  /* max-width removed — it clamped the JS-computed width below the size of
+     large cards (600px card → 520px hover). JS clamps to viewport. */
 }
 
 /* ── CLIPS FEED (YouTube Shorts style) ──────────────────────────── */

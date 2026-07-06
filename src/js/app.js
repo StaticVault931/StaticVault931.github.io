@@ -9,7 +9,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchTvApiBoxOffice,
   wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
-  fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop } from './api.js';
+  fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
@@ -615,7 +615,7 @@ function applyLoadingScreenState() {
   document.body.classList.add('ls-open');
   const enterBtn = document.getElementById('ls-enter');
   if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
-  setTimeout(dismissLoadingScreen, 1600);
+  setTimeout(dismissLoadingScreen, 1000);
 }
 
 function dismissLoadingScreen() {
@@ -635,22 +635,66 @@ async function maybeShowOnboarding() {
   if (localStorage.getItem('sv_onboarded')) return;
   localStorage.setItem('sv_onboarded', '1');
 
+  const OB_LANGS = [
+    ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'],
+    ['it', 'Italian'], ['pt', 'Portuguese'], ['ja', 'Japanese'], ['ko', 'Korean'],
+    ['hi', 'Hindi'], ['zh', 'Chinese'],
+  ];
+  const OB_AGES = ['G', 'PG', 'PG-13', 'R'];
+
   const ob = document.createElement('div');
   ob.id = 'onboard-screen';
   ob.innerHTML = `
     <button class="ob-skip" id="ob-skip">Skip <span class="material-icons-round">arrow_forward</span></button>
     <div class="ob-inner">
-      <h1 class="ob-title">What do you love?</h1>
-      <p class="ob-sub">Tap anything that looks good — your feed builds itself around it. No account, ever.</p>
-      <div class="ob-chips" id="ob-chips"></div>
-      <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(12)}</div>
-      <button class="ob-done" id="ob-done">Start watching</button>
+      <div class="ob-head">
+        <h1 class="ob-title">Make it yours</h1>
+        <p class="ob-sub">Tap once to <b style="color:var(--red)">love</b> something, twice to <b style="color:#94a3b8">hide</b> it. Everything is optional.</p>
+      </div>
+      <div class="ob-cols">
+        <div class="ob-side">
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">search</span>Add anything you love</div>
+            <input type="search" class="ob-search" id="ob-search" placeholder="Type a movie or show…" autocomplete="off">
+            <div class="ob-search-results" id="ob-search-results"></div>
+          </div>
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">category</span>Genres you enjoy</div>
+            <div class="ob-chips" id="ob-chips"></div>
+          </div>
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">translate</span>Languages you watch in</div>
+            <div class="ob-chips" id="ob-langs"></div>
+            <div class="ob-hint">Pick more than one and you'll get rows like "Titles in French"</div>
+          </div>
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">shield</span>Content rating</div>
+            <div class="ob-chips" id="ob-ages"></div>
+          </div>
+        </div>
+        <div class="ob-main">
+          <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(18)}</div>
+        </div>
+      </div>
+      <div class="ob-footer">
+        <button class="ob-done" id="ob-done">Start watching</button>
+        <button class="ob-more" id="ob-more">Customize further →</button>
+      </div>
     </div>`;
   document.body.appendChild(ob);
   requestAnimationFrame(() => ob.classList.add('ob-in'));
 
   const pickedGenres = new Set();
-  const pickedTitles = new Map(); // id → item
+  const pickedLangs = new Set(['en']);
+  const likedTitles = new Map();    // id → item
+  const dislikedTitles = new Map(); // id → item
+  let pickedAge = 'PG-13';
+
+  const doneBtn = ob.querySelector('#ob-done');
+  const syncDone = () => {
+    const n = pickedGenres.size + likedTitles.size + dislikedTitles.size;
+    doneBtn.textContent = n ? `Start watching (${n} picked)` : 'Start watching';
+  };
 
   // Genre chips
   const chipsEl = ob.querySelector('#ob-chips');
@@ -660,61 +704,142 @@ async function maybeShowOnboarding() {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
     const gid = chip.dataset.gid;
-    if (pickedGenres.has(gid)) pickedGenres.delete(gid); else pickedGenres.add(gid);
+    pickedGenres.has(gid) ? pickedGenres.delete(gid) : pickedGenres.add(gid);
     chip.classList.toggle('picked', pickedGenres.has(gid));
     syncDone();
   });
 
-  const doneBtn = ob.querySelector('#ob-done');
-  const syncDone = () => {
-    const n = pickedGenres.size + pickedTitles.size;
-    doneBtn.textContent = n ? `Start watching (${n} picked)` : 'Start watching';
+  // Language chips (multi-select, English pre-selected)
+  const langsEl = ob.querySelector('#ob-langs');
+  langsEl.innerHTML = OB_LANGS.map(([code, name]) =>
+    `<button class="ob-chip${code === 'en' ? ' picked' : ''}" data-lang="${code}">${name}</button>`).join('');
+  langsEl.addEventListener('click', e => {
+    const chip = e.target.closest('.ob-chip');
+    if (!chip) return;
+    const l = chip.dataset.lang;
+    pickedLangs.has(l) ? pickedLangs.delete(l) : pickedLangs.add(l);
+    chip.classList.toggle('picked', pickedLangs.has(l));
+  });
+
+  // Age rating chips (single-select)
+  const agesEl = ob.querySelector('#ob-ages');
+  agesEl.innerHTML = OB_AGES.map(a =>
+    `<button class="ob-chip${a === pickedAge ? ' picked' : ''}" data-age="${a}">${a}</button>`).join('');
+  agesEl.addEventListener('click', e => {
+    const chip = e.target.closest('.ob-chip');
+    if (!chip) return;
+    pickedAge = chip.dataset.age;
+    agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
+  });
+
+  // Title tile: cycles neutral → loved → hidden → neutral
+  const tileHtml = x => `
+    <button class="ob-tile" data-oid="${x.id}" data-state="none">
+      <img src="${imgUrl(x.poster_path, 'w185')}" alt="${(x.title || x.name || '').replace(/"/g, '&quot;')}" loading="lazy">
+      <span class="ob-tile-check material-icons-round">favorite</span>
+      <span class="ob-tile-cross material-icons-round">visibility_off</span>
+    </button>`;
+  const allItems = new Map(); // id → item, for lookups from both grid + search
+
+  const cycleTile = tile => {
+    const item = allItems.get(+tile.dataset.oid);
+    if (!item) return;
+    const next = { none: 'liked', liked: 'disliked', disliked: 'none' }[tile.dataset.state || 'none'];
+    tile.dataset.state = next;
+    tile.classList.toggle('picked', next === 'liked');
+    tile.classList.toggle('hidden-pick', next === 'disliked');
+    likedTitles.delete(item.id); dislikedTitles.delete(item.id);
+    if (next === 'liked') likedTitles.set(item.id, item);
+    if (next === 'disliked') dislikedTitles.set(item.id, item);
+    syncDone();
   };
 
-  // Title tiles — trending movies + shows, most recognizable first
+  const grid = ob.querySelector('#ob-grid');
+  grid.addEventListener('click', e => {
+    const tile = e.target.closest('.ob-tile');
+    if (tile?.dataset.oid) cycleTile(tile);
+  });
+
+  // Tiles: even 50/50 movie/TV mix from trending, spread across genres
   try {
     const [mv, tv] = await Promise.allSettled([
       tmdb('/trending/movie/week'), tmdb('/trending/tv/week'),
     ]);
-    const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
-    const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+    const m = mv.status === 'fulfilled' ? (mv.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: 'movie' })) : [];
+    const t = tv.status === 'fulfilled' ? (tv.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: 'tv' })) : [];
+    // Spread: avoid 3+ tiles sharing a lead genre in a row
+    const spread = list => {
+      const out = []; const lastG = [];
+      for (const x of list) {
+        const g = (x.genre_ids || [])[0];
+        if (lastG.length >= 2 && lastG.every(v => v === g)) { list.push(x); continue; }
+        out.push(x); lastG.push(g); if (lastG.length > 2) lastG.shift();
+        if (out.length >= 9) break;
+      }
+      return out.length ? out : list.slice(0, 9);
+    };
     const mixed = [];
-    for (let i = 0; i < Math.max(m.length, t.length) && mixed.length < 18; i++) {
-      if (m[i]?.poster_path) mixed.push(m[i]);
-      if (t[i]?.poster_path && mixed.length < 18) mixed.push(t[i]);
-    }
-    const grid = ob.querySelector('#ob-grid');
-    grid.innerHTML = mixed.map(x => `
-      <button class="ob-tile" data-oid="${x.id}" aria-pressed="false">
-        <img src="${imgUrl(x.poster_path, 'w185')}" alt="${(x.title || x.name || '').replace(/"/g, '&quot;')}" loading="lazy">
-        <span class="ob-tile-check material-icons-round">check_circle</span>
-      </button>`).join('');
-    grid.addEventListener('click', e => {
-      const tile = e.target.closest('.ob-tile');
-      if (!tile || !tile.dataset.oid) return;
-      const item = mixed.find(x => String(x.id) === tile.dataset.oid);
-      if (!item) return;
-      if (pickedTitles.has(item.id)) pickedTitles.delete(item.id); else pickedTitles.set(item.id, item);
-      tile.classList.toggle('picked', pickedTitles.has(item.id));
-      tile.setAttribute('aria-pressed', pickedTitles.has(item.id));
-      syncDone();
-    });
-  } catch { /* tiles are optional — chips still work */ }
+    const ms = spread(m), ts = spread(t);
+    for (let i = 0; i < 9; i++) { if (ms[i]) mixed.push(ms[i]); if (ts[i]) mixed.push(ts[i]); }
+    mixed.forEach(x => allItems.set(x.id, x));
+    grid.innerHTML = mixed.map(tileHtml).join('');
+  } catch (err) {
+    console.warn('[SV Onboarding] tile fetch failed:', err?.message || err);
+    grid.innerHTML = '<p style="opacity:.6;font-size:.85rem">Couldn\'t load titles — pick genres instead.</p>';
+  }
 
-  const finish = (skipped) => {
-    // Apply picks to the feed
-    pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
-    if (pickedGenres.size) persist('prefGenres');
-    pickedTitles.forEach(item => {
-      if (!isLiked(item.id)) toggleLike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null });
-    });
-    const n = pickedGenres.size + pickedTitles.size;
-    // Dissolve into CYF when they picked things; straight to home on skip
-    if (!skipped && n) {
-      goPage('prefs');
-      toast(`${n} picks saved — fine-tune anything here`, 'tune');
+  // Search-to-add: type anything, click a result to add it as a loved tile
+  const searchInput = ob.querySelector('#ob-search');
+  const searchResults = ob.querySelector('#ob-search-results');
+  let obSearchT = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(obSearchT);
+    const q = searchInput.value.trim();
+    if (q.length < 2) { searchResults.innerHTML = ''; return; }
+    obSearchT = setTimeout(async () => {
+      const d = await tmdb('/search/multi', { query: q }).catch(() => null);
+      const hits = (d?.results || []).filter(x => (x.media_type === 'movie' || x.media_type === 'tv') && x.poster_path).slice(0, 5);
+      searchResults.innerHTML = hits.map(x => `
+        <button class="ob-sr" data-srid="${x.id}">
+          <img src="${imgUrl(x.poster_path, 'w92')}" alt="">
+          <span>${(x.title || x.name || '').slice(0, 40)}</span>
+          <span class="material-icons-round" style="margin-left:auto;font-size:1rem;color:var(--red)">add_circle</span>
+        </button>`).join('');
+      searchResults.querySelectorAll('.ob-sr').forEach(btn => btn.addEventListener('click', () => {
+        const item = hits.find(x => String(x.id) === btn.dataset.srid);
+        if (!item || allItems.has(item.id)) { btn.remove(); return; }
+        allItems.set(item.id, item);
+        likedTitles.set(item.id, item);
+        grid.insertAdjacentHTML('afterbegin', tileHtml(item));
+        const tile = grid.querySelector(`[data-oid="${item.id}"]`);
+        if (tile) { tile.dataset.state = 'liked'; tile.classList.add('picked'); }
+        searchInput.value = ''; searchResults.innerHTML = '';
+        syncDone();
+      }));
+    }, 350);
+  });
+
+  const finish = (skipped, customize = false) => {
+    if (!skipped) {
+      pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
+      if (pickedGenres.size) persist('prefGenres');
+      state.prefLangs = [...pickedLangs];
+      persist('prefLangs');
+      state.ageRating = pickedAge;
+      persist('ageRating');
+      likedTitles.forEach(item => {
+        if (!isLiked(item.id)) toggleLike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null });
+      });
+      dislikedTitles.forEach(item => {
+        addDislike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null });
+      });
+      const n = pickedGenres.size + likedTitles.size + dislikedTitles.size;
+      if (n) toast(`${n} picks saved — your feed is being tuned`, 'tune');
       if (typeof window._autoApplyFeed === 'function') window._autoApplyFeed();
     }
+    // Land on HOME — CYF only if they explicitly asked to customize further
+    if (customize) goPage('prefs');
+    else goPage('home');
     ob.classList.remove('ob-in');
     ob.classList.add('ob-out');
     setTimeout(() => ob.remove(), 800);
@@ -724,6 +849,7 @@ async function maybeShowOnboarding() {
 
   ob.querySelector('#ob-skip').addEventListener('click', () => finish(true));
   doneBtn.addEventListener('click', () => finish(false));
+  ob.querySelector('#ob-more').addEventListener('click', () => finish(false, true));
   document.addEventListener('keydown', escSkip);
 }
 
@@ -934,6 +1060,9 @@ async function loadHero(attempt = 0) {
     }
 
     state.heroItems = items;
+    // Register hero titles in the global dedup — the hero banner already
+    // showcases them, no row below should repeat them
+    items.forEach(m => { if (m?.id) _homeSeenIds.add(m.id); });
     buildHeroDots();
     const startIdx = _getHeroStartIdx(state.heroItems.length);
     showHero(startIdx);
@@ -1057,10 +1186,16 @@ function _loadRow(rowId, secId, fetchFn, type) {
       const impressionFiltered = filterByImpressions(items);
 
       // Dedup: skip items already shown in rows above so concurrent rows
-      // show a real mix, not the same titles over and over
+      // show a real mix, not the same titles over and over.
+      // RAW rows (pure data like Trending / Top 10) are exempt from being
+      // filtered — their content IS the data — but they still REGISTER
+      // their titles so every later row avoids repeating them.
+      const RAW_ROWS = rowId === 'row-trending' || rowId === 'row-top10';
       // Cross-session dedup: only filter in maximum repeat tolerance mode
       const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
-      const deduped = impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id) && !shownData[m.id]);
+      const deduped = RAW_ROWS
+        ? impressionFiltered.filter(m => m.id)
+        : impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id) && !shownData[m.id]);
 
       // Rows must feel full — 10 items minimum. Backfill from the wider
       // pool when cross-row dedup leaves the row thin; if even the raw
@@ -1440,6 +1575,55 @@ function _loadHolidayRows() {
   _scheduleSpread();
 }
 
+/* ── LANGUAGE ROWS ───────────────────────────────────────────────────
+   "Titles in French", "Titles in Korean", … — one row per extra language
+   the user selected in onboarding (English is the default baseline and
+   doesn't get its own row). Cards keep original_language so trailers can
+   be requested in that language too. */
+const LANG_NAMES = { en: 'English', fr: 'French', es: 'Spanish', de: 'German', it: 'Italian', pt: 'Portuguese', ja: 'Japanese', ko: 'Korean', hi: 'Hindi', zh: 'Chinese', ar: 'Arabic', ru: 'Russian', tr: 'Turkish', nl: 'Dutch', sv: 'Swedish', pl: 'Polish', da: 'Danish', no: 'Norwegian', th: 'Thai' };
+
+function _loadLanguageRows() {
+  const langs = (state.prefLangs || []).filter(l => l !== 'en').slice(0, 3);
+  langs.forEach(lang => {
+    const name = LANG_NAMES[lang] || lang.toUpperCase();
+    const rowId = `row-lang-${lang}`;
+    const secId = `sec-${rowId}`;
+    let sec = document.getElementById(secId);
+    if (!sec) {
+      const home = document.getElementById('page-home');
+      if (!home) return;
+      sec = document.createElement('section');
+      sec.className = 'section';
+      sec.id = secId;
+      sec.innerHTML = `
+        <div class="sec-header"><h2 class="sec-title"><span class="material-icons-round sec-icon" style="color:#38bdf8">translate</span>Titles in ${name}</h2></div>
+        <div class="row-wrap"><div class="card-row" id="${rowId}"></div></div>`;
+      const anchor = document.getElementById('sec-new') || document.getElementById('sec-trending');
+      if (anchor?.parentElement === home) anchor.after(sec); else home.appendChild(sec);
+    }
+    _scheduleRowLoad(rowId, secId, async () => {
+      const [mv, tv] = await Promise.allSettled([
+        tmdb('/discover/movie', { with_original_language: lang, sort_by: 'popularity.desc', 'vote_count.gte': 100 }),
+        tmdb('/discover/tv',    { with_original_language: lang, sort_by: 'popularity.desc', 'vote_count.gte': 50 }),
+      ]);
+      const m = mv.status === 'fulfilled' ? (mv.value.results || []).map(x => ({ ...x, media_type: 'movie' })) : [];
+      const t = tv.status === 'fulfilled' ? (tv.value.results || []).map(x => ({ ...x, media_type: 'tv' })) : [];
+      const out = [];
+      for (let i = 0; i < Math.max(m.length, t.length); i++) { if (m[i]) out.push(m[i]); if (t[i]) out.push(t[i]); }
+      if (!out.length) console.warn(`[SV LangRow] "Titles in ${name}" returned 0 items`);
+      return out;
+    }, null);
+  });
+}
+
+/* Reset the global home dedup registry — hero titles stay registered
+   because the banner already shows them (a row repeating them is exactly
+   the "Enola Holmes 3 everywhere" problem). */
+function _resetHomeSeen() {
+  _homeSeenIds.clear();
+  (state.heroItems || []).forEach(m => { if (m?.id) _homeSeenIds.add(m.id); });
+}
+
 /* ── HOME SECTION INTERLEAVING ───────────────────────────────────────
    Never show two rows of the same *kind* back to back: title-referencing
    rows ("Because you liked X", "More Like X"), provider rows, holiday
@@ -1449,8 +1633,9 @@ function _homeSectionKind(sec) {
   if (id.startsWith('sec-row-hol-')) return 'holiday';
   if (id.startsWith('sec-because-') || id.startsWith('sec-watched-') || id === 'sec-history-mix') return 'title';
   if (id.startsWith('sec-on-')) return 'provider';
-  // "Trending in Japan/UK/…" + Trending/Trending-in-genre — never adjacent
-  if (id.startsWith('sec-trend-') || id === 'sec-trending' || id === 'sec-genre-trending') return 'trending';
+  // "Trending in Japan/UK/…" + Trending / Top 10 / Trending-in-genre —
+  // all chart-style rows; they need real distance between them
+  if (id.startsWith('sec-trend-') || id === 'sec-trending' || id === 'sec-genre-trending' || id === 'sec-top10') return 'trending';
   if (['sec-90s-nostalgia', 'sec-2000s', 'sec-retro-tv', 'sec-classics'].includes(id)) return 'era';
   if (['sec-heist', 'sec-time-travel', 'sec-post-apoc', 'sec-space', 'sec-superhero'].includes(id)) return 'concept';
   if (['sec-action', 'sec-comedy', 'sec-horror', 'sec-drama', 'sec-scifi', 'sec-romance', 'sec-dark-comedy', 'sec-mystery-film', 'sec-musicals'].includes(id)) return 'genre';
@@ -1461,22 +1646,35 @@ function _homeSectionKind(sec) {
   return 'std';
 }
 
+// Minimum spacing between rows of the same kind. Default 1 = never
+// adjacent; trending/chart rows ("Trending in the UK", "Top 10") need
+// 3 rows of anything else between them; title-referencing rows need 2.
+const _KIND_GAP = { trending: 3, title: 2 };
+
 function _spreadHomeSections() {
   const home = document.getElementById('page-home');
   if (!home) return;
   const secs = [...home.querySelectorAll('.section')]
     .filter(s => s.parentElement === home || s.parentElement?.parentElement === home)
     .filter(s => s.style.display !== 'none');
-  for (let i = 1; i < secs.length; i++) {
+  const lastIdx = {};
+  let guard = secs.length * 3; // safety bound against pathological layouts
+  for (let i = 0; i < secs.length && guard-- > 0; i++) {
     const kind = _homeSectionKind(secs[i]);
     if (kind === 'std') continue;
-    if (_homeSectionKind(secs[i - 1]) !== kind) continue;
-    // Two same-kind rows adjacent → pull the next different-kind section up
-    let j = i + 1;
-    while (j < secs.length && _homeSectionKind(secs[j]) === kind) j++;
-    if (j >= secs.length) break;
-    secs[i].parentNode.insertBefore(secs[j], secs[i]);
-    secs.splice(i, 0, secs.splice(j, 1)[0]);
+    const gap = _KIND_GAP[kind] || 1;
+    if (lastIdx[kind] !== undefined && i - lastIdx[kind] <= gap) {
+      // Too close to the previous same-kind row → pull the next
+      // different-kind section up in front of this one
+      let j = i + 1;
+      while (j < secs.length && _homeSectionKind(secs[j]) === kind) j++;
+      if (j >= secs.length) { lastIdx[kind] = i; continue; } // nothing to swap in
+      secs[i].parentNode.insertBefore(secs[j], secs[i]);
+      secs.splice(i, 0, secs.splice(j, 1)[0]);
+      i--; // re-evaluate the pulled-up section at this position
+      continue;
+    }
+    lastIdx[kind] = i;
   }
 }
 
@@ -1572,7 +1770,7 @@ window._svSummonRow = function (rowId) {
 let _homeLoading = false; // kept for refreshFeed compat only
 
 async function loadHomeRows() {
-  _homeSeenIds.clear();
+  _resetHomeSeen();
   _lazyObs.forEach(o => o.disconnect());
   _lazyObs.clear();
 
@@ -1657,7 +1855,7 @@ function _moveTrendingDown() {
 }
 
 async function _loadHomeRowsFresh(showSkeletons = false) {
-  if (showSkeletons) _homeSeenIds.clear();
+  if (showSkeletons) _resetHomeSeen();
   const prefG = state.prefGenres;
   const gOpts = (genreId, extra = {}) => ({
     with_genres: prefG.length ? `${genreId}|${prefG.slice(0, 2).join('|')}` : String(genreId),
@@ -1667,7 +1865,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   const rng = state._randomPage || 1;
   const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
 
-  if (showSkeletons) _homeSeenIds.clear();
+  if (showSkeletons) _resetHomeSeen();
 
   // Trending + For You first
   await Promise.allSettled([
@@ -1754,8 +1952,12 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       byType.tv[Math.floor(Math.random() * byType.tv.length)],
       byType.anime[Math.floor(Math.random() * byType.anime.length)],
     ].filter((id, i, a) => id && a.indexOf(id) === i); // deduplicate
-    // Also pick 2 random country rows per session
-    const countryPicks = [...COUNTRY_ROW_IDS].sort(() => Math.random() - .5).slice(0, 2);
+    // Pick 2 country rows per session — rows matching the user's preferred
+    // languages ALWAYS take priority over random ones
+    const LANG_TO_ROWS = { ja: ['row-trend-jp'], ko: ['row-trend-kr'], en: ['row-trend-gb'], hi: ['row-trend-in'], fr: ['row-trend-fr'], de: ['row-trend-de'], pt: ['row-trend-br'], es: ['row-trend-es', 'row-trend-mx'], it: ['row-trend-it'] };
+    const preferredCountry = (state.prefLangs || []).flatMap(l => LANG_TO_ROWS[l] || []).sort(() => Math.random() - .5);
+    const otherCountry = COUNTRY_ROW_IDS.filter(id => !preferredCountry.includes(id)).sort(() => Math.random() - .5);
+    const countryPicks = [...preferredCountry, ...otherCountry].slice(0, 2);
     stdSelected = [...picks, ...countryPicks];
     sessionStorage.setItem(stdSessionKey, JSON.stringify(stdSelected));
   }
@@ -1776,6 +1978,10 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Seasonal rows — the calendar windows cover the whole year
   _loadHolidayRows();
+
+  // Language rows — "Titles in French" etc. for every extra language the
+  // user picked in onboarding (beyond English), up to 3
+  _loadLanguageRows();
 
   // ── WAVE 3: Curated rows — randomly selected, deferred to scroll ───
   const pRng = state._randomPage || 1;
@@ -3044,10 +3250,12 @@ function buildSettingsUI() {
   });
 }
 
-const _prefListSkeleton = `
-  <div class="pref-tag pref-tag-sk sk" style="width:120px;height:32px"></div>
-  <div class="pref-tag pref-tag-sk sk" style="width:90px;height:32px"></div>
-  <div class="pref-tag pref-tag-sk sk" style="width:140px;height:32px"></div>`;
+// Clean empty state — no fake skeleton shimmer (looked like stuck loading)
+const _prefEmpty = (icon, text) => `
+  <div class="pref-list-empty">
+    <span class="material-icons-round" style="font-size:1.6rem;opacity:.35">${icon}</span>
+    <p class="muted-note" style="font-size:.78rem;margin-top:.4rem">${text}</p>
+  </div>`;
 
 function renderPrefLists() {
   const ll = document.getElementById('pref-likes-list');
@@ -3059,7 +3267,7 @@ function renderPrefLists() {
         <button class="pref-tag-remove" data-pref-remove-like="${esc(x.id)}" aria-label="Remove">
           <span class="material-icons-round">close</span>
         </button>
-      </div>`).join('') || `<div class="pref-list-empty">${_prefListSkeleton}<p class="muted-note" style="font-size:.78rem;margin-top:.6rem">Search for titles above to add them here</p></div>`;
+      </div>`).join('') || _prefEmpty('favorite_border', 'Nothing yet — search above to add titles you love');
   }
 
   const dl = document.getElementById('pref-dislikes-list');
@@ -3071,7 +3279,7 @@ function renderPrefLists() {
         <button class="pref-tag-remove" data-pref-remove-dis="${esc(x.id)}" aria-label="Remove">
           <span class="material-icons-round">close</span>
         </button>
-      </div>`).join('') || `<div class="pref-list-empty">${_prefListSkeleton}<p class="muted-note" style="font-size:.78rem;margin-top:.6rem">Search for titles above to add them here</p></div>`;
+      </div>`).join('') || _prefEmpty('thumb_down_off_alt', 'Nothing yet — search above to add titles to avoid');
   }
 }
 
@@ -4835,7 +5043,7 @@ function animatedRefreshFeed() {
   setTimeout(() => {
     _clearRowCache();
     _homeLoading = false;
-    _homeSeenIds.clear();
+    _resetHomeSeen();
     // Always use a different page so content is genuinely new
     state._randomPage = Math.floor(Math.random() * 6) + 2;
     loadHero().catch(() => {});
@@ -4861,7 +5069,7 @@ function refreshFeed(randomize = false, stayOnPage = false) {
   // Clear observers and allow loadHomeRows to run again
   _lazyObs.forEach(obs => obs.disconnect());
   _lazyObs.clear();
-  _homeSeenIds.clear();
+  _resetHomeSeen();
   _homeLoading = false;
   _clearRowCache(); // force fresh fetch on next load
   sessionStorage.removeItem('sv_trend_views'); // reset trending position to near-top
@@ -7738,17 +7946,23 @@ async function _loadCardLogo(card) {
     const ep = type === 'anime' ? 'tv' : type;
     // Direct fetch — avoid tmdb() adding language=en-US which overrides include_image_language in Firefox
     const u = new URL(`${TMDB_BASE}/${ep}/${id}/images`);
-    u.searchParams.set('include_image_language', 'en,null');
+    // English first (most legible baked-in titles), plus the user's other
+    // preferred languages so foreign titles get language-matching art
+    const artLangs = [...new Set(['en', ...(state.prefLangs || [])])].join(',');
+    u.searchParams.set('include_image_language', `${artLangs},null`);
     const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
     if (!r.ok) throw new Error('logo fetch failed');
     const data = await r.json();
 
-    // Best case: an ENGLISH backdrop — the title text is baked into the art
-    // itself, so no overlay text or logo is needed at all
-    const enBackdrops = (data.backdrops || [])
-      .filter(b => b.iso_639_1 === 'en' && b.file_path)
-      .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-    const enBackdrop = enBackdrops[0] ? `https://image.tmdb.org/t/p/w780${enBackdrops[0].file_path}` : null;
+    // Best case: a backdrop WITH the title text baked into the art itself —
+    // English first, then the user's other preferred languages
+    const langOrder = [...new Set(['en', ...(state.prefLangs || [])])];
+    const titledBackdrops = (data.backdrops || [])
+      .filter(b => b.file_path && langOrder.includes(b.iso_639_1))
+      .sort((a, b) =>
+        (langOrder.indexOf(a.iso_639_1) - langOrder.indexOf(b.iso_639_1)) ||
+        ((b.vote_average || 0) - (a.vote_average || 0)));
+    const enBackdrop = titledBackdrops[0] ? `https://image.tmdb.org/t/p/w780${titledBackdrops[0].file_path}` : null;
 
     const allLogos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
     const best = allLogos.find(l => l.iso_639_1 === 'en' && l.file_path) || allLogos.find(l => l.file_path);
@@ -8216,7 +8430,7 @@ async function showNetflixCard(card) {
 
   const _hoverTitle = card.dataset.title || '';
   const _hoverYear  = card.dataset.year  || '';
-  const trailerKey = await fetchTrailerKey(id, type, _hoverTitle, _hoverYear);
+  const trailerKey = await fetchTrailerKey(id, type, _hoverTitle, _hoverYear, card.dataset.lang || '');
 
   if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
@@ -8300,15 +8514,14 @@ function positionNetflixCard(card, nc) {
 
   const marginH = 12;
 
-  // Card width: proportional to the hovered card AND guaranteed to be at
-  // least 90px wider than it, so the hover always visibly outgrows and
-  // covers the original card on every page (home rows, search grid,
-  // library, person page). Clamped so content fits: ≥340px for buttons
-  // and text, ≤60vw / viewport minus margins.
+  // Card width: ALWAYS bigger than the hovered card — 1.35× its width and
+  // never less than +80px, whichever is larger. The only cap is the
+  // viewport itself (no percentage cap: on smaller windows a percentage
+  // cap used to make the hover SMALLER than large cards, which defeats
+  // the whole point of the hover).
   const ncW = Math.round(Math.min(
-    Math.max(rect.width * 1.5, rect.width + 90, 340),
-    vpW - marginH * 2,
-    vpW * 0.6
+    Math.max(rect.width * 1.35, rect.width + 80, 340),
+    vpW - marginH * 2
   ));
   nc.style.width = `${ncW}px`;
   nc.style.maxHeight = '';     // clear any previous max-height
@@ -9024,6 +9237,24 @@ function _ytListen(iframe) {
   setTimeout(send, 900);
 }
 
+/* Global YouTube diagnostics — logs player errors (bad/removed videos,
+   embed-blocked titles) so failing trailers are visible in the console.
+   YT error codes: 2 bad param, 5 HTML5 error, 100 not found/private,
+   101/150 embedding disabled by owner. */
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string' || !e.origin.includes('youtube')) return;
+  try {
+    const d = JSON.parse(e.data);
+    if (d.event === 'onError' || d.info?.playerState === -1 && d.event === 'infoDelivery' && d.info?.videoData?.errorCode) {
+      console.warn('[SV YT] player error:', d.info ?? d);
+    }
+    if (d.event === 'onError') {
+      const codes = { 2: 'bad video id', 5: 'HTML5 player error', 100: 'video not found/private', 101: 'embedding disabled', 150: 'embedding disabled' };
+      console.warn(`[SV YT] trailer failed — error ${d.info}: ${codes[d.info] || 'unknown'}`);
+    }
+  } catch { /* non-JSON messages from other frames — ignore */ }
+});
+
 function _clipsEmbedUrl(key, autoplay, mute) {
   return `https://www.youtube.com/embed/${key}?autoplay=${autoplay}&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
 }
@@ -9077,13 +9308,24 @@ function _unloadClipSlide(slide) {
 // Back-compat alias (used by dislike handler / dwell observer)
 function _pauseTrailerSlide(slide) { _unloadClipSlide(slide); }
 
-async function fetchTrailerKey(id, type, title = '', year = '') {
+async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
   let key = _hoverTrailerCache.get(id);
   if (key !== undefined) return key;
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
-    const data = await tmdb(`/${endpoint}/videos`);
-    const vids = data.results || [];
+    // Language-matched trailers: when the title's original language is one
+    // of the user's preferred languages, try trailers IN that language
+    // first ("Titles in French" row → French-audio trailer), then English.
+    const wantLang = origLang && origLang !== 'en' && (state.prefLangs || []).includes(origLang) ? origLang : null;
+    let vids = [];
+    if (wantLang) {
+      const langData = await tmdb(`/${endpoint}/videos`, { language: wantLang }).catch(() => null);
+      vids = langData?.results || [];
+    }
+    if (!vids.some(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'))) {
+      const data = await tmdb(`/${endpoint}/videos`);
+      vids = [...vids, ...(data.results || [])];
+    }
     // Use YouTube built-in trailers
     const yt = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
                vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
@@ -9093,9 +9335,11 @@ async function fetchTrailerKey(id, type, title = '', year = '') {
       key = yt.key;
     } else {
       key = '__none__';
+      console.warn(`[SV Trailer] no YouTube video found for ${type}/${id} "${title}"`);
     }
-  } catch {
+  } catch (err) {
     key = '__none__';
+    console.warn(`[SV Trailer] videos fetch failed for ${type}/${id}:`, err?.message || err);
   }
   _hoverTrailerCache.set(id, key);
   if (_hoverTrailerCache.size > 200) {

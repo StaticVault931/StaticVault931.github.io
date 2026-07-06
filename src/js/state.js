@@ -69,6 +69,7 @@ export const state = {
   prefGenreDislikes:  load('sv_pref_genre_dislikes', []),  // [genreId] — disliked genres
   prefTagLikes:    load('sv_pref_tag_likes', []),    // [{id,name}] — liked TMDB keywords
   prefTagDislikes: load('sv_pref_tag_dislikes', []), // [{id,name}] — disliked TMDB keywords
+  prefLangs:       load('sv_pref_langs', []),        // [iso639] — preferred audio/content languages ('en','fr',…)
   lastProvider: load('sv_last_provider', 'vidsrc'),
 
   // Per-account settings
@@ -101,6 +102,7 @@ const PERSIST_MAP = {
   prefGenreDislikes:  'sv_pref_genre_dislikes',
   prefTagLikes:       'sv_pref_tag_likes',
   prefTagDislikes:    'sv_pref_tag_dislikes',
+  prefLangs:          'sv_pref_langs',
   lastProvider:       'sv_last_provider',
   disabledShortcuts:    'sv_disabled_shortcuts',
 };
