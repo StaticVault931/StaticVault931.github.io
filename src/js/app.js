@@ -750,7 +750,7 @@ async function maybeShowOnboarding() {
         </div>
       </div>
 
-      <!-- STEP 2: profile creation (mirrors the real profile editor) + comfort -->
+      <!-- STEP 2: FULL profile setup (name, picture, color, kid mode) + comfort -->
       <div id="ob-step2" style="display:none">
         <div class="ob-step2-wrap">
           <div class="ob-block ob-profile-card">
@@ -759,9 +759,18 @@ async function maybeShowOnboarding() {
               <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
               <div class="ob-profile-fields">
                 <input type="text" class="ob-search" id="ob-profile-name" placeholder="Profile name — e.g. Alex" maxlength="20" autocomplete="off">
-                <div class="ob-chips" id="ob-profile-colors" style="margin-top:.6rem"></div>
+                <div class="ob-label" style="margin-top:.8rem"><span class="material-icons-round">image</span>Profile picture</div>
+                <div class="ob-chips" id="ob-profile-avatars"></div>
+                <div class="ob-label" style="margin-top:.8rem"><span class="material-icons-round">palette</span>Profile color</div>
+                <div class="ob-chips" id="ob-profile-colors"></div>
               </div>
             </div>
+            <label class="ob-kids-row" for="ob-kids-toggle">
+              <span class="material-icons-round" style="color:#fbbf24">child_care</span>
+              <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
+                <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
+              <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
+            </label>
             <div class="ob-hint">This is YOUR profile (the one you're using now) — your picks, watchlist, and settings live here. Add more profiles later from the top-right menu.</div>
           </div>
           <div class="ob-block">
@@ -893,15 +902,22 @@ async function maybeShowOnboarding() {
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
   });
 
-  // Profile card (step 2) — prefilled from the ACTIVE profile: if they
-  // already named it (e.g. created it from Who's Watching), it shows here
+  // Profile card (step 2) — prefilled from the ACTIVE profile: name,
+  // color, AND avatar carry over if they were already set (e.g. the
+  // profile was created from Who's Watching)
   const _activeProf = (getProfiles() || []).find(p => p.id === getActiveProfileId());
   let pickedColor = _activeProf?.color && _activeProf.color !== 'transparent' ? _activeProf.color : '#e50914';
+  let pickedAvatar = _activeProf?.avatar || '';
   const nameInput = ob.querySelector('#ob-profile-name');
   if (nameInput && _activeProf?.name && _activeProf.name !== 'Me') nameInput.value = _activeProf.name;
   const avatarPrev = ob.querySelector('#ob-avatar-preview');
   const syncAvatar = () => {
     if (!avatarPrev) return;
+    if (pickedAvatar) {
+      avatarPrev.style.background = 'transparent';
+      avatarPrev.innerHTML = `<img src="${esc(pickedAvatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+      return;
+    }
     avatarPrev.style.background = pickedColor;
     const initial = (nameInput?.value.trim() || _activeProf?.name || '')[0];
     avatarPrev.innerHTML = initial
@@ -909,6 +925,28 @@ async function maybeShowOnboarding() {
       : '<span class="material-icons-round">person</span>';
   };
   nameInput?.addEventListener('input', syncAvatar);
+
+  // Picture options — same set the real profile editor offers
+  const OB_AVATARS = [
+    ['', 'Initial'],
+    ['assets/icons/favicon.png', 'SV931'],
+    ['https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', 'StaticQuasar'],
+  ];
+  const avatarsEl = ob.querySelector('#ob-profile-avatars');
+  if (avatarsEl) {
+    avatarsEl.innerHTML = OB_AVATARS.map(([url, label]) => `
+      <button class="ob-chip ob-avatar-chip${url === pickedAvatar ? ' picked' : ''}" data-avatar="${esc(url)}" title="${label}" aria-label="Avatar: ${label}">
+        ${url ? `<img src="${esc(url)}" alt="">` : '<span class="material-icons-round">font_download</span>'}
+      </button>`).join('');
+    avatarsEl.addEventListener('click', e => {
+      const chip = e.target.closest('[data-avatar]');
+      if (chip === null || chip === undefined) return;
+      pickedAvatar = chip.dataset.avatar || '';
+      avatarsEl.querySelectorAll('.ob-avatar-chip').forEach(c => c.classList.toggle('picked', (c.dataset.avatar || '') === pickedAvatar));
+      syncAvatar();
+    });
+  }
+
   const colorsEl = ob.querySelector('#ob-profile-colors');
   if (colorsEl) {
     colorsEl.innerHTML = PROFILE_COLORS.map(c =>
@@ -922,6 +960,14 @@ async function maybeShowOnboarding() {
     });
   }
   syncAvatar();
+
+  // Kid-Guided Mode — same setting as Settings → Content and the profile
+  // editor; toggling here applies immediately
+  const kidsToggle = ob.querySelector('#ob-kids-toggle');
+  if (kidsToggle) {
+    kidsToggle.checked = !!getSetting('kidsMode');
+    kidsToggle.addEventListener('change', () => setSetting('kidsMode', kidsToggle.checked));
+  }
 
   // Accessibility chips (multi-toggle, applied instantly so users can see;
   // these are REAL settings — they show up in Settings → Accessibility too)
@@ -1090,8 +1136,8 @@ async function maybeShowOnboarding() {
       const pname = ob.querySelector('#ob-profile-name')?.value.trim();
       try {
         const activeId = getActiveProfileId();
-        if (activeId && (pname || pickedColor)) {
-          updateProfile(activeId, { ...(pname ? { name: pname } : {}), color: pickedColor });
+        if (activeId) {
+          updateProfile(activeId, { ...(pname ? { name: pname } : {}), color: pickedColor, avatar: pickedAvatar || null });
           updateProfileHeaderBtn?.();
           window._svRenderProfiles?.();
         }
@@ -1334,6 +1380,8 @@ async function loadHero(attempt = 0) {
       : [];
 
     let items = [...all.slice(0, 5), ...tvItems].slice(0, 8);
+    // G-level: hero comes ONLY from certification-verified discover
+    if (_effAgeLevel() <= 2) items = [];
     // Restrictive profiles may thin the pool — top up with capped discover
     if (items.length < 4 && _effAgeLevel() <= 4) {
       const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300 }).catch(() => null);
@@ -2379,6 +2427,9 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       const lvl = _effAgeLevel();
       let pool = (d.results || []).filter(m =>
         m.media_type !== 'person' && _ageSafeItem(m) && _prefSafeItem(m));
+      // G-level: don't trust genre heuristics AT ALL — the whole chart is
+      // rebuilt from certification-verified (G or lower) discover results
+      if (lvl <= 2) pool = [];
       // Restrictive profiles: top up with certification-capped popular
       // titles so "Trending" is a full, genuinely kid-appropriate chart
       if (pool.length < 12 && lvl <= 4) {
@@ -2470,7 +2521,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     .map(r => r.id);
   const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
 
-  const hideAnime = getSetting('hideAnime');
+  const hideAnime = getSetting('hideAnime') || getSetting('kidsMode'); // kid mode: no anime rows
   // Show/hide sections based on selection; always hide anime rows if hideAnime is on
   STD_ROW_POOL.forEach(r => {
     const sec = document.getElementById(r.sec);
@@ -2499,6 +2550,8 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   _scheduleRowLoad('row-top10', 'sec-top10', async () => {
     const d = await tmdb('/trending/all/day', { page: 1 });
     let pool = (d.results || []).filter(m => m.media_type !== 'person' && _ageSafeItem(m) && _prefSafeItem(m));
+    // G-level: certification-verified titles only — heuristics aren't enough
+    if (_effAgeLevel() <= 2) pool = [];
     if (pool.length < 10) {
       const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 200 }).catch(() => null);
       const have = new Set(pool.map(m => m.id));
@@ -2807,7 +2860,7 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
   });
   const activeIds = new Set([...alwaysShow, ...selected]);
 
-  const _hideAnime = getSetting('hideAnime');
+  const _hideAnime = getSetting('hideAnime') || getSetting('kidsMode'); // kid mode: no anime rows
   // Hide sections not in active set; also hide anime catalog rows if hideAnime is on
   ROW_CATALOG.forEach(r => {
     const sec = document.getElementById(r.sec);
@@ -7795,6 +7848,20 @@ function openProfileEditor(profileId) {
     el.classList.toggle('on', el.dataset.avatar === currentAvatar);
   });
   colorRow?.querySelectorAll('.profile-color-swatch').forEach(s => s.classList.toggle('on', s.dataset.color === color));
+
+  // Kid-Guided Mode — one setting, three doors (editor / Settings / onboarding)
+  const kidsChk = document.getElementById('profile-kids-toggle');
+  if (kidsChk) {
+    kidsChk.checked = !!getSetting('kidsMode');
+    if (!kidsChk._svWired) {
+      kidsChk._svWired = true;
+      kidsChk.addEventListener('change', () => {
+        setSetting('kidsMode', kidsChk.checked);
+        buildSettingsUI(); // keep the Settings page toggle in sync visually
+        toast(kidsChk.checked ? 'Kid-Guided Mode on — feed refined for kids' : 'Kid-Guided Mode off', 'child_care');
+      });
+    }
+  }
 
   // Wire quick avatar clicks (once per open — check wired flag)
   if (!ov._quickAvatarWired) {

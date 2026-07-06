@@ -3158,3 +3158,36 @@ body.sv-text-large .footer-col a, body.sv-text-xl .footer-col a, body.sv-text-xx
 body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv-text-xxl .footer-legal-btn, body.sv-text-max .footer-legal-btn {
   font-size: 1em !important;
 }
+
+/* ── PROFILE EDITOR — revamp pass 2 ──────────────────────────────── */
+#profile-editor-overlay .profile-editor-modal,
+#profile-editor-overlay > div:first-child {
+  max-width: 640px;
+}
+#profile-editor-overlay .pref-input {
+  font-size: 1rem;
+  padding: .65rem .9rem;
+  border-radius: 10px;
+}
+#profile-editor-overlay .profile-field-label {
+  font-size: .78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+}
+#profile-editor-overlay .profile-color-row { gap: .5rem; }
+#profile-editor-overlay .profile-color-swatch {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  transition: transform .14s, outline-color .14s;
+}
+#profile-editor-overlay .profile-color-swatch:hover { transform: scale(1.15); }
+#profile-editor-overlay .profile-color-swatch.on { outline: 3px solid #fff; outline-offset: 2px; }
+#profile-editor-overlay .pe-quick-avatar {
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform .14s, outline-color .14s;
+}
+#profile-editor-overlay .pe-quick-avatar:hover { transform: scale(1.08); }
+#profile-editor-overlay .pe-quick-avatar.on { outline: 3px solid var(--red); outline-offset: 2px; }

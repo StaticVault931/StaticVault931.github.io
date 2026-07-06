@@ -496,6 +496,12 @@ export function injectOverlays() {
         <label class="profile-field-label">Accent Color
           <div class="profile-color-row" id="profile-color-row"></div>
         </label>
+        <label class="ob-kids-row" for="profile-kids-toggle" style="margin-top:.8rem">
+          <span class="material-icons-round" style="color:#fbbf24">child_care</span>
+          <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
+            <small>G-level rows, kid-safe trending &amp; search, no anime rows. Synced with Settings → Content. Guidance, not a lock.</small></span>
+          <input type="checkbox" id="profile-kids-toggle" class="ob-kids-check">
+        </label>
         <div class="profile-editor-actions">
           <button class="ma primary" id="profile-save-btn">Save</button>
           <button class="ma" id="profile-onboard-btn" title="Open the taste picker again — your current preferences stay"><span class="material-icons-round" style="font-size:1rem">tune</span> Onboarding</button>

@@ -101,14 +101,22 @@
 .ls-sep { color: var(--s4); }
 
 /* ── FIRST-START ONBOARDING (taste picker) ───────────────────────── */
+/* Full-viewport app-like layout: header + content + footer always fit the
+   screen — the PAGE never scrolls. Only the poster grid scrolls internally
+   when there are more tiles than fit. */
 #onboard-screen {
   position: fixed;
   inset: 0;
   z-index: 9990;
   background: linear-gradient(180deg, #070707 0%, #0d0709 100%);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   opacity: 0;
   transition: opacity .5s var(--ease);
+}
+@media (max-width: 880px) {
+  #onboard-screen { display: block; overflow-y: auto; }
 }
 #onboard-screen.ob-in { opacity: 1; }
 #onboard-screen.ob-out { opacity: 0; pointer-events: none; transition: opacity .75s var(--ease); }
@@ -135,16 +143,28 @@
 .ob-skip:hover { background: rgba(60,60,60,.8); transform: scale(1.04); }
 .ob-skip .material-icons-round { font-size: 1rem; }
 .ob-inner {
-  max-width: 1400px;
+  max-width: 1560px;
+  width: 100%;
   margin: 0 auto;
-  padding: 2.2rem 1.4rem 2rem;
+  padding: 1.4rem 2rem 0;
   animation: lsFade .5s var(--ease) .15s both;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+#ob-step1 { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#ob-step2 { flex: 1; min-height: 0; overflow-y: auto; padding-top: .6rem; }
+@media (max-width: 880px) {
+  .ob-inner { height: auto; display: block; padding: 1.4rem 1rem 0; }
+  #ob-step1 { display: block; }
 }
 .ob-head { text-align: center; margin-bottom: 1.2rem; }
 /* Step 1 on desktop: the heading sits over the poster grid (right of the
    menu column) so it lines up with the content instead of floating left */
 @media (min-width: 881px) {
-  .ob-head.ob-head-grid { text-align: left; padding-left: calc(360px + 1.7rem); }
+  .ob-head.ob-head-grid { text-align: left; padding-left: calc(330px + 1.6rem); }
+  .ob-head { flex-shrink: 0; }
 }
 .ob-title {
   font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
@@ -153,21 +173,29 @@
   color: var(--text);
 }
 .ob-sub { font-size: .9rem; color: var(--muted); margin-top: .3rem; }
-/* Menu column LEFT, big poster grid RIGHT. Both columns stretch to the
-   same height and the menu blocks spread out so the two columns END even
-   with each other. */
-.ob-cols { display: grid; grid-template-columns: 360px 1fr; gap: 1.7rem; align-items: stretch; }
+/* Menu column LEFT (hugging the left edge), big poster grid RIGHT filling
+   the rest. Both columns are exactly the available height — they end
+   together, right above the footer. */
+.ob-cols {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 1.6rem;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
 @media (max-width: 880px) {
-  .ob-cols { grid-template-columns: 1fr; }
+  .ob-cols { display: block; }
 }
 .ob-side {
   display: flex;
   flex-direction: column;
   gap: 1rem; /* consistent gaps — no space-between (it made random holes) */
+  min-height: 0;
+  overflow-y: auto;      /* sidebar can never push the footer off-screen */
+  scrollbar-width: thin;
+  padding-bottom: .3rem;
 }
-/* Only the LAST block stretches so the column still ends level with the
-   grid, without gaps between the others */
-.ob-side .ob-block:last-child { flex: 1; }
 .ob-block { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); padding: .9rem; }
 .ob-label { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 800; color: var(--text); margin-bottom: .6rem; }
 .ob-label .material-icons-round { font-size: 1rem; color: var(--red); }
@@ -242,11 +270,41 @@
 .ob-step-dot.on { background: var(--red); transform: scale(1.25); }
 .ob-step2-wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1.2rem;
-  max-width: 860px;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.4rem;
+  max-width: 1000px;
   margin: 0 auto;
+  align-items: start;
 }
+@media (max-width: 820px) { .ob-step2-wrap { grid-template-columns: 1fr; } }
+.ob-profile-card { padding: 1.3rem !important; }
+.ob-avatar-chip {
+  width: 46px;
+  height: 46px;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ob-avatar-chip img { width: 100%; height: 100%; object-fit: cover; }
+.ob-avatar-chip.picked { outline: 3px solid var(--red); outline-offset: 2px; }
+.ob-kids-row {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin-top: 1rem;
+  padding: .8rem .9rem;
+  border: 1px solid rgba(251,191,36,.3);
+  border-radius: 10px;
+  background: rgba(251,191,36,.06);
+  cursor: pointer;
+}
+.ob-kids-row .material-icons-round { font-size: 1.6rem; flex-shrink: 0; }
+.ob-kids-text { flex: 1; font-size: .8rem; line-height: 1.45; color: var(--text); }
+.ob-kids-text small { color: var(--muted); }
+.ob-kids-check { width: 22px; height: 22px; accent-color: var(--red); cursor: pointer; flex-shrink: 0; }
 .ob-profile-row { display: flex; align-items: flex-start; gap: 1rem; }
 .ob-profile-fields { flex: 1; min-width: 0; }
 .ob-avatar-preview {
@@ -264,13 +322,22 @@
 }
 .ob-avatar-preview .material-icons-round { font-size: 2.4rem; }
 .ob-avatar-initial { font-size: 2.2rem; font-weight: 900; }
-.ob-main { min-height: 62vh; }
+.ob-main { min-height: 0; overflow: hidden; border-radius: 12px; }
 .ob-grid {
   display: grid;
-  /* Bigger posters — 5 columns of ~124px+ in the 1fr track, still ending
-     level with the sidebar because both columns stretch */
-  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
-  gap: .75rem;
+  /* Bigger posters filling the full right side; the grid alone scrolls
+     internally when there are more tiles than fit — page never scrolls */
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  gap: .8rem;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: .3rem;
+  align-content: start;
+}
+@media (max-width: 880px) {
+  .ob-main { overflow: visible; }
+  .ob-grid { height: auto; overflow: visible; }
 }
 /* Tiles cascade in — subtle, fast, respects reduced-motion via global kill */
 .ob-grid .ob-tile { animation: obTileIn .35s var(--ease) backwards; }
@@ -376,18 +443,20 @@
   border-width: 3px !important;
 }
 .ob-color-chip.picked { outline: 3px solid #fff; outline-offset: 2px; }
-/* Sticky footer: Next / Start is ALWAYS in view — no scrolling to find it */
+/* Footer is part of the fixed viewport layout — Next / Start is ALWAYS
+   in view, and the content columns end right above it */
 .ob-footer {
-  position: sticky;
-  bottom: 0;
+  flex-shrink: 0;
   z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  margin-top: 1.2rem;
-  padding: .9rem 0 1rem;
+  padding: .8rem 0 .9rem;
   background: linear-gradient(to top, #070707 55%, transparent);
+}
+@media (max-width: 880px) {
+  .ob-footer { position: sticky; bottom: 0; }
 }
 .ob-more {
   border: none;
