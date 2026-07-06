@@ -117,15 +117,10 @@ export function makeCard(m, type, opts = {}) {
       ${showOverlayRating && rating ? `<div class="card-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</div>` : ''}
       ${numEl}
       <div class="card-img-title">
-        <img class="card-logo-img" alt="" style="display:none">
         <div class="card-img-title-name">${esc(title)}</div>
         ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
       </div>
       <div class="card-ov">
-        <div class="card-ov-info">
-          <div class="card-ov-title">${esc(title)}</div>
-          <div class="card-ov-sub">${[year, rating ? '★ ' + rating : '', typeLabel].filter(Boolean).join(' · ')}</div>
-        </div>
         <div class="card-ov-actions">
           <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
             <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>

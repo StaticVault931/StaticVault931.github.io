@@ -79,11 +79,15 @@
 }
 
 /* Title overlay on card image — sits at top of card */
+/* Title overlay sits at the BOTTOM with an upward gradient — the standard
+   streaming look. (The old top-anchored gradient + big title made rows like
+   Trending look cluttered.) Hidden entirely once baked-title art loads. */
 .card-img-title {
   position: absolute;
-  top: 0; left: 0; right: 0;
-  padding: .55rem .65rem 2.5rem;
-  background: linear-gradient(to bottom, rgba(0,0,0,.85) 0%, transparent 100%);
+  bottom: 0; left: 0; right: 0;
+  top: auto;
+  padding: 2.2rem .6rem .45rem;
+  background: linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.35) 60%, transparent 100%);
   z-index: 2;
   pointer-events: none;
 }
@@ -92,19 +96,19 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 1rem;
-  font-weight: 900;
+  font-size: .9rem;
+  font-weight: 800;
   color: #fff;
   text-shadow: 0 1px 8px rgba(0,0,0,.95), 0 0 3px rgba(0,0,0,.8);
-  line-height: 1.22;
-  padding-right: 36px;
+  line-height: 1.2;
+  padding-right: 52px; /* keep clear of the bottom-right rating pill */
   word-break: break-word;
 }
 .card-img-title-year {
   display: block;
-  font-size: .72rem;
-  color: rgba(255,255,255,.65);
-  margin-top: 2px;
+  font-size: .68rem;
+  color: rgba(255,255,255,.6);
+  margin-top: 1px;
 }
 /* TMDB title-treatment logo — horizontal text image */
 .card-logo-img {
@@ -178,8 +182,8 @@
 /* Type pill */
 .type-pill {
   position: absolute;
-  /* Bottom-left — the top edge belongs to the title/logo overlay */
-  bottom: 7px;
+  /* Top-left — the bottom edge belongs to the title overlay + rating */
+  top: 7px;
   left: 7px;
   z-index: 2;
   padding: .13rem .42rem;
@@ -334,8 +338,11 @@
 /* Numbered cards: indent the title text past the rank digit so the two
    never overlap; hide the digit on hover so it can't sit over buttons */
 .card:has(.card-num-overlay) .card-img-title { padding-left: 4.4rem; }
-.card:has(.card-num-overlay) .card-ov-info { padding-left: 4.4rem; }
 .card:hover .card-num-overlay { opacity: 0; }
+/* Clean hover: all corner chrome fades so the action buttons stand alone */
+.card-rating, .card-badges { transition: opacity .18s; }
+.card:hover .card-rating,
+.card:hover .card-badges { opacity: 0; }
 
 /* Card skeleton */
 @keyframes sk-shimmer {

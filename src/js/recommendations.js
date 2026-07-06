@@ -32,6 +32,12 @@ function passesAgeFilter(m) {
 export async function loadForYou() {
   const rowEl = document.getElementById('row-foryou');
   if (!rowEl) return;
+  // Onboarding open → their picks are still coming in. Wait so the very
+  // first For You row is built FROM those picks, not from empty prefs.
+  if (document.getElementById('onboard-screen')) {
+    setTimeout(loadForYou, 3500);
+    return;
+  }
   rowEl.innerHTML = skelCards(8);
 
   try {

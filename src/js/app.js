@@ -19,6 +19,9 @@ import { svFlag, setSvFlag } from './search/searchPipeline.js';
 import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
+import { selectRowsForToday } from './rows/rowSelector.js';
+import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
+import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
 const THEMES = ['dark', 'midnight', 'warm', 'ocean', 'mist', 'light'];
@@ -211,6 +214,10 @@ const SV_SETTINGS = [
   { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
   { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
   { id: 'darkPlayer',        label: 'Dark Player BG',         desc: 'Show dark background behind the player iframe',               default: true,  icon: 'dark_mode',        group: 'Display' },
+  // Accessibility
+  { id: 'reduceMotion',      label: 'Reduce Motion',          desc: 'Minimize animations and transitions throughout the site',     default: false, icon: 'motion_photos_off', group: 'Display' },
+  { id: 'largerText',        label: 'Larger Text',            desc: 'Increase base text size ~12% for readability',                default: false, icon: 'text_increase',    group: 'Display' },
+  { id: 'highContrast',      label: 'High Contrast',          desc: 'Stronger text/background contrast for low vision',            default: false, icon: 'contrast',         group: 'Display' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
@@ -615,7 +622,7 @@ function applyLoadingScreenState() {
   document.body.classList.add('ls-open');
   const enterBtn = document.getElementById('ls-enter');
   if (enterBtn) enterBtn.addEventListener('click', dismissLoadingScreen);
-  setTimeout(dismissLoadingScreen, 1000);
+  setTimeout(dismissLoadingScreen, 700);
 }
 
 function dismissLoadingScreen() {
@@ -640,7 +647,8 @@ async function maybeShowOnboarding() {
     ['it', 'Italian'], ['pt', 'Portuguese'], ['ja', 'Japanese'], ['ko', 'Korean'],
     ['hi', 'Hindi'], ['zh', 'Chinese'],
   ];
-  const OB_AGES = ['G', 'PG', 'PG-13', 'R'];
+  const OB_AGES = [['G', 'G'], ['PG', 'PG'], ['PG-13', 'PG-13'], ['R', 'R'], ['NC-17', 'No limit']];
+  const OB_A11Y = [['reduceMotion', 'Reduce motion'], ['largerText', 'Larger text'], ['highContrast', 'High contrast']];
 
   const ob = document.createElement('div');
   ob.id = 'onboard-screen';
@@ -671,9 +679,18 @@ async function maybeShowOnboarding() {
             <div class="ob-label"><span class="material-icons-round">shield</span>Content rating</div>
             <div class="ob-chips" id="ob-ages"></div>
           </div>
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
+            <div class="ob-chips" id="ob-a11y"></div>
+          </div>
+          <div class="ob-block">
+            <div class="ob-label"><span class="material-icons-round">person</span>Profile name (optional)</div>
+            <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
+            <div class="ob-hint">Creates a profile so several people can share this browser</div>
+          </div>
         </div>
         <div class="ob-main">
-          <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(18)}</div>
+          <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(24)}</div>
         </div>
       </div>
       <div class="ob-footer">
@@ -721,15 +738,28 @@ async function maybeShowOnboarding() {
     chip.classList.toggle('picked', pickedLangs.has(l));
   });
 
-  // Age rating chips (single-select)
+  // Age rating chips (single-select, incl. "No limit")
   const agesEl = ob.querySelector('#ob-ages');
-  agesEl.innerHTML = OB_AGES.map(a =>
-    `<button class="ob-chip${a === pickedAge ? ' picked' : ''}" data-age="${a}">${a}</button>`).join('');
+  agesEl.innerHTML = OB_AGES.map(([val, label]) =>
+    `<button class="ob-chip${val === pickedAge ? ' picked' : ''}" data-age="${val}">${label}</button>`).join('');
   agesEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
     pickedAge = chip.dataset.age;
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
+  });
+
+  // Accessibility chips (multi-toggle, applied instantly so users can see)
+  const a11yEl = ob.querySelector('#ob-a11y');
+  a11yEl.innerHTML = OB_A11Y.map(([id, label]) =>
+    `<button class="ob-chip" data-a11y="${id}">${label}</button>`).join('');
+  a11yEl.addEventListener('click', e => {
+    const chip = e.target.closest('.ob-chip');
+    if (!chip) return;
+    const id = chip.dataset.a11y;
+    const next = !getSetting(id);
+    setSetting(id, next); // applies the body class immediately — instant preview
+    chip.classList.toggle('picked', next);
   });
 
   // Title tile: cycles neutral → loved → hidden → neutral
@@ -760,27 +790,35 @@ async function maybeShowOnboarding() {
     if (tile?.dataset.oid) cycleTile(tile);
   });
 
-  // Tiles: even 50/50 movie/TV mix from trending, spread across genres
+  // Tiles: 50/50 movie/TV, sorted by vote COUNT (= the most widely seen
+  // titles ever, not this week's theater releases nobody's watched yet),
+  // capped a few years back so it's stuff people have actually finished.
   try {
-    const [mv, tv] = await Promise.allSettled([
-      tmdb('/trending/movie/week'), tmdb('/trending/tv/week'),
+    const cutoff = `${new Date().getFullYear() - 3}-01-01`;
+    const [mv, mv2, tv, tv2] = await Promise.allSettled([
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff }),
+      tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff, page: 2 }),
+      tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff }),
+      tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff, page: 2 }),
     ]);
-    const m = mv.status === 'fulfilled' ? (mv.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: 'movie' })) : [];
-    const t = tv.status === 'fulfilled' ? (tv.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: 'tv' })) : [];
+    const grab = (r, type) => r.status === 'fulfilled' ? (r.value.results || []).filter(x => x.poster_path).map(x => ({ ...x, media_type: type })) : [];
+    const m = [...grab(mv, 'movie'), ...grab(mv2, 'movie')];
+    const t = [...grab(tv, 'tv'), ...grab(tv2, 'tv')];
     // Spread: avoid 3+ tiles sharing a lead genre in a row
-    const spread = list => {
+    const spread = (list, want) => {
       const out = []; const lastG = [];
       for (const x of list) {
         const g = (x.genre_ids || [])[0];
         if (lastG.length >= 2 && lastG.every(v => v === g)) { list.push(x); continue; }
         out.push(x); lastG.push(g); if (lastG.length > 2) lastG.shift();
-        if (out.length >= 9) break;
+        if (out.length >= want) break;
       }
-      return out.length ? out : list.slice(0, 9);
+      return out.length ? out : list.slice(0, want);
     };
+    // Exactly even: 12 movies + 12 shows, strictly alternating
     const mixed = [];
-    const ms = spread(m), ts = spread(t);
-    for (let i = 0; i < 9; i++) { if (ms[i]) mixed.push(ms[i]); if (ts[i]) mixed.push(ts[i]); }
+    const ms = spread(m, 12), ts = spread(t, 12);
+    for (let i = 0; i < 12; i++) { if (ms[i]) mixed.push(ms[i]); if (ts[i]) mixed.push(ts[i]); }
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
   } catch (err) {
@@ -821,6 +859,16 @@ async function maybeShowOnboarding() {
 
   const finish = (skipped, customize = false) => {
     if (!skipped) {
+      // Optional profile — created live so the Who's Watching dashboard
+      // shows it immediately; the user stays on it (they just made it)
+      const pname = ob.querySelector('#ob-profile-name')?.value.trim();
+      if (pname) {
+        try {
+          const prof = createProfile(pname);
+          if (prof?.id) switchProfile(prof.id);
+          window._svRenderProfiles?.();
+        } catch (err) { console.warn('[SV Onboarding] profile create failed:', err?.message); }
+      }
       pickedGenres.forEach(g => { if (!state.prefGenres.includes(g)) state.prefGenres.push(g); });
       if (pickedGenres.size) persist('prefGenres');
       state.prefLangs = [...pickedLangs];
@@ -1095,7 +1143,36 @@ const _lazyObs = new Map(); // kept for compatibility
 // Tracks how many times each piece of content has been shown.
 // Higher impressions = lower chance of being shown again.
 
-function recordImpressions(items) {
+/* Visibility-gated impressions: a title only counts as "seen" once its
+   card is actually ≥10% visible in the viewport. Cards sitting off-screen
+   at the end of a row the user never scrolled do NOT count. */
+const _impressionSeen = new Set(); // per-session: one impression per title
+const _impressionObs = new IntersectionObserver(entries => {
+  const visible = [];
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const id = +entry.target.dataset.id;
+    if (!id || _impressionSeen.has(id)) { _impressionObs.unobserve(entry.target); return; }
+    _impressionSeen.add(id);
+    visible.push({ id });
+    _impressionObs.unobserve(entry.target);
+  });
+  if (visible.length) _recordImpressionsNow(visible);
+}, { threshold: 0.1 });
+
+// Observe every card in a row — impressions fire when each becomes visible
+function recordImpressions(items, rowId = null) {
+  if (!items?.length) return;
+  const row = rowId ? document.getElementById(rowId) : null;
+  if (row) {
+    row.querySelectorAll('.card[data-id]').forEach(c => _impressionObs.observe(c));
+  } else {
+    // No row element to watch — fall back to immediate recording
+    _recordImpressionsNow(items);
+  }
+}
+
+function _recordImpressionsNow(items) {
   if (!items?.length) return;
   const now = Date.now();
   let changed = false;
@@ -1175,10 +1252,13 @@ function _loadRow(rowId, secId, fetchFn, type) {
   if (!row) return Promise.resolve();
   if (sec) sec.style.display = '';
 
+  const _t0 = performance.now();
   return fetchFn()
     .then(items => {
+      recordRowStat('loadTime', rowId, performance.now() - _t0);
       if (!items || !items.length) {
         console.warn(`[SV Row] "${rowId}" returned 0 items — hiding section`);
+        recordRowStat('hiddenThin', rowId);
         if (sec) sec.style.display = 'none'; else { const r = document.getElementById(rowId); if(r) r.innerHTML = ''; }
         return;
       }
@@ -1209,25 +1289,33 @@ function _loadRow(rowId, secId, fetchFn, type) {
       if (toRender.length < 10) backfill(items);
       if (toRender.length < 10) {
         console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<10) — hiding section`);
+        recordRowStat('hiddenThin', rowId);
         if (sec) sec.style.display = 'none';
         else { const r = document.getElementById(rowId); if (r) r.innerHTML = ''; }
         return;
       }
+      recordRowStat('dedupRemoved', rowId, impressionFiltered.length - deduped.length);
       toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
       const final = toRender.slice(0, 14);
+      recordRowStat('itemCount', rowId, final.length);
+      recordRowStat('shown', rowId);
+      recordRowImpression(rowId);
+      if (sec) _rowDwellObs.observe(sec);
       // Ensure row is at position 0 before rendering — prevents 3px scroll drift
       const rowEl = document.getElementById(rowId);
       if (rowEl) rowEl.scrollLeft = 0;
       renderRow(rowId, final, type);
       _saveRowCache(rowId, final);
-      // Record impressions for shown content (not searches, only passive browsing)
-      recordImpressions(final);
+      // Record impressions only when cards actually become visible (≥10%)
+      recordImpressions(final, rowId);
       // Mark items as shown for cross-session dedup
       final.forEach(m => _markShown(m.id));
       scheduledisambiguateTitles();
     })
     .catch(err => {
       console.error(`[SV Row] "${rowId}" failed:`, err?.message || err);
+      recordRowStat('failed', rowId);
+      recordRowStat('error', rowId, err?.message || err);
       // Never leave skeletons stuck: if the row has no real cards, hide the section
       const rowEl = document.getElementById(rowId);
       const hasCards = rowEl?.querySelector('.card');
@@ -1475,7 +1563,9 @@ const HOLIDAY_ROWS = [
   { tier: 'small', id: 'row-hol-solstice',   title: 'Summer Solstice: Beach Vibes',   icon: 'beach_access',    from: [6, 22],  to: [6, 29],
     fn: _kwRow('beach', { with_genres: '35|10749' }) },
   { tier: 'small', id: 'row-hol-july4',      title: 'Fireworks & Action (July 4th)',  icon: 'flare',           from: [6, 30],  to: [7, 7],
-    fn: _disc({ with_genres: '28', sort_by: 'revenue.desc', 'vote_count.gte': 2000 }) },
+    // Keyword-themed (patriotism/USA) — NOT revenue-sorted action, which
+    // was nearly identical to Summer Blockbusters showing at the same time
+    fn: _kwRow('patriotism', { with_genres: '28|10752', sort_by: 'vote_average.desc', 'vote_count.gte': 500 }) },
   { tier: 'small', id: 'row-hol-sharkweek',  title: 'Shark Week',                     icon: 'set_meal',        from: [7, 8],   to: [7, 20],
     fn: _kwRow('shark', { with_genres: '27|53' }) },
   { tier: 'small', id: 'row-hol-dogdays',    title: 'Dog Days of Summer',             icon: 'sunny',           from: [7, 21],  to: [8, 3],
@@ -1553,23 +1643,26 @@ function _ensureHolidaySection(def) {
   return sec;
 }
 
-function _loadHolidayRows() {
-  // Display rules: 1 Huge (when one is active) + 1 Big + 1 Small.
-  // With no Huge active it's just 1 Big + 1 Small. When several rows of a
-  // tier overlap (e.g. day-specific holidays inside a longer small window),
-  // they ROTATE daily so every overlapping row gets its turn.
+/* Today's holiday picks: 1 Huge (if active) + 1 Big + 1 Small. When rows
+   of a tier overlap they ROTATE daily; day-specific holidays (≤3-day
+   windows) always win their actual day. */
+function _holidayPicks() {
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
   const pick = tier => {
     const active = HOLIDAY_ROWS.filter(r => r.tier === tier && _holidayActive(r));
     if (!active.length) return null;
-    // Day-specific rows (windows ≤ 3 days) always win their day — that IS the holiday
     const daySpecific = active.find(r => {
       const span = (r.to[0] * 100 + r.to[1]) - (r.from[0] * 100 + r.from[1]);
       return span >= 0 && span <= 2;
     });
     return daySpecific || active[dayOfYear % active.length];
   };
-  [pick('huge'), pick('big'), pick('small')].filter(Boolean).forEach(def => {
+  return { huge: pick('huge'), big: pick('big'), small: pick('small') };
+}
+
+function _loadHolidayRows() {
+  const p = _holidayPicks();
+  [p.huge, p.big, p.small].filter(Boolean).forEach(def => {
     if (_ensureHolidaySection(def)) _scheduleRowLoad(def.id, `sec-${def.id}`, def.fn, def.type || 'movie');
   });
   _scheduleSpread();
@@ -1615,6 +1708,123 @@ function _loadLanguageRows() {
     }, null);
   });
 }
+
+/* ── UNIFIED ROW SELECTION (rows/ module) ────────────────────────────
+   The selector decides WHICH optional rows show and IN WHAT ORDER —
+   deterministic per day/profile, cooldown- and engagement-aware. Fetchers
+   are untouched; nothing unselected ever fires an API call. */
+let _rowSelection = null;
+let _rowSelectionIds = null;
+
+function _getRowSelection() {
+  if (_rowSelection) return _rowSelection;
+
+  // Heavy-use reshuffle: 5th+ home load in a day bumps the seed, giving a
+  // fresh selection + fresh content (row caches cleared once per bump)
+  const dk = `sv_home_visits_${_svDayNumber()}`;
+  let visits = 0;
+  try {
+    visits = (+localStorage.getItem(dk) || 0) + 1;
+    localStorage.setItem(dk, String(visits));
+    // prune older visit counters
+    Object.keys(localStorage).filter(k => k.startsWith('sv_home_visits_') && k !== dk).forEach(k => localStorage.removeItem(k));
+  } catch {}
+  const visitBump = visits > 4 ? Math.floor((visits - 1) / 4) : 0;
+  try {
+    const lastBump = +sessionStorage.getItem('sv_row_bump') || 0;
+    if (visitBump !== lastBump) {
+      sessionStorage.setItem('sv_row_bump', String(visitBump));
+      if (visitBump > 0) { _clearRowCache(); toast('Fresh picks — you\'ve seen the rest!', 'autorenew'); }
+    }
+  } catch {}
+
+  // Dynamic candidates the static registry can't know
+  const hp = _holidayPicks();
+  const extras = [];
+  if (hp.huge)  extras.push({ id: hp.huge.id,  kind: 'seasonalHuge',  priority: 86 });
+  if (hp.big)   extras.push({ id: hp.big.id,   kind: 'seasonalBig',   priority: 76 });
+  if (hp.small) extras.push({ id: hp.small.id, kind: 'seasonalSmall', priority: 68 });
+  (state.prefLangs || []).filter(l => l !== 'en').slice(0, 3).forEach(l =>
+    extras.push({ id: `row-lang-${l}`, kind: 'language', priority: 62 }));
+  // Preferred-language country rows get a strong boost
+  const LANG_COUNTRY = { ja: 'row-trend-jp', ko: 'row-trend-kr', hi: 'row-trend-in', fr: 'row-trend-fr', de: 'row-trend-de', pt: 'row-trend-br', es: 'row-trend-es', it: 'row-trend-it' };
+  (state.prefLangs || []).forEach(l => { if (LANG_COUNTRY[l]) extras.push({ id: LANG_COUNTRY[l], kind: 'country', priority: 60, tags: ['trending'] }); });
+
+  _rowSelection = selectRowsForToday({
+    page: 'home',
+    targetCount: 36,
+    hardCap: 40,
+    profile: (typeof getActiveProfileId === 'function' && getActiveProfileId()) || 'default',
+    preferences: { langs: state.prefLangs || [] },
+    visitBump,
+    extraCandidates: extras,
+  });
+  _rowSelectionIds = new Set(_rowSelection.map(r => r.id));
+  saveShownRows([..._rowSelectionIds]);
+  _rowSelection.forEach(r => recordRowStat('selected', r.id));
+  setStatsPageMode('home');
+  return _rowSelection;
+}
+
+function _rowSelected(rowId) {
+  _getRowSelection();
+  return _rowSelectionIds.has(rowId);
+}
+
+/* Reorder home sections to match today's selection order, then let the
+   kind-gap validator do a final safety pass. */
+function _applyRowOrder() {
+  const home = document.getElementById('page-home');
+  if (!home) return;
+  const secFor = id => document.getElementById(`sec-${id.replace(/^row-/, '')}`) ||
+                       document.getElementById(`sec-${id}`) ||
+                       document.getElementById(id)?.closest('.section');
+  let cursor = null;
+  _getRowSelection().forEach(def => {
+    const sec = secFor(def.id);
+    if (!sec || sec.parentElement !== home) return;
+    if (cursor) { if (sec !== cursor) cursor.after(sec); }
+    else home.insertBefore(sec, home.querySelector('.section'));
+    cursor = sec;
+  });
+  _scheduleSpread();
+}
+
+/* ── ROW ENGAGEMENT OBSERVERS ────────────────────────────────────────
+   Dwell: how long each row section is actually on screen. Skip: section
+   was visible under 1.2s total and got no clicks. All local-only. */
+const _rowDwell = new Map(); // rowId → { visibleAt, totalMs, clicked }
+const _rowDwellObs = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    const rowId = entry.target.querySelector('.card-row')?.id;
+    if (!rowId) return;
+    const rec = _rowDwell.get(rowId) || { visibleAt: 0, totalMs: 0, clicked: false };
+    if (entry.isIntersecting && !rec.visibleAt) rec.visibleAt = performance.now();
+    else if (!entry.isIntersecting && rec.visibleAt) {
+      rec.totalMs += performance.now() - rec.visibleAt;
+      rec.visibleAt = 0;
+      recordRowDwell(rowId, rec.totalMs);
+    }
+    _rowDwell.set(rowId, rec);
+  });
+}, { threshold: 0.35 });
+
+window.addEventListener('pagehide', () => {
+  _rowDwell.forEach((rec, rowId) => {
+    const total = rec.totalMs + (rec.visibleAt ? performance.now() - rec.visibleAt : 0);
+    if (total > 0 && total < 1200 && !rec.clicked) recordRowSkip(rowId);
+  });
+});
+
+// Card clicks attribute to their row (capture phase — before navigation)
+document.addEventListener('click', e => {
+  const rowEl = e.target.closest?.('.card-row');
+  if (rowEl?.id && e.target.closest('.card')) {
+    recordRowClick(rowEl.id);
+    const rec = _rowDwell.get(rowEl.id);
+    if (rec) rec.clicked = true;
+  }
+}, { capture: true, passive: true });
 
 /* Reset the global home dedup registry — hero titles stay registered
    because the banner already shows them (a row repeating them is exactly
@@ -1939,28 +2149,11 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   const COUNTRY_ROW_IDS = ['row-trend-jp','row-trend-kr','row-trend-gb','row-trend-in','row-trend-fr','row-trend-de','row-trend-br','row-trend-es','row-trend-mx','row-trend-it'];
   const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes', 'row-sequels', 'row-new-to-you', 'row-imdb250', 'row-best-tv-ever']; // always show these
   const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id) && !COUNTRY_ROW_IDS.includes(r.id));
-  const stdSessionKey = `sv_std_sel_${Math.floor(Date.now() / (24 * 3600000))}`;
-  let stdSelected = [];
-  try { stdSelected = JSON.parse(sessionStorage.getItem(stdSessionKey) || '[]'); } catch {}
-  if (!stdSelected.length) {
-    // Pick 4 from optional, ensuring a mix of movie/tv/anime
-    const byType = { movie: [], tv: [], anime: [] };
-    STD_OPTIONAL.forEach(r => (byType[r.type] || byType.movie).push(r.id));
-    const picks = [
-      byType.movie[Math.floor(Math.random() * byType.movie.length)],
-      byType.movie[Math.floor(Math.random() * byType.movie.length)],
-      byType.tv[Math.floor(Math.random() * byType.tv.length)],
-      byType.anime[Math.floor(Math.random() * byType.anime.length)],
-    ].filter((id, i, a) => id && a.indexOf(id) === i); // deduplicate
-    // Pick 2 country rows per session — rows matching the user's preferred
-    // languages ALWAYS take priority over random ones
-    const LANG_TO_ROWS = { ja: ['row-trend-jp'], ko: ['row-trend-kr'], en: ['row-trend-gb'], hi: ['row-trend-in'], fr: ['row-trend-fr'], de: ['row-trend-de'], pt: ['row-trend-br'], es: ['row-trend-es', 'row-trend-mx'], it: ['row-trend-it'] };
-    const preferredCountry = (state.prefLangs || []).flatMap(l => LANG_TO_ROWS[l] || []).sort(() => Math.random() - .5);
-    const otherCountry = COUNTRY_ROW_IDS.filter(id => !preferredCountry.includes(id)).sort(() => Math.random() - .5);
-    const countryPicks = [...preferredCountry, ...otherCountry].slice(0, 2);
-    stdSelected = [...picks, ...countryPicks];
-    sessionStorage.setItem(stdSessionKey, JSON.stringify(stdSelected));
-  }
+  // Unified selector decides which optional standard + country rows show
+  // today (deterministic per day/profile, cooldown- and engagement-aware)
+  const stdSelected = STD_OPTIONAL.concat(STD_ROW_POOL.filter(r => COUNTRY_ROW_IDS.includes(r.id)))
+    .filter(r => _rowSelected(r.id))
+    .map(r => r.id);
   const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
 
   const hideAnime = getSetting('hideAnime');
@@ -2153,7 +2346,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 const ROW_CATALOG = [
   // id, sectionId, type, altNames[], fetchFn (built in loadCuratedRows)
   { id: 'row-boredom',       sec: 'sec-boredom',       type: 'movie', persona: true,
-    labels: ['Boredom Busters','Nothing to Watch? Try These','Just Watch Something Good','Pick Me Up','Entertainment Mode: ON','Quick Picks Just for You'] },
+    labels: ['Boredom Busters','Nothing to Watch? Try These','Just Watch Something Good','Pick Me Up','Entertainment Mode: ON','Quick Picks Just for You','Scroll Stoppers','Instant Watch List','No More Scrolling — Watch These'] },
   { id: 'row-new-streaming', sec: 'sec-new-streaming',  type: null,   persona: false,
     labels: ['New on Streaming','Just Dropped','Fresh Arrivals','Hot Off the Press','Just Added','New This Week'] },
   { id: 'row-love-these',    sec: 'sec-love-these',     type: null,   persona: true,
@@ -2165,13 +2358,13 @@ const ROW_CATALOG = [
   { id: 'row-retro-tv',      sec: 'sec-retro-tv',       type: 'tv',   persona: false,
     labels: ['Retro TV','Back in the Day','Old School Classics','Throwback TV','Before Your Time','Nostalgia Trip'] },
   { id: 'row-binge-drama',   sec: 'sec-binge-drama',    type: 'tv',   persona: true,
-    labels: ['Bingeworthy TV','Can\'t Stop Won\'t Stop','One More Episode','Warning: Addictive','Start Your Next Binge','5-Star Series'] },
+    labels: ['Bingeworthy TV','Can\'t Stop Won\'t Stop','One More Episode','Warning: Addictive','Start Your Next Binge','5-Star Series','Goodbye, Weekend','Season 1, Episode 1 — Go','Cancel Your Plans'] },
   { id: 'row-weekend',       sec: 'sec-weekend',        type: 'movie', persona: true,
     labels: ['Perfect for the Weekend','Weekend Watch List','Movie Night Picks','Grab the Popcorn','Friday Night Vibes','Lazy Sunday Picks'] },
   { id: 'row-hidden-gems',   sec: 'sec-hidden-gems',    type: null,   persona: false,
-    labels: ['Hidden Gems','Undiscovered Classics','Underrated Picks','Slept On','Cult Favorites','You Missed These'] },
+    labels: ['Hidden Gems','Undiscovered Classics','Underrated Picks','Slept On','Cult Favorites','You Missed These','Criminally Underrated','Nobody Talks About These','Deep Catalog Finds'] },
   { id: 'row-feel-good',     sec: 'sec-feel-good',      type: 'movie', persona: true,
-    labels: ['Feel-Good Picks','Good Vibes Only','Mood Lifters','Watch & Smile','Guaranteed to Cheer You Up','Happy Watching'] },
+    labels: ['Feel-Good Picks','Good Vibes Only','Mood Lifters','Watch & Smile','Guaranteed to Cheer You Up','Happy Watching','Serotonin Section','Comfort Food Cinema','For a Better Day'] },
   { id: 'row-intense',       sec: 'sec-intense',        type: null,   persona: true,
     labels: ['Intense & Gripping','Edge of Your Seat','Buckle Up','Can\'t Look Away','Adrenaline Rush','Not for the Faint of Heart'] },
   { id: 'row-documentary',   sec: 'sec-documentary',    type: 'movie', persona: false,
@@ -2238,25 +2431,12 @@ function getRowLabel(rowId, defaultLabels) {
 function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
   const personalize = getSetting('personalizeContent') !== false; // default on
 
-  // Pick a random subset of rows to show (not all at once)
-  // Always show: top10, boredom, new-streaming, love-these
+  // Unified selector decides which catalog rows show today (deterministic
+  // per day/profile, cooldown- and engagement-aware)
   const alwaysShow = ['row-boredom', 'row-new-streaming', 'row-love-these', 'row-awards'];
-  // Pick 4-6 more from the catalog randomly
-  const optional = ROW_CATALOG.filter(r => !alwaysShow.includes(r.id));
-  const shuffled = optional.sort(() => Math.random() - 0.5);
-  // Use a seed based on date so the selection changes daily but is consistent within a day
-  const daySeed = Math.floor(Date.now() / (24 * 3600000));
-  const sessionKey = `sv_row_sel_${daySeed}`;
-  let selected = [];
-  try {
-    selected = JSON.parse(sessionStorage.getItem(sessionKey) || '[]');
-  } catch {}
-  if (!selected.length) {
-    // 9–12 optional rows per day (catalog is 32+ now — plenty of variety
-    // without showing everything at once)
-    selected = shuffled.slice(0, 9 + Math.floor(Math.random() * 4)).map(r => r.id);
-    sessionStorage.setItem(sessionKey, JSON.stringify(selected));
-  }
+  let selected = ROW_CATALOG
+    .filter(r => !alwaysShow.includes(r.id) && _rowSelected(r.id))
+    .map(r => r.id);
 
   // Prevent similar-themed rows from appearing side by side
   // (e.g. "The Classics" tv-faves and "Old School Classics" retro-tv are too similar)
@@ -2416,7 +2596,9 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
       _scheduleRowLoad(rowId, meta.sec, fn, meta.type || null);
     }
   });
-  _scheduleSpread(); // interleave kinds once the visible set is known
+  // Apply the selector's ordering to the DOM (spread pass runs after as a
+  // final gap/adjacency safety net)
+  _applyRowOrder();
 }
 
 /* ── SEASONAL ROW ────────────────────────────────────────────────── */
@@ -2968,6 +3150,9 @@ function setSetting(id, val) {
 
 function applySetting(id, val) {
   if (id === 'repeatContent') state._repeatTolerance = val;
+  if (id === 'reduceMotion') document.body.classList.toggle('sv-reduce-motion', !!val);
+  if (id === 'largerText')   document.body.classList.toggle('sv-large-text', !!val);
+  if (id === 'highContrast') document.body.classList.toggle('sv-high-contrast', !!val);
   if (id === 'personalizeContent') {
     // Clear row label cache so they refresh with/without personalization markers
     const keys = [];
@@ -4294,6 +4479,13 @@ function initEventDelegation() {
       _clearRowCache(); toast('Content history cleared', 'refresh');
     }
   });
+  document.getElementById('btn-clear-row-stats')?.addEventListener('click', async () => {
+    if (await showConfirm('Clear Row Stats',
+      'Clear row engagement, cooldowns, and daily stats? Your feed may temporarily feel less tailored, row variety resets, and this data will NOT transfer if you export/import afterward.')) {
+      clearRowStats(); clearRowEngagement(); clearRowCooldowns();
+      toast('Row stats cleared — feed variety resets', 'insights');
+    }
+  });
   document.getElementById('btn-clear-prefLikes')?.addEventListener('click', async () => {
     if (await showConfirm('Clear Titles I Love', 'Remove all manually added titles from your "Titles I Love" list in Customize Feed?')) {
       state.prefLikes = []; persist('prefLikes');
@@ -4385,6 +4577,10 @@ function initEventDelegation() {
       prefTagDislikes:  state.prefTagDislikes,
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
+      // Row system diagnostics — engagement, cooldowns, daily stats,
+      // selection history. All local-only; leaves the device only in this
+      // manual export.
+      rowDiagnostics: exportRowDiagnostics(),
       // Diagnostics — safe to share, helps improve search & recommendations
       diagnostics: (() => {
         const ls = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
@@ -7061,6 +7257,7 @@ function openProfilesOverlay() {
   ov.classList.add('open');
   renderProfilesGrid();
 }
+window._svRenderProfiles = renderProfilesGrid; // live dashboard updates (onboarding etc.)
 
 function closeProfilesOverlay() {
   document.getElementById('profiles-overlay')?.classList.remove('open');
@@ -7096,10 +7293,9 @@ function renderProfilesGrid() {
       _clearRowCache();
       _homeLoading = false;
       sessionStorage.removeItem('sv_trend_views'); // reset trending position
-      // Clear daily row selection so new profile gets its own selection
-      const daySeed = Math.floor(Date.now() / (24 * 3600000));
-      sessionStorage.removeItem(`sv_row_sel_${daySeed}`);
-      sessionStorage.removeItem(`sv_std_sel_${daySeed}`);
+      // New profile gets its own deterministic row selection
+      _rowSelection = null;
+      _rowSelectionIds = null;
       // Reload everything
       loadHero().catch(() => {});
       loadHomeRows().catch(() => {});
@@ -7188,13 +7384,34 @@ function saveProfileFromEditor() {
   if (_editingProfileId) {
     updateProfile(_editingProfileId, { name, color, avatar });
     toast('Profile updated!', 'check_circle');
-  } else {
-    const p = createProfile(name, avatar, color);
-    if (!p) { toast('Maximum 10 profiles reached', 'warning'); return; }
-    toast('Profile created!', 'check_circle');
+    closeProfileEditor();
+    updateProfileHeaderBtn();
+    renderProfilesGrid(); // live update if Who's Watching is open behind
+    return;
   }
+  const p = createProfile(name, avatar, color);
+  if (!p) { toast('Maximum 10 profiles reached', 'warning'); return; }
+  toast('Profile created!', 'check_circle');
   closeProfileEditor();
   updateProfileHeaderBtn();
+  // Back to Who's Watching, live-updated — the user explicitly picks who
+  // to watch as; we never assume they want to switch to the new profile
+  openProfilesOverlay();
+  // Optional taste quiz for the new profile (the one case where we DO
+  // switch — they're setting that profile up)
+  showChoice(`Set up ${name}?`, 'Take the 1-minute taste picker for this profile? It builds the feed instantly. You can always customize later.', [
+    { label: 'Take the taste picker', value: 'quiz', style: 'primary' },
+    { label: 'Not now', value: 'skip' },
+  ]).then(choice => {
+    if (choice === 'quiz') {
+      switchProfile(p.id);
+      updateProfileHeaderBtn();
+      renderProfilesGrid();
+      closeProfilesOverlay();
+      localStorage.removeItem('sv_onboarded');
+      maybeShowOnboarding();
+    }
+  }).catch(() => {});
 }
 
 function deleteProfileFromEditor() {
@@ -7481,6 +7698,11 @@ function populateTestPanel() {
       </div>
 
       <div class="dev-section">
+        <div class="dev-sec-title">Row System</div>
+        <div id="dev-row-system" style="font-size:.72rem;line-height:1.7;opacity:.9">loading…</div>
+      </div>
+
+      <div class="dev-section">
         <div class="dev-sec-title">Row Summoner — Holiday &amp; Seasonal</div>
         <div class="dev-btn-row" style="margin-bottom:.45rem">
           <button class="dev-btn" id="dev-btn-holiday-page">
@@ -7647,6 +7869,32 @@ function populateTestPanel() {
       invalidateIndex();
       buildIndex().then(() => toast('Search index rebuilt', 'refresh'));
     });
+
+    // ── Row system debug summary ─────────────────────────────────────
+    const rowSys = panel.querySelector('#dev-row-system');
+    if (rowSys) {
+      try {
+        const stats = getRowStats();
+        const today = stats[stats.length - 1] || {};
+        const eng = getRowEngagement();
+        const cd = getRowCooldowns();
+        const dayNow = _svDayNumber();
+        const onCooldown = Object.entries(cd).filter(([, d]) => dayNow - d < 3).length;
+        const topClicked = Object.entries(eng)
+          .filter(([, v]) => v.clicks > 0)
+          .sort((a, b) => b[1].clicks - a[1].clicks)
+          .slice(0, 5)
+          .map(([id, v]) => `${id.replace('row-', '')} (${v.clicks})`);
+        const lt = Object.values(today.loadTimes || {});
+        rowSys.innerHTML = `
+          Selected today: <b>${today.selected?.length || 0}</b> · Shown: <b>${today.shown?.length || 0}</b> · Page: <b>${today.page || 'home'}</b><br>
+          Hidden (thin): <b>${(today.hiddenThin || []).length}</b>${(today.hiddenThin || []).length ? ` — ${today.hiddenThin.slice(0, 4).map(r => r.replace('row-', '')).join(', ')}` : ''}<br>
+          Failed: <b>${(today.failed || []).length}</b>${(today.failed || []).length ? ` — ${today.failed.map(r => r.replace('row-', '')).join(', ')}` : ''}<br>
+          Avg load: <b>${lt.length ? Math.round(lt.reduce((a, b) => a + b, 0) / lt.length) : 0}ms</b> · On cooldown: <b>${onCooldown}</b><br>
+          Top clicked: ${topClicked.length ? topClicked.join(', ') : '—'}<br>
+          <span style="opacity:.6">window.SV_DEBUG_ROWS has the full API</span>`;
+      } catch (err) { rowSys.textContent = `row system: ${err?.message}`; }
+    }
 
     // ── Holiday row summoner ─────────────────────────────────────────
     panel.querySelector('#dev-btn-holiday-page')?.addEventListener('click', () => window._svOpenHolidayPage());
@@ -7930,33 +8178,36 @@ function checkProviderNotification() {
 // _cardLogoObserver and _cardLogoMutObs declared above init() to avoid TDZ crash
 const _logoCache = new Map(); // id → logoUrl | null
 
+// Debug counters — window._svArtStats shows how many cards got baked art
+window._svArtStats = { applied: 0, noArt: 0, failed: 0, skippedAnime: 0 };
+
 async function _loadCardLogo(card) {
   const id   = card.dataset.id;
   const type = card.dataset.type;
   if (!id || !type) return;
+  // Anime cards use AniList IDs — they 404 against TMDB /images. Their
+  // AniList cover art usually has the title baked in anyway.
+  if (type === 'anime') { window._svArtStats.skippedAnime++; return; }
 
   // Use cached result if available
   if (_logoCache.has(id)) {
     const cached = _logoCache.get(id);
-    if (cached) _applyCardArt(card, cached.logo || null, cached.enBackdrop || null);
+    if (cached?.enBackdrop) _applyCardArt(card, cached.enBackdrop);
     return;
   }
 
   try {
-    const ep = type === 'anime' ? 'tv' : type;
     // Direct fetch — avoid tmdb() adding language=en-US which overrides include_image_language in Firefox
-    const u = new URL(`${TMDB_BASE}/${ep}/${id}/images`);
-    // English first (most legible baked-in titles), plus the user's other
-    // preferred languages so foreign titles get language-matching art
-    const artLangs = [...new Set(['en', ...(state.prefLangs || [])])].join(',');
-    u.searchParams.set('include_image_language', `${artLangs},null`);
+    const u = new URL(`${TMDB_BASE}/${type}/${id}/images`);
+    // English first (most legible baked-in titles), then the user's other
+    // preferred languages and the title's own language
+    const langOrder = [...new Set(['en', ...(state.prefLangs || []), card.dataset.lang].filter(Boolean))];
+    u.searchParams.set('include_image_language', `${langOrder.join(',')},null`);
     const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${TMDB_RAT}` } });
-    if (!r.ok) throw new Error('logo fetch failed');
+    if (!r.ok) throw new Error(`images fetch ${r.status}`);
     const data = await r.json();
 
-    // Best case: a backdrop WITH the title text baked into the art itself —
-    // English first, then the user's other preferred languages
-    const langOrder = [...new Set(['en', ...(state.prefLangs || [])])];
+    // ONLY baked-title backdrops — no separate logo overlays (messy look)
     const titledBackdrops = (data.backdrops || [])
       .filter(b => b.file_path && langOrder.includes(b.iso_639_1))
       .sort((a, b) =>
@@ -7964,59 +8215,39 @@ async function _loadCardLogo(card) {
         ((b.vote_average || 0) - (a.vote_average || 0)));
     const enBackdrop = titledBackdrops[0] ? `https://image.tmdb.org/t/p/w780${titledBackdrops[0].file_path}` : null;
 
-    const allLogos = (data.logos || []).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-    const best = allLogos.find(l => l.iso_639_1 === 'en' && l.file_path) || allLogos.find(l => l.file_path);
-    const url = best ? `https://image.tmdb.org/t/p/w300${best.file_path}` : null;
-
-    _logoCache.set(id, { logo: url, enBackdrop });
-    _applyCardArt(card, url, enBackdrop);
+    _logoCache.set(id, { enBackdrop });
+    if (enBackdrop) _applyCardArt(card, enBackdrop);
+    else window._svArtStats.noArt++;
   } catch (err) {
-    console.warn(`[SV Logo] card ${id} (${type}):`, err?.message || 'no logo');
+    window._svArtStats.failed++;
+    console.warn(`[SV Art] card ${id} (${type}):`, err?.message || 'failed');
     _logoCache.set(id, null);
   }
 }
 
-// Apply the best art to a card: English backdrop (embedded title) beats
-// logo-over-neutral-backdrop beats plain text overlay
-function _applyCardArt(card, logoUrl, enBackdropUrl) {
-  if (enBackdropUrl) {
-    const posterImg = card.querySelector('.card-poster > img');
-    if (posterImg) {
-      const swap = new Image();
-      swap.onload = () => {
-        if (!card.isConnected) return;
-        posterImg.src = enBackdropUrl;
-        // Title is in the image — hide the whole text/logo overlay
-        const overlay = card.querySelector('.card-img-title');
-        if (overlay) overlay.style.display = 'none';
-      };
-      swap.onerror = () => { if (logoUrl) _applyCardLogo(card, logoUrl); };
-      swap.src = enBackdropUrl;
-      return;
-    }
-  }
-  if (logoUrl) _applyCardLogo(card, logoUrl);
-}
-
-function _applyCardLogo(card, url) {
-  const imgEl = card.querySelector('.card-logo-img');
-  if (!imgEl) return;
-  const _onLoaded = () => {
-    imgEl.classList.add('loaded');
-    const titleName = card.querySelector('.card-img-title-name');
-    const titleYear = card.querySelector('.card-img-title-year');
-    const titleBox  = card.querySelector('.card-img-title');
-    if (titleName) titleName.style.display = 'none';
-    if (titleYear) titleYear.style.display = 'none';
-    if (titleBox)  titleBox.style.background = 'transparent';
+// Swap the card's poster for a backdrop that has the title text baked in,
+// then hide the text overlay. Applied via the poster element's own load
+// event (not an offscreen Image()) — reliable in Firefox as well as Chrome.
+function _applyCardArt(card, enBackdropUrl) {
+  const posterImg = card.querySelector('.card-poster > img');
+  if (!posterImg || !enBackdropUrl) return;
+  if (posterImg.src === enBackdropUrl) return;
+  const prevSrc = posterImg.src;
+  const onOk = () => {
+    if (!card.isConnected) return;
+    const overlay = card.querySelector('.card-img-title');
+    if (overlay) overlay.style.display = 'none'; // title is in the image now
+    window._svArtStats.applied++;
   };
-  imgEl.loading = 'eager'; // lazy + display:none never fires in Firefox
-  imgEl.style.display = 'block';
-  imgEl.alt = card.dataset.title || '';
-  imgEl.addEventListener('load', _onLoaded, { once: true });
-  imgEl.addEventListener('error', () => { imgEl.style.display = 'none'; }, { once: true });
-  imgEl.src = url;
-  if (imgEl.complete && imgEl.naturalWidth > 0) _onLoaded();
+  const onFail = () => {
+    // Bad image — revert to the original poster and keep the text overlay
+    posterImg.removeEventListener('load', onOk);
+    if (prevSrc) posterImg.src = prevSrc;
+  };
+  posterImg.addEventListener('load', onOk, { once: true });
+  posterImg.addEventListener('error', onFail, { once: true });
+  posterImg.loading = 'eager'; // lazy swaps may never fire in Firefox
+  posterImg.src = enBackdropUrl;
 }
 
 function _observeCards(target) {
@@ -8270,16 +8501,19 @@ function initHoverTrailer() {
   });
   document.getElementById('nc-more')?.addEventListener('click', e => {
     e.stopPropagation();
-    if (!_hoverCurrentCard) return;
-    const id = +_hoverCurrentCard.dataset.id;
-    const type = _hoverCurrentCard.dataset.type;
+    // Read from the hover element's snapshot — _hoverCurrentCard may have
+    // been nulled already (that was the "More info just closes" bug)
+    const ncEl = document.getElementById('netflix-card');
+    const id = +(_hoverCurrentCard?.dataset.id || ncEl?.dataset.hid || 0);
+    const type = _hoverCurrentCard?.dataset.type || ncEl?.dataset.htype || '';
+    const meta = {
+      title: _hoverCurrentCard?.dataset.title || ncEl?.dataset.htitle,
+      poster_path: _hoverCurrentCard?.dataset.poster || ncEl?.dataset.hposter,
+      backdrop_path: _hoverCurrentCard?.dataset.backdrop || ncEl?.dataset.hbackdrop,
+    };
     if (!id || !type) return;
     clearHoverTrailer();
-    openInfoPage(id, type, {
-      title: _hoverCurrentCard.dataset.title,
-      poster_path: _hoverCurrentCard.dataset.poster,
-      backdrop_path: _hoverCurrentCard.dataset.backdrop,
-    });
+    openInfoPage(id, type, meta);
   });
   document.getElementById('nc-wl')?.addEventListener('click', e => {
     e.stopPropagation();
@@ -8327,6 +8561,10 @@ function clearHoverTrailer() {
   const nc = document.getElementById('netflix-card');
   if (nc) {
     nc.classList.remove('visible');
+    // Blur any focused button first — aria-hidden on a focused element
+    // breaks assistive tech (and logs console warnings)
+    if (nc.contains(document.activeElement)) document.activeElement.blur();
+    nc.setAttribute('aria-hidden', 'true');
     // Run any DM cleanup timers
     if (nc._dmCleanup) { nc._dmCleanup(); nc._dmCleanup = null; }
   }
@@ -8407,6 +8645,15 @@ async function showNetflixCard(card) {
   // Position and show immediately with backdrop
   positionNetflixCard(card, nc);
   nc.classList.add('visible');
+  nc.setAttribute('aria-hidden', 'false'); // visible + focusable buttons inside
+  // Snapshot the source card's identity on the hover element itself — the
+  // button handlers must keep working even if _hoverCurrentCard gets
+  // nulled by a stray mouseout before the click lands
+  nc.dataset.hid = card.dataset.id;
+  nc.dataset.htype = card.dataset.type;
+  nc.dataset.htitle = card.dataset.title || '';
+  nc.dataset.hposter = card.dataset.poster || '';
+  nc.dataset.hbackdrop = card.dataset.backdrop || '';
 
   // ── STEP 1: Fetch trailer key, rich details, and best backdrop in parallel ──
   const detailsPromise = _genreCache.has(id)
@@ -8520,7 +8767,7 @@ function positionNetflixCard(card, nc) {
   // cap used to make the hover SMALLER than large cards, which defeats
   // the whole point of the hover).
   const ncW = Math.round(Math.min(
-    Math.max(rect.width * 1.35, rect.width + 80, 340),
+    Math.max(rect.width * 1.22, rect.width + 60, 340),
     vpW - marginH * 2
   ));
   nc.style.width = `${ncW}px`;
@@ -8762,6 +9009,9 @@ function _clipsGoTo(idx, { instant = false } = {}) {
 }
 
 function _clipsNavSlide(dir) { _clipsGoTo(_clipsIdx + dir); }
+// Exposed for the global YT error listener (auto-skip dead clips)
+window._clipsNavSlide = _clipsNavSlide;
+Object.defineProperty(window, '_clipsIdx', { get: () => _clipsIdx, configurable: true });
 
 // Inject the on-screen up/down arrows (idempotent — runs on every clips visit)
 function _injectClipsNav() {
@@ -9251,6 +9501,22 @@ window.addEventListener('message', e => {
     if (d.event === 'onError') {
       const codes = { 2: 'bad video id', 5: 'HTML5 player error', 100: 'video not found/private', 101: 'embedding disabled', 150: 'embedding disabled' };
       console.warn(`[SV YT] trailer failed — error ${d.info}: ${codes[d.info] || 'unknown'}`);
+      // If the failing player is the ACTIVE clips slide, don't stay stuck
+      // on a dead video — show the poster and auto-advance
+      const feed = document.querySelector('#page-clips.active .trailers-feed');
+      if (feed) {
+        const slides = [...feed.querySelectorAll('.trailer-slide')];
+        const failing = slides.find(s => s.querySelector('.trailer-slide-iframe')?.contentWindow === e.source);
+        if (failing) {
+          const poster = failing.querySelector('.trailer-slide-poster');
+          if (poster) poster.style.opacity = '1';
+          const idx = slides.indexOf(failing);
+          if (idx === (window._clipsIdx ?? -1) && typeof window._clipsNavSlide === 'function') {
+            console.warn('[SV Clips] active clip is unplayable — skipping to next');
+            setTimeout(() => window._clipsNavSlide(1), 900);
+          }
+        }
+      }
     }
   } catch { /* non-JSON messages from other frames — ignore */ }
 });

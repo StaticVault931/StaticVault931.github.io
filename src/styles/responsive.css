@@ -341,3 +341,17 @@
   .pe-quick-avatars { max-width: 100%; }
   .pe-fields-col { width: 100%; }
 }
+
+/* ── WHO'S WATCHING — mobile polish ─────────────────────────────── */
+@media (max-width: 560px) {
+  .profiles-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 1rem !important;
+    padding: 0 .6rem;
+  }
+  .profile-card { padding: 1.1rem .5rem 1rem !important; }
+  .profiles-grid .profile-card .profile-avatar-circle { width: 76px !important; height: 76px !important; }
+  .profile-card-name { font-size: .85rem; }
+  /* Touch screens have no hover — the edit pencil must always be visible */
+  .profile-card-edit-btn { opacity: 1 !important; }
+}
