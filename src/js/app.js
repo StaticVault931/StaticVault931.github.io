@@ -13,13 +13,14 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
-import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched } from './recommendations.js';
+import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched, resetTitleRowAnchors } from './recommendations.js';
 import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip, setProviderFilter } from './search.js';
 import { svFlag, setSvFlag } from './search/searchPipeline.js';
 import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 import { selectRowsForToday } from './rows/rowSelector.js';
+import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 
@@ -93,7 +94,7 @@ const LEGAL_CONTENT = {
       <p>StaticVault931 ("we", "us", "our") is committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights regarding that data. By using StaticVault931 you agree to this policy.</p>
       <h3>2. Data We Collect</h3>
       <p><strong>Locally stored data (never leaves your device):</strong></p>
-      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, languages, content rating, liked/disliked titles, kid-guided mode)<br>• Profiles (names, colors, avatars) and per-profile data<br>• Continue-watching progress<br>• Recent searches and a local search log (last 100 searches, used to improve search)<br>• Row statistics (which rows are shown, clicked, or skipped — used to pick better rows)<br>• Theme, display, and accessibility settings<br>• Provider preferences</p>
+      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, languages, content rating, liked/disliked titles, kid-guided mode)<br>• Language preferences (interface, metadata, and preferred trailer language)<br>• Profiles (names, colors, avatars) and per-profile data<br>• Continue-watching progress<br>• Recent searches and a local search log (last 100 searches, used to improve search)<br>• Row statistics (which rows are shown, clicked, or skipped — used to pick better rows)<br>• Theme, display, and accessibility settings<br>• Provider preferences</p>
       <p>All of the above is stored exclusively in your browser's <code>localStorage</code> and <code>sessionStorage</code>. It is never transmitted to StaticVault931 or any third party by us.</p>
       <h3>3. Third-Party Services</h3>
       <p><strong>The Movie Database (TMDB):</strong> We query the TMDB API for movie, TV show, and metadata. TMDB may log API requests. See <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener">TMDB Privacy Policy</a>.</p>
@@ -228,6 +229,10 @@ const SV_SETTINGS = [
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
   { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
+  // Language (UI text only — content audio is whatever providers have)
+  { id: 'uiLanguage',        label: 'Interface Language',     desc: 'Language for app menus and buttons (not movie audio)',        default: 'auto', icon: 'language', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Auto (browser)', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'language idioma langue translate locale interface' },
+  { id: 'metaLanguage',      label: 'Titles & Descriptions',  desc: 'Language for movie/show titles and overviews from TMDB',      default: 'auto', icon: 'translate', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Match interface', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'metadata titles descriptions overview language tmdb' },
+  { id: 'trailerLanguage',   label: 'Preferred Trailer Audio', desc: 'Prefer trailers in this language when a title has one — falls back to the default trailer otherwise', default: 'auto', icon: 'subtitles', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Match interface', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'trailer audio dub subtitle language' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
   { id: 'repeatContent',     label: 'Repeat Tolerance',       desc: 'How often to re-show content you\'ve already seen',           default: 'medium', icon: 'repeat',        group: 'Content', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
   { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
@@ -477,6 +482,7 @@ let _cardLogoMutObs   = null;
   // Reset provider fail states every reload so previously-broken providers can be retried
   localStorage.removeItem('sv_provider_working');
 
+  window._svTmdbLang = tmdbLang; // api.js reads metadata language through this
   injectOverlays();   // inject modals/overlays before anything else
   cleanState();       // remove corrupt null/empty items from all lists
   initProfiles();     // ensure at least one profile exists
@@ -495,6 +501,7 @@ let _cardLogoMutObs   = null;
   initFunEggs();
   initBottomSearchBar();
   initRightClickReset();
+  applyUITranslations(); // interface language (auto = browser, else saved)
   // Footer "Taste Onboarding" — reopen the picker any time (prefs kept)
   document.getElementById('footer-onboarding-btn')?.addEventListener('click', e => {
     e.preventDefault();
@@ -1401,7 +1408,7 @@ async function loadHero(attempt = 0) {
     state.heroItems = items;
     // Register hero titles in the global dedup — the hero banner already
     // showcases them, no row below should repeat them
-    items.forEach(m => { if (m?.id) _homeSeenIds.add(m.id); });
+    items.forEach(m => _claimHomeItem(m));
     buildHeroDots();
     const startIdx = _getHeroStartIdx(state.heroItems.length);
     showHero(startIdx);
@@ -1605,18 +1612,19 @@ function _loadRow(rowId, secId, fetchFn, type) {
       const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
       const deduped = RAW_ROWS
         ? impressionFiltered.filter(m => m.id)
-        : impressionFiltered.filter(m => m.id && !_homeSeenIds.has(m.id) && !shownData[m.id]);
+        : impressionFiltered.filter(m => m.id && !_homeItemSeen(m) && !shownData[m.id]);
 
       // Rows must feel full — 10 items minimum. Backfill from the wider
-      // pool when cross-row dedup leaves the row thin; if even the raw
-      // fetch can't reach 10, hide the row instead of showing a stub.
+      // pool when needed, but NEVER with titles another row already shows
+      // (backfill reintroducing claimed items was the duplicate source).
+      // If the fetch can't reach 10 unique titles, hide the row instead.
       const toRender = [...deduped];
       const have = new Set(toRender.map(m => m.id));
       const backfill = pool => pool.forEach(m => {
-        if (m?.id && !have.has(m.id) && toRender.length < 14) { have.add(m.id); toRender.push(m); }
+        if (m?.id && !have.has(m.id) && !_homeItemSeen(m) && toRender.length < 14) { have.add(m.id); toRender.push(m); }
       });
       if (toRender.length < 10) backfill(impressionFiltered);
-      if (toRender.length < 10) backfill(items);
+      if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)));
       if (toRender.length < 10) {
         console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<10) — hiding section`);
         recordRowStat('hiddenThin', rowId);
@@ -1625,7 +1633,7 @@ function _loadRow(rowId, secId, fetchFn, type) {
         return;
       }
       recordRowStat('dedupRemoved', rowId, impressionFiltered.length - deduped.length);
-      toRender.slice(0, 14).forEach(m => _homeSeenIds.add(m.id));
+      toRender.slice(0, 14).forEach(m => _claimHomeItem(m));
       const final = toRender.slice(0, 14);
       recordRowStat('itemCount', rowId, final.length);
       recordRowStat('shown', rowId);
@@ -2172,7 +2180,32 @@ document.addEventListener('click', e => {
    the "Enola Holmes 3 everywhere" problem). */
 function _resetHomeSeen() {
   _homeSeenIds.clear();
-  (state.heroItems || []).forEach(m => { if (m?.id) _homeSeenIds.add(m.id); });
+  _homeSeenTitles.clear();
+  resetTitleRowAnchors(); // "Because you liked X" anchors rotate per rebuild
+  (state.heroItems || []).forEach(m => _claimHomeItem(m));
+}
+
+/* Title-level dedup alongside ID dedup: the same movie can arrive with a
+   different TMDB ID (movie vs TV entry, re-releases) — normalized
+   title+year+type catches those. */
+const _homeSeenTitles = new Set();
+function _titleKey(m) {
+  const t = (m.title || m.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!t) return null;
+  const y = String(m.release_date || m.first_air_date || '').slice(0, 4);
+  return `${t}|${y}`;
+}
+function _claimHomeItem(m) {
+  if (!m?.id) return;
+  _homeSeenIds.add(m.id);
+  const k = _titleKey(m);
+  if (k) _homeSeenTitles.add(k);
+}
+function _homeItemSeen(m) {
+  if (!m?.id) return false;
+  if (_homeSeenIds.has(m.id)) return true;
+  const k = _titleKey(m);
+  return k ? _homeSeenTitles.has(k) : false;
 }
 
 /* ── HOME SECTION INTERLEAVING ───────────────────────────────────────
@@ -2242,13 +2275,15 @@ window._svSpreadSections = _scheduleSpread; // recommendations.js calls this aft
 window._svClaimHomeItems = (items, cap = 14) => {
   const out = [];
   for (const m of items || []) {
-    if (!m?.id || _homeSeenIds.has(m.id)) continue;
-    _homeSeenIds.add(m.id);
+    if (!m?.id || _homeItemSeen(m)) continue; // ID + normalized title/year dedup
+    _claimHomeItem(m);
     out.push(m);
     if (out.length >= cap) break;
   }
   return out;
 };
+// Safety filter for rows built outside app.js (recommendations fallbacks)
+window._svSafeItem = (m) => _ageSafeItem(m) && _prefSafeItem(m);
 
 /* Dev page: shows EVERY holiday/seasonal row at once, in calendar order,
    grouped by tier. Built on demand, navigable via goPage('holidayrows'). */
@@ -2351,9 +2386,9 @@ async function loadHomeRows() {
       if (sec) sec.style.display = '';
       const type = id.includes('anime') ? 'anime' : id.includes('tv') ? 'tv' : null;
       // Dedup against already-rendered rows to prevent same title showing twice
-      const deduped = cached.filter(m => m.id && !_homeSeenIds.has(m.id));
+      const deduped = cached.filter(m => m.id && !_homeItemSeen(m));
       const toRender = id === 'row-trending' ? cached : (deduped.length >= 4 ? deduped : cached);
-      toRender.forEach(m => _homeSeenIds.add(m.id));
+      toRender.forEach(m => _claimHomeItem(m));
       renderRow(id, toRender, type, id === 'row-trending');
       hadCache = true;
     } else {
@@ -2448,7 +2483,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
         trendTitle.textContent = label;
         if (icon) trendTitle.prepend(icon);
       }
-      items.forEach(m => _homeSeenIds.add(m.id));
+      items.forEach(m => _claimHomeItem(m));
       renderRow('row-trending', items, null, true);
       _saveRowCache('row-trending', items);
       // Track view count and move trending row down 2 positions each view
@@ -3133,9 +3168,9 @@ function renderRecentRow() {
     return;
   }
   if (sec) sec.style.display = '';
-  // Recently viewed = quick re-access, not discovery → smaller compact cards
-  row.classList.add('row-compact');
-  row.innerHTML = items.map(m => makeCard(m, m.type || 'movie', { compact: true, showProgress: false })).join('');
+  // Quick re-access: ~3 normal-height cards, not a long compact strip
+  row.classList.remove('row-compact');
+  row.innerHTML = items.slice(0, 3).map(m => makeCard(m, m.type || 'movie', { showProgress: false })).join('');
 }
 
 /* ── PERSONALIZED "FOR YOU" ROW for sub-pages ────────────────────── */
@@ -3557,6 +3592,18 @@ function applySetting(id, val) {
   if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
   if (id === 'kidsMode') { _clearRowCache(); } // safety change → fresh rows
+  if (id === 'uiLanguage' || id === 'metaLanguage') {
+    applyUITranslations();
+    clearCachePattern?.(''); // metadata language changed — TMDB cache is stale
+    _clearRowCache();
+    // Origin-language preference: an app set to Spanish should surface
+    // Spanish-origin content (language rows, boosts, country trending)
+    const lang = uiLang();
+    if (lang !== 'en' && Array.isArray(state.prefLangs) && !state.prefLangs.includes(lang)) {
+      state.prefLangs.push(lang);
+      persist('prefLangs');
+    }
+  }
   if (id === 'readableFont')       document.body.classList.toggle('sv-readable-font', !!val);
   if (id === 'lineSpacing')        document.body.classList.toggle('sv-line-spacing', !!val);
   if (id === 'dimImages')          document.body.classList.toggle('sv-dim-images', !!val);
@@ -9185,8 +9232,8 @@ async function showNetflixCard(card) {
   nc.dataset.hbackdrop = card.dataset.backdrop || '';
 
   // ── STEP 1: Fetch trailer key, rich details, and best backdrop in parallel ──
-  const detailsPromise = _genreCache.has(id)
-    ? Promise.resolve(_genreCache.get(id))
+  const detailsPromise = _genreCache.has(`${type}:${id}`)
+    ? Promise.resolve(_genreCache.get(`${type}:${id}`))
     : fetchRichDetails(id, type);
 
   // Upgrade backdrop in background — prefer English TMDB backdrop (has title text baked in)
@@ -9358,7 +9405,9 @@ function _saveClipsDwellPrefs() {
 
 // Score a clip item based on user preferences (higher = more relevant)
 function _scoreClipItem(item) {
-  const prefGenres = new Set(state.prefGenres || []);
+  // Genre ids arrive as numbers from TMDB but may be stored as strings or
+  // numbers in prefs — index both forms so matches never silently fail
+  const prefGenres = new Set((state.prefGenres || []).flatMap(g => [g, String(g), +g]));
   const dislikedIds = new Set((state.disliked || []).map(x => x.id));
   const genreIds = item.genre_ids || [];
   let score = 0;
@@ -9590,11 +9639,13 @@ async function initTrailersFeed() {
   const spinner = document.getElementById('clips-spinner');
   if (!feed) return;
 
-  // On return visit — re-trigger playback of visible slide without reloading
+  // On return visit — re-trigger playback of visible slide without reloading.
+  // Tutorial FIRST (it may prepend a slide and reset the index), THEN align —
+  // the old order could leave the tutorial hidden above the viewport.
   if (_trailersLoaded && feed.querySelector('.trailer-slide')) {
     _injectClipsNav();
-    requestAnimationFrame(() => _clipsGoTo(_clipsIdx, { instant: true }));
     _maybeShowClipsTutorial(feed);
+    requestAnimationFrame(() => _clipsGoTo(_clipsIdx, { instant: true }));
     return;
   }
 
@@ -9989,9 +10040,18 @@ async function _playTrailerSlide(slide) {
   const key = await fetchTrailerKey(id, type, title, year);
   if (!key || key === '__none__') {
     console.warn(`[SV Clips] No trailer for "${title}" (${type}/${id})`);
-    // Remove the dead slide if it's below the current one (safe — no index shift)
     const slides = _clipsSlides();
-    if (slides.indexOf(slide) > _clipsIdx) slide.remove();
+    const deadIdx = slides.indexOf(slide);
+    if (deadIdx > _clipsIdx) {
+      // Below the current position — safe to drop silently, no index shift
+      slide.remove();
+    } else if (deadIdx === _clipsIdx && slides.length > 1) {
+      // ACTIVE slide is unplayable — never strand the user on a dead
+      // poster: drop it and realign to the slide that takes its place
+      slide.remove();
+      const remaining = _clipsSlides();
+      _clipsGoTo(Math.min(deadIdx, remaining.length - 1), { instant: true });
+    }
     return;
   }
   if (!slide.isConnected) return;
@@ -10107,10 +10167,13 @@ async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
   if (key !== undefined) return key;
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
-    // Language-matched trailers: when the title's original language is one
-    // of the user's preferred languages, try trailers IN that language
+    // Language-matched trailers: the user's global "Preferred Trailer
+    // Audio" setting wins; otherwise, when the title's original language
+    // is one of their preferred languages, try trailers IN that language
     // first ("Titles in French" row → French-audio trailer), then English.
-    const wantLang = origLang && origLang !== 'en' && (state.prefLangs || []).includes(origLang) ? origLang : null;
+    // A preference only — if no such trailer exists, the default is used.
+    const wantLang = trailerLang() ||
+      (origLang && origLang !== 'en' && (state.prefLangs || []).includes(origLang) ? origLang : null);
     let vids = [];
     if (wantLang) {
       const langData = await tmdb(`/${endpoint}/videos`, { language: wantLang }).catch(() => null);
@@ -10146,7 +10209,9 @@ async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
 const _genreCache = new Map();
 
 async function fetchRichDetails(id, type) {
-  if (_genreCache.has(id)) return _genreCache.get(id);
+  // Key by type+id — a movie and TV show can share the same TMDB numeric id
+  const cacheKey = `${type}:${id}`;
+  if (_genreCache.has(cacheKey)) return _genreCache.get(cacheKey);
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
     const data = await tmdb(`/${endpoint}`, { append_to_response: 'release_dates,content_ratings' });
@@ -10168,7 +10233,7 @@ async function fetchRichDetails(id, type) {
       number_of_seasons: data.number_of_seasons || null,
       _cert: cert,
     };
-    _genreCache.set(id, rich);
+    _genreCache.set(cacheKey, rich);
     if (_genreCache.size > 200) {
       const keys = [..._genreCache.keys()].slice(0, 100);
       keys.forEach(k => _genreCache.delete(k));

@@ -58,7 +58,6 @@ export const PROVIDER_LOGO_DOMAINS = {
   'Vudu':                 'vudu.com',
   'Microsoft Store':      'microsoft.com',
   'YouTube Free':         'youtube.com',
-  'Tubi':                 'tubi.tv',
   'Funimation':           'funimation.com',
   'HBO':                  'hbo.com',
   'Criterion Channel':    'criterionchannel.com',
@@ -142,12 +141,16 @@ export async function tmdb(path, params = {}) {
   if (cap) {
     params = { ...params, certification_country: 'US', 'certification.lte': cap };
   }
+  // Metadata language follows the user's language settings (i18n.js).
+  // It's part of the cache key — switching languages must not serve
+  // stale results from the previous language.
+  const lang = params.language || (window._svTmdbLang ? window._svTmdbLang() : 'en-US');
+  params = { ...params, language: lang };
   const key = cacheKey(path, params);
   const cached = cacheGet(key);
   if (cached) return cached;
 
   const u = new URL(TMDB_BASE + path);
-  u.searchParams.set('language', 'en-US');
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, String(v));
 
   const r = await fetch(u.toString(), {

@@ -7,6 +7,10 @@ import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from '.
    two rows — each row must reference a different title. */
 const _usedTitleIds = new Set();
 
+/* Reset per home rebuild — otherwise anchors from the previous feed load
+   stay "used" forever and rows come up empty until a full page reload. */
+export function resetTitleRowAnchors() { _usedTitleIds.clear(); }
+
 /* Claim items against the global home-page registry (app.js) so no title
    repeats across rows. Falls back to a plain slice if app.js isn't ready. */
 const _claim = (items, cap = 14) =>
@@ -109,6 +113,8 @@ export async function loadForYou() {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
       if (!passesAgeFilter(m)) return false;
+      // Central safety: age rating, kid mode, and disliked genres (app.js)
+      if (window._svSafeItem && !window._svSafeItem(m)) return false;
       if (dislikedIds.has(m.id) || likedIds.has(m.id) || trendingRowIds.has(m.id) || recentIds.has(m.id) || watchedIds.has(m.id)) return false;
       // Apply impression filter to For You row too
       const imp = state.impressions?.[m.id];
@@ -147,24 +153,32 @@ export async function loadForYou() {
     const items = _claim(mixed, totalWanted);
 
     if (!items.length) {
-      // Hard fallback: if pool was empty, just show highly-rated popular content
-      // This ensures For You is never blank
+      // Hard fallback: highly-rated popular content — but it goes through
+      // the SAME safety gate as everything else (age/kid mode/dislikes/
+      // watched/disliked items). A fallback must never leak mature titles.
       const fallback = await tmdb('/movie/top_rated', { page: Math.floor(Math.random() * 3) + 1 });
-      const fallbackItems = (fallback.results || []).slice(0, 18);
+      const fallbackItems = (fallback.results || [])
+        .filter(m => m?.id &&
+          (!window._svSafeItem || window._svSafeItem(m)) &&
+          !dislikedIds.has(m.id) && !watchedIds.has(m.id))
+        .slice(0, 18);
       if (fallbackItems.length) {
-        renderRow('row-foryou', fallbackItems, null);
+        renderRow('row-foryou', _claim(fallbackItems, 18), null);
         return;
       }
       rowEl.innerHTML = '<p class="muted-note" style="padding:1rem">Check back soon — we\'re building your recommendations.</p>';
       return;
     }
 
-    // If pool is smaller than desired, pad with trending content
+    // If pool is smaller than desired, pad with trending content — safety-
+    // filtered like the main pool
     if (items.length < 8) {
       try {
         const extra = await tmdb('/trending/movie/week');
         const extraItems = (extra.results || [])
-          .filter(m => !items.some(x => x.id === m.id))
+          .filter(m => m?.id && !items.some(x => x.id === m.id) &&
+            (!window._svSafeItem || window._svSafeItem(m)) &&
+            !dislikedIds.has(m.id) && !watchedIds.has(m.id))
           .slice(0, 18 - items.length);
         items.push(...extraItems);
       } catch {}
@@ -213,7 +227,7 @@ export async function loadBecauseYouLiked() {
         <div class="sec-header">
           <div class="sec-title">
             <span class="material-icons-round sec-icon" style="color:var(--red)">favorite</span>
-            Because you liked <em>${item.title || 'this'}</em>
+            Because you liked <em>${esc(item.title || 'this')}</em>
           </div>
         </div>
         <div class="row-wrap">
