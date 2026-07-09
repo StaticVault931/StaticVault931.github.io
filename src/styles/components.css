@@ -3126,11 +3126,8 @@ body:has(#page-clips.active) #footer { display: none; }
 #profile-editor-overlay .profile-editor-actions .ma { flex: 1 1 auto; min-height: 42px; }
 
 /* ── LEGAL OVERLAY — bigger, clearer, obvious links ──────────────── */
-.footer-legal-btn {
-  font-size: .92rem !important;
-  padding: .5rem .2rem !important;
-  text-align: left;
-}
+/* (Footer legal buttons share the unified .footer-col style in layout.css
+   so all four footer columns stay identical — no size override here.) */
 #legal-overlay .legal-body, .legal-content {
   font-size: .92rem;
   line-height: 1.75;

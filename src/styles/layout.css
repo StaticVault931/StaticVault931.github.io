@@ -1873,15 +1873,46 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .footer-logo .n { color: var(--red); }
 .footer-tagline { color: var(--muted); font-size: .82rem; margin-bottom: .6rem; }
 .footer-disclaimer { color: var(--dim); font-size: .72rem; line-height: 1.7; }
-.footer-links { display: flex; gap: 2.5rem; flex-wrap: wrap; flex: 1; }
-.footer-col { display: flex; flex-direction: column; gap: .4rem; min-width: 110px; }
-.footer-col h4 { font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: .2rem; }
-.footer-col a, .footer-legal-btn {
-  font-size: .82rem; color: var(--dim); cursor: pointer; background: none; border: none;
-  padding: 0; text-align: left; transition: color .18s; display: flex; align-items: center; gap: .3rem;
-  text-decoration: none;
+/* Four equal columns — every column is the same width and every entry
+   shares one size, one rhythm, one hover behavior */
+.footer-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 2rem;
+  flex: 1;
 }
-.footer-col a:hover, .footer-legal-btn:hover { color: var(--text); }
+@media (max-width: 720px) { .footer-links { grid-template-columns: repeat(2, 1fr); } }
+.footer-col { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.footer-col h4 {
+  font-size: .7rem; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--muted); margin-bottom: .55rem;
+}
+.footer-col a, .footer-legal-btn {
+  position: relative;
+  font-size: .84rem; font-weight: 500; font-family: inherit;
+  color: var(--dim); cursor: pointer; background: none; border: none;
+  padding: .3rem 0; text-align: left;
+  display: flex; align-items: center; gap: .35rem;
+  text-decoration: none;
+  transition: color .18s, transform .18s var(--ease);
+}
+.footer-col a:hover, .footer-legal-btn:hover,
+.footer-col a:focus-visible, .footer-legal-btn:focus-visible {
+  color: var(--text);
+  transform: translateX(4px);
+}
+/* Red tick slides in on hover — one microinteraction shared by all */
+.footer-col a::before, .footer-legal-btn::before {
+  content: '';
+  position: absolute;
+  left: -10px; top: 50%;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--red);
+  transform: translateY(-50%) scale(0);
+  transition: transform .18s var(--ease);
+}
+.footer-col a:hover::before, .footer-legal-btn:hover::before { transform: translateY(-50%) scale(1); }
 .footer-col a .material-icons-round { font-size: .9rem; }
 .footer-bottom {
   border-top: 1px solid var(--border);
@@ -2616,4 +2647,136 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   color: var(--text);
+}
+
+/* ═══ ONBOARDING — DESIGN POLISH LAYER ═══════════════════════════════
+   Visual refinement only; all selectors override the base rules above.
+   No behavior changes. */
+
+/* Step transitions: each step animates in when it becomes visible
+   (display none→block restarts the animation — no JS needed) */
+#ob-step1 { animation: obStepIn .4s var(--ease) both; }
+#ob-step2 { animation: obStepIn .4s var(--ease) both; }
+@keyframes obStepIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Header: tighter, with a subtle red accent under the title */
+.ob-title { letter-spacing: .05em; line-height: 1; }
+.ob-sub { margin-top: .35rem; }
+.ob-head-grid .ob-title { position: relative; display: inline-block; }
+.ob-head-grid .ob-title::after {
+  content: '';
+  position: absolute;
+  left: 2px; bottom: -6px;
+  width: 44px; height: 3px;
+  border-radius: 2px;
+  background: var(--red);
+}
+
+/* Menu blocks: consistent padding, hairline top highlight, calmer borders */
+.ob-side .ob-block, .ob-step2-wrap .ob-block {
+  padding: 1rem 1.05rem;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.025), transparent 42%), var(--s1);
+  border: 1px solid var(--border);
+}
+.ob-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--muted);
+  margin-bottom: .65rem;
+}
+.ob-label .material-icons-round { font-size: 1.05rem; }
+.ob-hint { line-height: 1.55; margin-top: .6rem; }
+
+/* Sidebar blocks cascade in gently on step 1 */
+.ob-side .ob-block { animation: obStepIn .38s var(--ease) backwards; }
+.ob-side .ob-block:nth-child(1) { animation-delay: .05s; }
+.ob-side .ob-block:nth-child(2) { animation-delay: .11s; }
+.ob-side .ob-block:nth-child(3) { animation-delay: .17s; }
+.ob-side .ob-block:nth-child(4) { animation-delay: .23s; }
+
+/* Chips: crisper press + keyboard focus */
+.ob-chip {
+  transition: background .16s, border-color .16s, color .16s,
+              transform .14s var(--ease), box-shadow .16s;
+}
+.ob-chip:active { transform: scale(.94); }
+.ob-chip:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.ob-chip.picked { box-shadow: 0 3px 14px rgba(229,9,20,.3); }
+
+/* Search input: red focus glow instead of a bare border swap */
+.ob-search { transition: border-color .18s, box-shadow .18s; }
+.ob-search:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(229,9,20,.16);
+}
+
+/* Poster tiles: springier check, clearer states */
+.ob-tile { transition: transform .16s var(--ease), border-color .16s, opacity .16s; }
+.ob-tile:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.ob-tile-check, .ob-tile-cross {
+  transition: opacity .18s, transform .22s cubic-bezier(.34, 1.56, .64, 1);
+}
+.ob-tile.hidden-pick { opacity: .55; }
+.ob-tile.hidden-pick img { filter: grayscale(.8) brightness(.7); }
+
+/* Thin, theme-matched scrollbars inside the two scroll areas */
+.ob-grid::-webkit-scrollbar, .ob-side::-webkit-scrollbar { width: 8px; }
+.ob-grid::-webkit-scrollbar-thumb, .ob-side::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.14);
+  border-radius: 4px;
+}
+.ob-grid::-webkit-scrollbar-thumb:hover, .ob-side::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.26);
+}
+.ob-grid::-webkit-scrollbar-track, .ob-side::-webkit-scrollbar-track { background: transparent; }
+
+/* Footer buttons: one height, one radius, clear primary/secondary pair */
+.ob-footer .ob-done, .ob-footer .ob-more {
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: .95rem;
+}
+.ob-footer .ob-more {
+  text-decoration: none;
+  padding: 0 1.6rem;
+  border: 1px solid var(--border);
+  background: var(--s1);
+  color: var(--muted);
+  font-weight: 800;
+  transition: color .16s, border-color .16s, transform .16s var(--ease);
+}
+.ob-footer .ob-more:hover { color: var(--text); border-color: rgba(255,255,255,.35); transform: translateY(-1px); }
+.ob-footer .ob-done:active, .ob-footer .ob-more:active { transform: scale(.97); }
+.ob-footer .ob-done:focus-visible, .ob-footer .ob-more:focus-visible {
+  outline: 2px solid #fff; outline-offset: 3px;
+}
+
+/* Step dots: active dot stretches into a pill */
+.ob-step-dot { width: 8px; height: 8px; transition: all .3s var(--ease); }
+.ob-step-dot.on { width: 22px; border-radius: 999px; transform: none; }
+
+/* Skip: gentle entrance so it registers without shouting */
+.ob-skip { animation: obStepIn .4s var(--ease) .25s backwards; }
+.ob-skip:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* Step 2: profile card breathes; kids row + avatar respond to hover */
+.ob-step2-wrap .ob-block { animation: obStepIn .38s var(--ease) backwards; }
+.ob-step2-wrap .ob-block:nth-child(2) { animation-delay: .08s; }
+.ob-avatar-preview { box-shadow: 0 8px 26px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.12); }
+.ob-kids-row { transition: border-color .16s, background .16s; }
+.ob-kids-row:hover { border-color: rgba(251,191,36,.55); background: rgba(251,191,36,.1); }
+
+/* Reduced motion: the global kill switch already zeroes durations; keep
+   entrance offsets from flashing by removing transforms too */
+@media (prefers-reduced-motion: reduce) {
+  #ob-step1, #ob-step2, .ob-side .ob-block, .ob-step2-wrap .ob-block, .ob-skip,
+  .ob-grid .ob-tile { animation: none !important; }
 }
