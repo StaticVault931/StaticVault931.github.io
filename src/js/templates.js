@@ -200,7 +200,7 @@ export function injectOverlays() {
       <iframe id="trailer-ov-frame"
         allow="autoplay; fullscreen"
         allowfullscreen
-        referrerpolicy="no-referrer"
+        referrerpolicy="strict-origin-when-cross-origin"
         title="Trailer">
       </iframe>
       <div class="trailer-ov-fallback" id="trailer-ov-fallback" style="display:none">
@@ -266,6 +266,7 @@ export function injectOverlays() {
             <div class="info-trailer-inner">
               <iframe id="info-trailer-frame"
                 allow="autoplay; fullscreen"
+                referrerpolicy="strict-origin-when-cross-origin"
                 title="Trailer">
               </iframe>
               <div class="info-trailer-fallback" id="info-trailer-fallback" style="display:none">

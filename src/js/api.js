@@ -227,6 +227,13 @@ export async function fetchOMDb(imdbId) {
 // session — the browser logs every blocked CORS request regardless of our
 // catch, so the only way to keep the console clean is to not fire the request.
 let _fanartFails = 0;
+function _recordFanartFailure() {
+  _fanartFails++;
+  if (_fanartFails >= 3) {
+    sessionStorage.setItem('sv_fanart_dead', '1');
+    if (_fanartFails === 3) console.warn('[SV Fanart] 3 consecutive failures - disabled for this session');
+  }
+}
 export async function fetchFanart(tmdbId, type = 'movies') {
   if (!FANART_KEY) return null;
   if (_fanartFails >= 3 || sessionStorage.getItem('sv_fanart_dead') === '1') return null;
@@ -237,7 +244,7 @@ export async function fetchFanart(tmdbId, type = 'movies') {
   try {
     const endpoint = `https://webservice.fanart.tv/v3/${path}?api_key=${FANART_KEY}`;
     const r = await fetch(endpoint, { mode: 'cors' });
-    if (!r.ok) return null;
+    if (!r.ok) { _recordFanartFailure(); return null; }
     const data = await r.json();
     _fanartFails = 0;
     cacheSet(key, data);

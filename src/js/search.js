@@ -20,6 +20,60 @@ let _filters = {
 
 // Provider filter state
 let _providerFilter = null; // { id, name } | null
+const _providerAvailabilityCache = new Map();
+
+function _mediaType(item) {
+  const type = item?._type || item?.media_type;
+  return type === 'movie' || type === 'tv' ? type : null;
+}
+
+function _mediaKey(item) {
+  return `${_mediaType(item) || item?._type || 'unknown'}:${item?.id}`;
+}
+
+async function _hasProvider(item, providerId) {
+  const type = _mediaType(item);
+  if (!type || !item?.id) return false;
+  const key = `${type}:${item.id}:${providerId}`;
+  if (_providerAvailabilityCache.has(key)) return _providerAvailabilityCache.get(key);
+
+  const check = tmdb(`/${type}/${item.id}/watch/providers`).then(data => {
+    const region = data?.results?.US || {};
+    const offers = ['flatrate', 'free', 'ads', 'rent', 'buy']
+      .flatMap(kind => region[kind] || []);
+    return offers.some(provider => +provider.provider_id === +providerId);
+  }).catch(err => {
+    _providerAvailabilityCache.delete(key);
+    throw err;
+  });
+  _providerAvailabilityCache.set(key, check);
+  return check;
+}
+
+async function _filterByProvider(items) {
+  if (!_providerFilter?.id) return items;
+  const candidates = items.filter(item => _mediaType(item));
+  const matches = new Array(candidates.length).fill(false);
+  let completed = 0;
+  let failed = 0;
+
+  // Keep concurrency low so a provider-filtered search does not burst.
+  for (let start = 0; start < candidates.length; start += 6) {
+    const batch = candidates.slice(start, start + 6);
+    const settled = await Promise.allSettled(batch.map(item => _hasProvider(item, _providerFilter.id)));
+    settled.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        completed++;
+        matches[start + index] = result.value;
+      } else {
+        failed++;
+      }
+    });
+  }
+
+  if (!completed && failed) throw new Error('Provider availability could not be checked');
+  return candidates.filter((item, index) => matches[index]);
+}
 
 // "Not on my services" filter state
 let _excludeMyServices = false;
@@ -1192,6 +1246,37 @@ export async function doSearch(q) {
   try {
     let items = await fetchSearchPage(effectiveQ, 1);
 
+    // Merge exact and prefix matches from the existing local index into
+    // ordinary searches instead of building the index and ignoring it.
+    const canUseLocal = !_providerFilter && !_filters.genre && !_filters.minRating &&
+      !_filters.yearFrom && !_filters.yearTo && !_filters.language &&
+      ['all', 'movie', 'tv'].includes(_sfActive);
+    if (canUseLocal && prep.localResults?.length) {
+      const localItems = prep.localResults
+        .filter(entry => _sfActive === 'all' || entry.type === _sfActive)
+        .map(entry => ({
+          id: entry.id,
+          title: entry.title,
+          release_date: entry.type === 'movie' && entry.year ? `${entry.year}-01-01` : '',
+          first_air_date: entry.type === 'tv' && entry.year ? `${entry.year}-01-01` : '',
+          vote_average: entry.rating || 0,
+          vote_count: entry.votes || 0,
+          popularity: entry.pop || 0,
+          poster_path: entry.poster || '',
+          backdrop_path: entry.backdrop || '',
+          media_type: entry.type,
+          _type: entry.type,
+          _local: true,
+        }));
+      const seen = new Set();
+      items = [...localItems, ...items].filter(item => {
+        const key = _mediaKey(item);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
     // Weak results + a spellcheck suggestion → try the corrected query.
     // (Never correct when the original already returns strong results.)
     const strong = items.length >= 4 ||
@@ -1525,9 +1610,9 @@ async function fetchSearchPage(q, page) {
   }
 
   // Return combined — person results come AFTER main results (deduped)
-  const allIds = new Set(all.map(x => x.id));
-  const dedupedPersonResults = _personResults.filter(x => x.id && !allIds.has(x.id));
-  return [...all, ...dedupedPersonResults];
+  const allKeys = new Set(all.map(_mediaKey));
+  const dedupedPersonResults = _personResults.filter(x => x.id && !allKeys.has(_mediaKey(x)));
+  return _filterByProvider([...all, ...dedupedPersonResults]);
 }
 
 async function loadMoreSearchResults() {
@@ -1540,22 +1625,48 @@ async function loadMoreSearchResults() {
 
   try {
     const more = await fetchSearchPage(_searchState.query, _searchState.page);
-    const existIds = new Set(_searchState.results.map(x => x.id));
-    const newItems = more.filter(x => !existIds.has(x.id));
+    const existing = new Set(_searchState.results.map(_mediaKey));
+    const newItems = more.filter(x => !existing.has(_mediaKey(x)));
     if (!newItems.length) {
       _searchState.done = true;
       if (sentinel) sentinel.remove();
       return;
     }
     _searchState.results.push(...newItems);
-    renderSearchResults(_searchState.results, _searchState.query, false);
-  } catch {}
+    renderSearchResults(newItems, _searchState.query, false);
+  } catch (err) {
+    _searchState.page--;
+    if (sentinel) sentinel.innerHTML = '<p class="muted-note">Could not load more results. Scroll away and back to retry.</p>';
+    console.warn('[SV Search] load more failed:', err?.message || err);
+  }
   _searchState.loading = false;
 }
 
 function renderSearchResults(items, q, replace) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
+
+  if (!replace) {
+    area.querySelector('#search-sentinel')?.remove();
+    let grid = area.querySelector('#search-more-grid');
+    if (!grid) {
+      const section = document.createElement('div');
+      section.innerHTML = `<div class="search-section-title" style="margin-top:1.5rem"><span class="material-icons-round">expand_more</span> More Results</div>
+        <div class="search-grid" id="search-more-grid"></div>`;
+      area.append(...section.childNodes);
+      grid = area.querySelector('#search-more-grid');
+    }
+    grid?.insertAdjacentHTML('beforeend', items.map(m => makeCard(m, m._type)).join(''));
+    const meta = area.querySelector('.search-results-meta');
+    if (meta) {
+      const count = _searchState.results.filter(x => !x._viaActor).length;
+      meta.innerHTML = `${count} result${count !== 1 ? 's' : ''} for "<strong>${esc(q)}</strong>"`;
+    }
+    area.insertAdjacentHTML('beforeend', '<div id="search-sentinel" style="height:60px;display:flex;align-items:center;justify-content:center;"></div>');
+    const sentinel = area.querySelector('#search-sentinel');
+    if (sentinel && window._searchScrollObs) window._searchScrollObs.observe(sentinel);
+    return;
+  }
 
   const qLower = q.toLowerCase();
   const exact = items.filter(x => !x._fuzzy && !x._keyword && !x._viaActor && (x.title || x.name || '').toLowerCase().includes(qLower));

@@ -2547,7 +2547,9 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Hide all pool sections by default; show only the selected ones
   const COUNTRY_ROW_IDS = ['row-trend-jp','row-trend-kr','row-trend-gb','row-trend-in','row-trend-fr','row-trend-de','row-trend-br','row-trend-es','row-trend-mx','row-trend-it'];
-  const STD_ALWAYS = ['row-new', 'row-home-anime', 'row-boxoffice', 'row-recently-added', 'row-new-episodes', 'row-sequels', 'row-new-to-you', 'row-imdb250', 'row-best-tv-ever']; // always show these
+  // Only the freshness row is pinned. Every other standard row participates
+  // in the unified selector so the configured row budget is a real cap.
+  const STD_ALWAYS = ['row-new'];
   const STD_OPTIONAL = STD_ROW_POOL.filter(r => !STD_ALWAYS.includes(r.id) && !COUNTRY_ROW_IDS.includes(r.id));
   // Unified selector decides which optional standard + country rows show
   // today (deterministic per day/profile, cooldown- and engagement-aware)
@@ -6117,20 +6119,18 @@ export async function openInfoPage(id, type, hint = {}) {
         const playYouTubeInfo = (vidKey, isFallback = false) => {
           if (state.currentInfoMedia?.id !== _trailerToken) return;
           trailerFrame.src = `https://www.youtube.com/embed/${vidKey}?rel=0&modestbranding=1&fs=1&iv_load_policy=3&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
-          // CRITICAL: without the "listening" handshake YouTube never sends
-          // state events, _trailerStarted stayed false forever, and the 9s
-          // timeout replaced a PLAYING trailer with the fallback image.
-          trailerFrame.addEventListener('load', () => _ytListen(trailerFrame), { once: true });
+          // Ask YouTube for player events after the iframe is ready. The
+          // iframe load itself is enough to keep the idle player visible.
+          let _trailerLoaded = false;
+          trailerFrame.addEventListener('load', () => {
+            _trailerLoaded = true;
+            _ytListen(trailerFrame);
+          }, { once: true });
 
-          let _trailerStarted = false;
           const infoMsgHandler = (e) => {
             if (e.origin !== 'https://www.youtube.com') return;
             try {
               const d = JSON.parse(e.data);
-              // Mark as started when buffering or playing
-              if (d.info?.playerState === 3 || d.info?.playerState === 1) {
-                _trailerStarted = true;
-              }
               if (d.event === 'onError') {
                 window.removeEventListener('message', infoMsgHandler);
                 clearTimeout(infoTrailerTimer);
@@ -6140,10 +6140,12 @@ export async function openInfoPage(id, type, hint = {}) {
             } catch {}
           };
           window.addEventListener('message', infoMsgHandler);
-          // Timeout only fires fallback if video never started buffering/playing
+          // This player does not autoplay. Waiting for playback incorrectly
+          // replaces a valid, idle trailer before the user can press Play.
+          // Only treat a missing iframe load as a timeout failure.
           const infoTrailerTimer = setTimeout(() => {
             window.removeEventListener('message', infoMsgHandler);
-            if (!_trailerStarted && state.currentInfoMedia?.id === _trailerToken && trailerFrame?.src) {
+            if (!_trailerLoaded && state.currentInfoMedia?.id === _trailerToken && trailerFrame?.src) {
               _showInfoTrailerFallback(trailerKey, posterImg, trailerFallback, trailerFrame);
             }
           }, 9000);
@@ -7582,9 +7584,8 @@ function _tryTrailerKey(keys, idx, ytLink, posterImg, vimeoKeys) {
   frame.onload = null;
 
   // Try youtube-nocookie first (some Error 153 videos work there), then regular YouTube
-  const isEven = idx % 2 === 0;
   const ytBase = 'https://www.youtube.com';
-  frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&iv_load_policy=3&playsinline=1&enablejsapi=1&origin=https%3A%2F%2Fstaticvault931.github.io`;
+  frame.src = `${ytBase}/embed/${key}?autoplay=1&rel=0&modestbranding=1&fs=1&iv_load_policy=3&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}`;
 
   let resolved = false;
 

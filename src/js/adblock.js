@@ -162,13 +162,4 @@ if (!_locationDescriptor || _locationDescriptor.configurable) {
   } catch {}
 }
 
-/* ── CONSOLE CLEAN-UP ────────────────────────────────────────────── */
-// Suppress ad-network error spam in console (purely cosmetic)
-const _origError = console.error;
-console.error = function(...args) {
-  const msg = String(args[0] || '');
-  if (AD_DOMAINS.some(d => msg.includes(d))) return;
-  _origError.apply(console, args);
-};
-
 } // end if (!window._svAdBlockDisabled)

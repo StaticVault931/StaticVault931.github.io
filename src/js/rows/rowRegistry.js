@@ -37,9 +37,11 @@ export const ROW_REGISTRY = [
   R('row-trending',        'chart',    'core', 96,  { tags: ['trending'] }),
   R('row-top10',           'chart',    'core', 90,  { tags: ['trending'] }),
   R('row-new',             'movie',    'core', 88),
-  R('row-boxoffice',       'chart',    'core', 70,  { tags: ['trending'] }),
-  R('row-recently-added',  'movie',    'core', 66),
-  R('row-new-episodes',    'tv',       'core', 64),
+  // Disabled until their upstream APIs work again. Keep the definitions so
+  // reactivation is one flag change and does not require rebuilding the UI.
+  R('row-boxoffice',       'chart',    'core', 70,  { tags: ['trending'], enabled: false }),
+  R('row-recently-added',  'movie',    'core', 66,  { enabled: false }),
+  R('row-new-episodes',    'tv',       'core', 64,  { enabled: false }),
   R('row-sequels',         'movie',    'core', 60),
   R('row-new-to-you',      'personal', 'core', 58),
   R('row-imdb250',         'chart',    'core', 56, { tags: ['trending'], cooldownDays: 2 }),

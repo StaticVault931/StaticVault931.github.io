@@ -9,7 +9,7 @@
    • chart rows need ≥4 non-chart rows between them
    • cooldowns respected (unless the page can't be filled otherwise)
    • exactly 1 seasonalHuge (if active) + 1 seasonalBig + 1 seasonalSmall
-   • target 35–38 rows, hard cap 40 — specials REPLACE weak generic rows */
+   • target 36 rows, hard cap 40; specials replace weak generic rows */
 
 import { ROW_REGISTRY, ROW_SLOT_TEMPLATE, getRowDef } from './rowRegistry.js';
 import { getRowCooldowns, isOnCooldown, dayNumber } from './rowCooldowns.js';
