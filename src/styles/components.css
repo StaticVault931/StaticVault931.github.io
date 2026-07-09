@@ -3188,3 +3188,31 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 }
 #profile-editor-overlay .pe-quick-avatar:hover { transform: scale(1.08); }
 #profile-editor-overlay .pe-quick-avatar.on { outline: 3px solid var(--red); outline-offset: 2px; }
+
+/* ═══ PROFILE EDITOR — full visual revamp ════════════════════════════
+   Structure untouched (same ids/classes) — this is presentation only. */
+#profile-editor-overlay .profile-editor-modal,
+#profile-editor-overlay > div > div:first-child {
+  border-radius: 16px;
+  box-shadow: 0 30px 90px rgba(0,0,0,.7);
+}
+#profile-editor-overlay .profile-editor-body { gap: 1.4rem; }
+#profile-editor-overlay #profile-editor-title {
+  font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
+  letter-spacing: .04em;
+  font-size: 1.5rem;
+}
+#profile-editor-overlay #profile-avatar-preview {
+  border-radius: 16px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.1);
+  transition: box-shadow .2s;
+}
+#profile-editor-overlay .pe-fields-col > label { display: block; margin-bottom: 1rem; }
+#profile-editor-overlay .profile-field-label { margin-bottom: .45rem; display: block; }
+#profile-editor-overlay .ob-kids-row { margin-top: .2rem; }
+#profile-editor-overlay .profile-editor-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  margin-top: 1.2rem;
+}
+#profile-editor-overlay .profile-editor-actions .ma.primary { flex: 2 1 auto; }

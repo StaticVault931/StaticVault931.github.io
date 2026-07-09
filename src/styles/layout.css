@@ -325,16 +325,20 @@
 .ob-main { min-height: 0; overflow: hidden; border-radius: 12px; }
 .ob-grid {
   display: grid;
-  /* Bigger posters filling the full right side; the grid alone scrolls
-     internally when there are more tiles than fit — page never scrolls */
-  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
-  gap: .8rem;
+  /* FIXED column counts so every row is complete and even (9 across on
+     desktop → 54 tiles = 9×6). The grid alone scrolls internally when
+     needed — the page never scrolls. */
+  grid-template-columns: repeat(9, 1fr);
+  gap: .65rem;
   height: 100%;
   overflow-y: auto;
   scrollbar-width: thin;
-  padding-right: .3rem;
+  padding: 2px .4rem 2px 2px; /* room for focus/selection rings — no clipping */
   align-content: start;
 }
+@media (max-width: 1500px) { .ob-grid { grid-template-columns: repeat(8, 1fr); } }
+@media (max-width: 1240px) { .ob-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (max-width: 1000px) { .ob-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (max-width: 880px) {
   .ob-main { overflow: visible; }
   .ob-grid { height: auto; overflow: visible; }
@@ -354,17 +358,30 @@
 }
 .ob-tile {
   position: relative;
+  width: 100%;
   aspect-ratio: 2/3;
   border: 2px solid transparent;
-  border-radius: var(--r);
+  border-radius: 10px;
   overflow: hidden;
   padding: 0;
   background: var(--s2);
   cursor: pointer;
-  transition: transform .18s, border-color .18s, opacity .18s;
+  /* NO scale on hover — scaling made neighbors overlap in the tight grid.
+     Feedback comes from ring + brightness instead. */
+  transition: border-color .16s, opacity .16s, filter .16s;
 }
+.ob-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block; /* geometry locked to the tile — can never bleed out */
+}
+.ob-tile:hover { border-color: rgba(255,255,255,.45); }
+.ob-tile:hover img { filter: brightness(1.12); }
 .ob-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ob-tile:hover { transform: scale(1.05); }
+/* (hover scale removed — it made tiles overlap; ring+brightness instead) */
 .ob-tile.picked { border-color: var(--red); }
 .ob-tile.picked img { opacity: .6; }
 .ob-tile-check {
@@ -1873,36 +1890,43 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .footer-logo .n { color: var(--red); }
 .footer-tagline { color: var(--muted); font-size: .82rem; margin-bottom: .6rem; }
 .footer-disclaimer { color: var(--dim); font-size: .72rem; line-height: 1.7; }
-/* Four equal columns — every column is the same width and every entry
-   shares one size, one rhythm, one hover behavior */
-.footer-links {
+/* Default footer: original spacing (flex, natural column widths) */
+.footer-links { display: flex; gap: 2.5rem; flex-wrap: wrap; flex: 1; }
+.footer-col { display: flex; flex-direction: column; gap: .4rem; min-width: 110px; }
+.footer-col h4 { font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: .2rem; }
+.footer-col a, .footer-legal-btn {
+  font-size: .82rem; color: var(--dim); cursor: pointer; background: none; border: none;
+  padding: 0; text-align: left; transition: color .18s; display: flex; align-items: center; gap: .3rem;
+  text-decoration: none; font-family: inherit;
+}
+.footer-col a:hover, .footer-legal-btn:hover { color: var(--text); }
+.footer-col a .material-icons-round { font-size: .9rem; }
+
+/* ── EXPERIMENT: Equal Footer Grid (dev panel → Experiments) ──────────
+   Four equal-width columns, one rhythm, shared red-dot hover. */
+body.sv-exp-footer-grid .footer-links {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 2rem;
-  flex: 1;
 }
-@media (max-width: 720px) { .footer-links { grid-template-columns: repeat(2, 1fr); } }
-.footer-col { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-.footer-col h4 {
-  font-size: .7rem; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .12em; color: var(--muted); margin-bottom: .55rem;
+@media (max-width: 720px) {
+  body.sv-exp-footer-grid .footer-links { grid-template-columns: repeat(2, 1fr); }
 }
-.footer-col a, .footer-legal-btn {
+body.sv-exp-footer-grid .footer-col { gap: 0; min-width: 0; }
+body.sv-exp-footer-grid .footer-col a,
+body.sv-exp-footer-grid .footer-legal-btn {
   position: relative;
-  font-size: .84rem; font-weight: 500; font-family: inherit;
-  color: var(--dim); cursor: pointer; background: none; border: none;
-  padding: .3rem 0; text-align: left;
-  display: flex; align-items: center; gap: .35rem;
-  text-decoration: none;
+  font-size: .84rem;
+  padding: .3rem 0;
   transition: color .18s, transform .18s var(--ease);
 }
-.footer-col a:hover, .footer-legal-btn:hover,
-.footer-col a:focus-visible, .footer-legal-btn:focus-visible {
+body.sv-exp-footer-grid .footer-col a:hover,
+body.sv-exp-footer-grid .footer-legal-btn:hover {
   color: var(--text);
   transform: translateX(4px);
 }
-/* Red tick slides in on hover — one microinteraction shared by all */
-.footer-col a::before, .footer-legal-btn::before {
+body.sv-exp-footer-grid .footer-col a::before,
+body.sv-exp-footer-grid .footer-legal-btn::before {
   content: '';
   position: absolute;
   left: -10px; top: 50%;
@@ -1912,8 +1936,8 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
   transform: translateY(-50%) scale(0);
   transition: transform .18s var(--ease);
 }
-.footer-col a:hover::before, .footer-legal-btn:hover::before { transform: translateY(-50%) scale(1); }
-.footer-col a .material-icons-round { font-size: .9rem; }
+body.sv-exp-footer-grid .footer-col a:hover::before,
+body.sv-exp-footer-grid .footer-legal-btn:hover::before { transform: translateY(-50%) scale(1); }
 .footer-bottom {
   border-top: 1px solid var(--border);
   padding-top: 1.2rem;
@@ -2780,3 +2804,84 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   #ob-step1, #ob-step2, .ob-side .ob-block, .ob-step2-wrap .ob-block, .ob-skip,
   .ob-grid .ob-tile { animation: none !important; }
 }
+
+/* ═══ ONBOARDING STEP 2 — "one card" revamp ══════════════════════════ */
+.ob-p2 {
+  max-width: 780px;
+  margin: 0 auto;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 30%), var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.6rem 1.7rem 1.4rem;
+  box-shadow: 0 24px 70px rgba(0,0,0,.45);
+}
+.ob-p2-head {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding-bottom: 1.2rem;
+  margin-bottom: 1.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.ob-p2-head-text h2 {
+  font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
+  font-size: 1.7rem;
+  letter-spacing: .04em;
+  color: var(--text);
+  margin: 0 0 .25rem;
+}
+.ob-p2-head-text p { font-size: .8rem; color: var(--muted); line-height: 1.55; margin: 0; }
+.ob-p2 .ob-avatar-preview { width: 76px; height: 76px; border-radius: 16px; }
+.ob-p2-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.1rem 1.4rem;
+}
+.ob-p2-sec { min-width: 0; }
+.ob-p2-wide { grid-column: 1 / -1; }
+.ob-p2 .ob-label { margin-bottom: .5rem; }
+.ob-p2 .ob-chips { gap: .45rem; }
+@media (max-width: 720px) {
+  .ob-p2 { padding: 1.2rem 1rem; }
+  .ob-p2-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .ob-p2-head { flex-direction: column; text-align: center; }
+}
+
+/* ═══ EXPERIMENT: onboarding top search bar ══════════════════════════ */
+.ob-exp-top-search #ob-top-search-bar { margin-bottom: .9rem; }
+.ob-exp-top-search #ob-top-search-bar .ob-block {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: .65rem .9rem;
+}
+.ob-exp-top-search #ob-top-search-bar .ob-label { margin: 0; white-space: nowrap; }
+.ob-exp-top-search #ob-top-search-bar .ob-search { flex: 1; }
+.ob-exp-top-search #ob-top-search-bar .ob-search-results { left: 1rem; right: 1rem; }
+
+/* ═══ EXPERIMENT: dense home rows ════════════════════════════════════ */
+body.sv-exp-dense-rows .card-row { gap: .45rem; }
+body.sv-exp-dense-rows .section { margin-bottom: 1.1rem; }
+body.sv-exp-dense-rows .sec-title { font-size: 1rem; }
+body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
+
+/* ═══ DEV PANEL — Experiments rows ═══════════════════════════════════ */
+.dev-exp-row {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .55rem .2rem;
+  border-bottom: 1px dashed var(--border);
+}
+.dev-exp-row:last-child { border-bottom: none; }
+.dev-exp-info { flex: 1; min-width: 0; }
+.dev-exp-name { font-size: .78rem; font-weight: 800; color: var(--text); }
+.dev-exp-meta {
+  font-size: .62rem;
+  font-weight: 600;
+  color: var(--dim);
+  margin-left: .45rem;
+  letter-spacing: .02em;
+}
+.dev-exp-desc { font-size: .68rem; color: var(--muted); line-height: 1.45; margin-top: .1rem; }
+.dev-exp-row .dev-btn { flex-shrink: 0; min-width: 52px; }

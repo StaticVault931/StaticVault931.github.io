@@ -437,6 +437,42 @@ const SHORTCUTS = [
   { key: 'X',           desc: 'Not Interested (hide clip)',  group: 'Clips' },
 ];
 
+/* ── EXPERIMENTS ─────────────────────────────────────────────────────
+   Alternate UIs testable from the dev panel (Experiments section).
+   Each is a body class + localStorage flag; fully working, dev-gated
+   discovery only — the flags themselves persist for whoever enables them. */
+const SV_EXPERIMENTS = [
+  {
+    id: 'footer-grid',
+    label: 'Equal Footer Grid',
+    desc: 'Four equal-width footer columns, shared rhythm, red-dot hover microinteraction.',
+    added: '2026-07-08', commit: 101,
+    bodyClass: 'sv-exp-footer-grid',
+  },
+  {
+    id: 'ob-top-search',
+    label: 'Onboarding: Top Search Bar',
+    desc: 'Search sits above the poster grid and filters the tiles live as you type (dropdown add still works).',
+    added: '2026-07-09', commit: 104,
+    bodyClass: 'sv-exp-ob-top-search',
+  },
+  {
+    id: 'dense-rows',
+    label: 'Dense Home Rows',
+    desc: 'Tighter card gaps and slimmer section headers — more content per screen.',
+    added: '2026-07-09', commit: 104,
+    bodyClass: 'sv-exp-dense-rows',
+  },
+];
+function svExpOn(id) { try { return localStorage.getItem(`sv_exp_${id}`) === '1'; } catch { return false; } }
+function svExpSet(id, on) {
+  try { localStorage.setItem(`sv_exp_${id}`, on ? '1' : '0'); } catch {}
+  applyExperiments();
+}
+function applyExperiments() {
+  SV_EXPERIMENTS.forEach(e => document.body.classList.toggle(e.bodyClass, svExpOn(e.id)));
+}
+
 /* ── RIGHT-CLICK = RESET TO DEFAULT ──────────────────────────────────
    Right-clicking any setting, onboarding tile/chip, or preference tag
    resets that one thing to its default (listed in the shortcuts screen).
@@ -501,6 +537,7 @@ let _cardLogoMutObs   = null;
   initFunEggs();
   initBottomSearchBar();
   initRightClickReset();
+  applyExperiments(); // dev-panel Experiments body classes
   applyUITranslations(); // interface language (auto = browser, else saved)
   // Footer "Taste Onboarding" — reopen the picker any time (prefs kept)
   document.getElementById('footer-onboarding-btn')?.addEventListener('click', e => {
@@ -752,38 +789,50 @@ async function maybeShowOnboarding() {
             </div>
           </div>
           <div class="ob-main">
-            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(40)}</div>
+            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(54)}</div>
           </div>
         </div>
       </div>
 
-      <!-- STEP 2: FULL profile setup (name, picture, color, kid mode) + comfort -->
+      <!-- STEP 2: FULL profile setup — one organized card -->
       <div id="ob-step2" style="display:none">
-        <div class="ob-step2-wrap">
-          <div class="ob-block ob-profile-card">
-            <div class="ob-label"><span class="material-icons-round">person</span>Your profile</div>
-            <div class="ob-profile-row">
-              <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
-              <div class="ob-profile-fields">
-                <input type="text" class="ob-search" id="ob-profile-name" placeholder="Profile name — e.g. Alex" maxlength="20" autocomplete="off">
-                <div class="ob-label" style="margin-top:.8rem"><span class="material-icons-round">image</span>Profile picture</div>
-                <div class="ob-chips" id="ob-profile-avatars"></div>
-                <div class="ob-label" style="margin-top:.8rem"><span class="material-icons-round">palette</span>Profile color</div>
-                <div class="ob-chips" id="ob-profile-colors"></div>
-              </div>
+        <div class="ob-p2">
+          <div class="ob-p2-head">
+            <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
+            <div class="ob-p2-head-text">
+              <h2>Set up your profile</h2>
+              <p>This is the profile you're using right now — its feed, watchlist, and settings are all its own. Add more profiles later from the top-right menu.</p>
             </div>
-            <label class="ob-kids-row" for="ob-kids-toggle">
-              <span class="material-icons-round" style="color:#fbbf24">child_care</span>
-              <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
-                <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
-              <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
-            </label>
-            <div class="ob-hint">This is YOUR profile (the one you're using now) — your picks, watchlist, and settings live here. Add more profiles later from the top-right menu.</div>
           </div>
-          <div class="ob-block">
-            <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
-            <div class="ob-chips" id="ob-a11y"></div>
-            <div class="ob-hint">Applied instantly so you can see the difference. All of these live in Settings → Accessibility too.</div>
+
+          <div class="ob-p2-grid">
+            <section class="ob-p2-sec">
+              <div class="ob-label"><span class="material-icons-round">badge</span>Name</div>
+              <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
+            </section>
+            <section class="ob-p2-sec">
+              <div class="ob-label"><span class="material-icons-round">image</span>Picture</div>
+              <div class="ob-chips" id="ob-profile-avatars"></div>
+            </section>
+            <section class="ob-p2-sec">
+              <div class="ob-label"><span class="material-icons-round">palette</span>Color</div>
+              <div class="ob-chips" id="ob-profile-colors"></div>
+            </section>
+
+            <section class="ob-p2-sec ob-p2-wide">
+              <label class="ob-kids-row" for="ob-kids-toggle" style="margin-top:0">
+                <span class="material-icons-round" style="color:#fbbf24">child_care</span>
+                <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
+                  <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
+                <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
+              </label>
+            </section>
+
+            <section class="ob-p2-sec ob-p2-wide">
+              <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
+              <div class="ob-chips" id="ob-a11y"></div>
+              <div class="ob-hint">Applied instantly so you can see the difference. All of these live in Settings → Accessibility too.</div>
+            </section>
           </div>
         </div>
       </div>
@@ -996,6 +1045,7 @@ async function maybeShowOnboarding() {
   // and hover reveals direct buttons: ❤ love, 👎 not my taste, 🚫 hide
   const tileHtml = x => `
     <div class="ob-tile" data-oid="${x.id}" data-state="none" role="button" tabindex="0"
+      data-title="${(x.title || x.name || '').toLowerCase().replace(/"/g, '')}"
       aria-label="${(x.title || x.name || '').replace(/"/g, '&quot;')}">
       <img src="${imgUrl(x.poster_path, 'w185')}" alt="" loading="lazy">
       <span class="ob-tile-check material-icons-round">favorite</span>
@@ -1048,7 +1098,7 @@ async function maybeShowOnboarding() {
     if (tile?.dataset.oid) { e.preventDefault(); cycleTile(tile); }
   });
 
-  // Tiles: 40 titles spanning the whole taste spectrum, sorted by vote
+  // Tiles: 54 titles (9 x 6 on desktop) spanning the whole taste spectrum, sorted by vote
   // COUNT (the most widely SEEN titles, not this week's theater releases):
   //   • 20 all-time classics (10 movies + 10 shows)
   //   • 8 kids & family (G/PG animated + family — the light end)
@@ -1080,11 +1130,11 @@ async function maybeShowOnboarding() {
       return out;
     };
     const pool = [
-      ...take(grab(kids, 'movie'), 8),
-      ...take(grab(cm, 'movie'), 10),
-      ...take(grab(ct, 'tv'), 10),
-      ...take(grab(cozy, 'movie'), 4),
-      ...take(grab(intense, 'movie'), 4),
+      ...take(grab(kids, 'movie'), 10),
+      ...take(grab(cm, 'movie'), 14),
+      ...take(grab(ct, 'tv'), 14),
+      ...take(grab(cozy, 'movie'), 6),
+      ...take(grab(intense, 'movie'), 6),
       ...take(grab(trend), 4),
     ];
     // Order the grid from lightest (kid-friendly) to most adult — no labels,
@@ -1096,9 +1146,10 @@ async function maybeShowOnboarding() {
       const peak = gs.length ? Math.max(...gs) : 4;
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
-    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 40);
+    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 54);
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
+    ob._applyGridFilter?.(); // top-search experiment: re-apply live filter
   } catch (err) {
     console.warn('[SV Onboarding] tile fetch failed:', err?.message || err);
     grid.innerHTML = '<p style="opacity:.6;font-size:.85rem">Couldn\'t load titles — pick genres instead.</p>';
@@ -1134,6 +1185,29 @@ async function maybeShowOnboarding() {
       }));
     }, 350);
   });
+
+  // ── EXPERIMENT: top search bar (dev panel → Experiments) ──────────
+  // Moves the existing search block above the grid (all its handlers and
+  // the add-title dropdown survive the move) and adds live tile filtering.
+  if (svExpOn('ob-top-search')) {
+    const searchBlock = ob.querySelector('#ob-search')?.closest('.ob-block');
+    const step1El = ob.querySelector('#ob-step1');
+    if (searchBlock && step1El) {
+      const bar = document.createElement('div');
+      bar.id = 'ob-top-search-bar';
+      bar.appendChild(searchBlock);
+      step1El.prepend(bar);
+      ob.classList.add('ob-exp-top-search');
+      const searchInput = ob.querySelector('#ob-search');
+      ob._applyGridFilter = () => {
+        const q = (searchInput?.value || '').trim().toLowerCase();
+        grid.querySelectorAll('.ob-tile[data-oid]').forEach(tile => {
+          tile.style.display = !q || (tile.dataset.title || '').includes(q) ? '' : 'none';
+        });
+      };
+      searchInput?.addEventListener('input', ob._applyGridFilter);
+    }
+  }
 
   const finish = (skipped, customize = false) => {
     localStorage.setItem('sv_onboarded', '1'); // done or skipped — either way it's over
@@ -8269,6 +8343,11 @@ function populateTestPanel() {
       </div>
 
       <div class="dev-section">
+        <div class="dev-sec-title">Experiments</div>
+        <div id="dev-experiments"></div>
+      </div>
+
+      <div class="dev-section">
         <div class="dev-sec-title">Row Summoner — Holiday &amp; Seasonal</div>
         <div class="dev-btn-row" style="margin-bottom:.45rem">
           <button class="dev-btn" id="dev-btn-holiday-page">
@@ -8460,6 +8539,34 @@ function populateTestPanel() {
           Top clicked: ${topClicked.length ? topClicked.join(', ') : '—'}<br>
           <span style="opacity:.6">window.SV_DEBUG_ROWS has the full API</span>`;
       } catch (err) { rowSys.textContent = `row system: ${err?.message}`; }
+    }
+
+    // ── Experiments: alternate UIs, labeled + timestamped + commit ───
+    const expEl = panel.querySelector('#dev-experiments');
+    if (expEl) {
+      const renderExps = () => {
+        expEl.innerHTML = SV_EXPERIMENTS.map(e => `
+          <div class="dev-exp-row">
+            <div class="dev-exp-info">
+              <div class="dev-exp-name">${esc(e.label)}
+                <span class="dev-exp-meta">added ${e.added} · commit ${e.commit}</span>
+              </div>
+              <div class="dev-exp-desc">${esc(e.desc)}</div>
+            </div>
+            <button class="dev-btn${svExpOn(e.id) ? ' dev-btn-active' : ''}" data-exp="${e.id}">
+              ${svExpOn(e.id) ? 'ON' : 'OFF'}
+            </button>
+          </div>`).join('');
+      };
+      renderExps();
+      expEl.addEventListener('click', ev => {
+        const btn = ev.target.closest('[data-exp]');
+        if (!btn) return;
+        const id = btn.dataset.exp;
+        svExpSet(id, !svExpOn(id));
+        renderExps();
+        toast(`Experiment "${SV_EXPERIMENTS.find(e => e.id === id)?.label}" ${svExpOn(id) ? 'enabled' : 'disabled'}`, 'science');
+      });
     }
 
     // ── Holiday row summoner ─────────────────────────────────────────
