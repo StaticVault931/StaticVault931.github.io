@@ -1,4 +1,5 @@
 import { state, persist } from './state.js';
+import { recordPageView } from './stats.js';
 
 /* ── PAGE TITLES & DESCRIPTIONS ─────────────────────────────────── */
 const PAGE_META = {
@@ -106,6 +107,7 @@ export function goPage(p) {
   }
 
   state.currentPage = p;
+  recordPageView(); // stats ledger
   if (PAGE_LOADERS[p]) PAGE_LOADERS[p]();
 }
 

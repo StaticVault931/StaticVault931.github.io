@@ -21,6 +21,8 @@ import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
+import { titleScore } from './search/fuzzy.js';
+import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 
@@ -789,51 +791,44 @@ async function maybeShowOnboarding() {
             </div>
           </div>
           <div class="ob-main">
-            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(54)}</div>
+            <div class="ob-grid" id="ob-grid">${'<div class="ob-tile ob-skel"></div>'.repeat(60)}</div>
           </div>
         </div>
       </div>
 
-      <!-- STEP 2: FULL profile setup — one organized card -->
+      <!-- STEP 2: the PROFILE STAGE — identity first, like the big platforms -->
       <div id="ob-step2" style="display:none">
-        <div class="ob-p2">
-          <div class="ob-p2-head">
-            <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
-            <div class="ob-p2-head-text">
-              <h2>Set up your profile</h2>
-              <p>This is the profile you're using right now — its feed, watchlist, and settings are all its own. Add more profiles later from the top-right menu.</p>
+        <div class="ob-stage">
+          <div class="ob-stage-hero">
+            <div class="ob-stage-avatar-wrap">
+              <div class="ob-avatar-preview" id="ob-avatar-preview"><span class="material-icons-round">person</span></div>
             </div>
+            <input type="text" id="ob-profile-name" class="ob-stage-name" placeholder="Your name" maxlength="20" autocomplete="off" aria-label="Profile name">
+            <div class="ob-stage-colors ob-chips" id="ob-profile-colors" aria-label="Profile color"></div>
           </div>
 
-          <div class="ob-p2-grid">
-            <section class="ob-p2-sec">
-              <div class="ob-label"><span class="material-icons-round">badge</span>Name</div>
-              <input type="text" class="ob-search" id="ob-profile-name" placeholder="e.g. Alex" maxlength="20" autocomplete="off">
-            </section>
-            <section class="ob-p2-sec">
-              <div class="ob-label"><span class="material-icons-round">image</span>Picture</div>
-              <div class="ob-chips" id="ob-profile-avatars"></div>
-            </section>
-            <section class="ob-p2-sec">
-              <div class="ob-label"><span class="material-icons-round">palette</span>Color</div>
-              <div class="ob-chips" id="ob-profile-colors"></div>
-            </section>
+          <section class="ob-stage-sec">
+            <div class="ob-label"><span class="material-icons-round">face</span>Choose a picture</div>
+            <div class="ob-avatar-strip ob-chips" id="ob-profile-avatars" aria-label="Profile pictures"></div>
+            <input type="search" class="ob-search" id="ob-avatar-search" placeholder="Search any actor for your picture…" autocomplete="off" aria-label="Search actors for a profile picture">
+          </section>
 
-            <section class="ob-p2-sec ob-p2-wide">
-              <label class="ob-kids-row" for="ob-kids-toggle" style="margin-top:0">
-                <span class="material-icons-round" style="color:#fbbf24">child_care</span>
-                <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
-                  <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
-                <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
-              </label>
-            </section>
+          <section class="ob-stage-sec">
+            <label class="ob-kids-row" for="ob-kids-toggle" style="margin-top:0">
+              <span class="material-icons-round" style="color:#fbbf24">child_care</span>
+              <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
+                <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
+              <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
+            </label>
+          </section>
 
-            <section class="ob-p2-sec ob-p2-wide">
-              <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
-              <div class="ob-chips" id="ob-a11y"></div>
-              <div class="ob-hint">Applied instantly so you can see the difference. All of these live in Settings → Accessibility too.</div>
-            </section>
-          </div>
+          <section class="ob-stage-sec">
+            <div class="ob-label"><span class="material-icons-round">accessibility_new</span>Accessibility</div>
+            <div class="ob-chips" id="ob-a11y"></div>
+            <div class="ob-hint">Applied instantly so you can see the difference. All of these live in Settings → Accessibility too.</div>
+          </section>
+
+          <p class="ob-stage-note">This is the profile you're using right now — its feed, watchlist, and settings are all its own. Add more profiles later from the top-right menu.</p>
         </div>
       </div>
 
@@ -990,10 +985,43 @@ async function maybeShowOnboarding() {
   ];
   const avatarsEl = ob.querySelector('#ob-profile-avatars');
   if (avatarsEl) {
-    avatarsEl.innerHTML = OB_AVATARS.map(([url, label]) => `
-      <button class="ob-chip ob-avatar-chip${url === pickedAvatar ? ' picked' : ''}" data-avatar="${esc(url)}" title="${label}" aria-label="Avatar: ${label}">
-        ${url ? `<img src="${esc(url)}" alt="">` : '<span class="material-icons-round">font_download</span>'}
-      </button>`).join('');
+    const avatarChip = (url, label) => `
+      <button class="ob-chip ob-avatar-chip${url === pickedAvatar ? ' picked' : ''}" data-avatar="${esc(url)}" title="${esc(label)}" aria-label="Avatar: ${esc(label)}">
+        ${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : '<span class="material-icons-round">font_download</span>'}
+      </button>`;
+    const renderAvatars = (people = []) => {
+      avatarsEl.innerHTML =
+        OB_AVATARS.map(([url, label]) => avatarChip(url, label)).join('') +
+        people.map(pn => avatarChip(imgUrl(pn.profile_path, 'w185'), pn.name)).join('');
+      // keep the current pick ringed even if it isn't in the visible set
+      avatarsEl.querySelectorAll('.ob-avatar-chip').forEach(c =>
+        c.classList.toggle('picked', (c.dataset.avatar || '') === pickedAvatar));
+    };
+    renderAvatars();
+    // Gallery: popular actors as ready-made profile pictures (the actor-
+    // avatar system is the foundation — this makes it browsable in place)
+    tmdb('/person/popular').then(d => {
+      const faces = (d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14);
+      if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
+    }).catch(() => {});
+    // Search ANY actor for a picture — replaces the gallery portion live
+    const avSearch = ob.querySelector('#ob-avatar-search');
+    let _avTimer = null, _avToken = 0;
+    avSearch?.addEventListener('input', () => {
+      clearTimeout(_avTimer);
+      const q = avSearch.value.trim();
+      _avTimer = setTimeout(async () => {
+        const my = ++_avToken;
+        if (!q) { // restore the popular gallery
+          const d = await tmdb('/person/popular').catch(() => null);
+          if (my === _avToken) renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14));
+          return;
+        }
+        const d = await tmdb('/search/person', { query: q }).catch(() => null);
+        if (my !== _avToken) return;
+        renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14));
+      }, 280);
+    });
     avatarsEl.addEventListener('click', e => {
       const chip = e.target.closest('[data-avatar]');
       if (chip === null || chip === undefined) return;
@@ -1098,7 +1126,38 @@ async function maybeShowOnboarding() {
     if (tile?.dataset.oid) { e.preventDefault(); cycleTile(tile); }
   });
 
-  // Tiles: 54 titles (9 x 6 on desktop) spanning the whole taste spectrum, sorted by vote
+  // ── FIT-GRID: use the space intelligently ─────────────────────────
+  // Measures the grid box and picks the largest poster size that still
+  // yields COMPLETE rows filling the height exactly — no page scrolling,
+  // no ragged last row, posters as big as the screen allows. Extra
+  // candidates beyond the fit are hidden (they become search inventory).
+  const _obFitGrid = () => {
+    if (window.innerWidth <= 880) { // mobile scrolls naturally via CSS
+      grid.style.gridTemplateColumns = '';
+      grid.querySelectorAll('.ob-tile').forEach(t => t.classList.remove('ob-tile-overflow'));
+      return;
+    }
+    const box = grid.parentElement; // .ob-main
+    const W = box?.clientWidth, H = box?.clientHeight;
+    if (!W || !H) return;
+    const GAP = 12, IDEAL_W = 168; // premium-large posters
+    const cols = Math.max(4, Math.round((W + GAP) / (IDEAL_W + GAP)));
+    const tileW = (W - GAP * (cols - 1)) / cols;
+    const tileH = tileW * 1.5;
+    const rows = Math.max(2, Math.floor((H + GAP) / (tileH + GAP)));
+    const visible = cols * rows;
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gap = `${GAP}px`;
+    grid.querySelectorAll('.ob-tile').forEach((t, i) =>
+      t.classList.toggle('ob-tile-overflow', i >= visible));
+  };
+  ob._fitGrid = _obFitGrid;
+  requestAnimationFrame(_obFitGrid);
+  const _obResize = () => { if (document.getElementById('onboard-screen')) _obFitGrid(); };
+  window.addEventListener('resize', _obResize);
+
+  // Tiles: 72 candidates; the fit-grid displays exactly as many complete
+  // rows as the screen holds (biggest possible posters, zero scrolling), sorted by vote
   // COUNT (the most widely SEEN titles, not this week's theater releases):
   //   • 20 all-time classics (10 movies + 10 shows)
   //   • 8 kids & family (G/PG animated + family — the light end)
@@ -1130,12 +1189,12 @@ async function maybeShowOnboarding() {
       return out;
     };
     const pool = [
-      ...take(grab(kids, 'movie'), 10),
-      ...take(grab(cm, 'movie'), 14),
-      ...take(grab(ct, 'tv'), 14),
-      ...take(grab(cozy, 'movie'), 6),
-      ...take(grab(intense, 'movie'), 6),
-      ...take(grab(trend), 4),
+      ...take(grab(kids, 'movie'), 12),
+      ...take(grab(cm, 'movie'), 18),
+      ...take(grab(ct, 'tv'), 18),
+      ...take(grab(cozy, 'movie'), 8),
+      ...take(grab(intense, 'movie'), 8),
+      ...take(grab(trend), 6),
     ];
     // Order the grid from lightest (kid-friendly) to most adult — no labels,
     // no sections, just a gentle gradient down the page
@@ -1146,10 +1205,11 @@ async function maybeShowOnboarding() {
       const peak = gs.length ? Math.max(...gs) : 4;
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
-    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 54);
+    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
-    ob._applyGridFilter?.(); // top-search experiment: re-apply live filter
+    ob._fitGrid?.();          // size to the screen — complete rows only
+    ob._applyGridFilter?.();  // top-search experiment: re-apply live filter
   } catch (err) {
     console.warn('[SV Onboarding] tile fetch failed:', err?.message || err);
     grid.innerHTML = '<p style="opacity:.6;font-size:.85rem">Couldn\'t load titles — pick genres instead.</p>';
@@ -1186,9 +1246,12 @@ async function maybeShowOnboarding() {
     }, 350);
   });
 
-  // ── EXPERIMENT: top search bar (dev panel → Experiments) ──────────
-  // Moves the existing search block above the grid (all its handlers and
-  // the add-title dropdown survive the move) and adds live tile filtering.
+  // ── EXPERIMENT: top search bar → SEARCH-IN-GRID (dev panel) ───────
+  // The grid itself becomes the results surface: curated tiles that match
+  // rank first (fuzzy-scored, so typos still hit), TMDB results stream in
+  // behind them as real selectable tiles, and clearing the box restores
+  // the curated fit exactly as it was. Feels instant: local ranking runs
+  // on every keystroke, network fills in ~250ms later.
   if (svExpOn('ob-top-search')) {
     const searchBlock = ob.querySelector('#ob-search')?.closest('.ob-block');
     const step1El = ob.querySelector('#ob-step1');
@@ -1199,13 +1262,71 @@ async function maybeShowOnboarding() {
       step1El.prepend(bar);
       ob.classList.add('ob-exp-top-search');
       const searchInput = ob.querySelector('#ob-search');
+
+      let _obqToken = 0, _obqTimer = null;
+      // Remove injected search results — EXCEPT ones the user picked:
+      // those graduate into the curated grid (front of the pack) so a
+      // selection never silently vanishes when the search clears
+      const clearInjected = () => grid.querySelectorAll('.ob-tile[data-injected]').forEach(t => {
+        if (t.dataset.state && t.dataset.state !== 'none') {
+          t.removeAttribute('data-injected');
+          t.style.order = '-1';
+          t.style.display = '';
+        } else {
+          t.remove();
+        }
+      });
+
+      const rankLocal = q => {
+        // Curated tiles: fuzzy-rank instantly; CSS `order` does the sort
+        let hits = 0;
+        grid.querySelectorAll('.ob-tile[data-oid]:not([data-injected])').forEach(tile => {
+          const score = titleScore(q, tile.dataset.title || '');
+          const hit = score >= 55;
+          tile.style.display = hit ? '' : 'none';
+          tile.style.order = hit ? String(1000 - Math.round(score)) : '';
+          if (hit) hits++;
+        });
+        return hits;
+      };
+
+      const fetchRemote = async q => {
+        const my = ++_obqToken;
+        const d = await tmdb('/search/multi', { query: q }).catch(() => null);
+        if (my !== _obqToken || (searchInput?.value || '').trim() !== q) return; // stale
+        clearInjected();
+        const fresh = (d?.results || [])
+          .filter(x => (x.media_type === 'movie' || x.media_type === 'tv') && x.poster_path && !allItems.has(x.id))
+          .slice(0, 24);
+        fresh.forEach(x => allItems.set(x.id, x));
+        grid.insertAdjacentHTML('beforeend',
+          fresh.map(x => tileHtml(x).replace('class="ob-tile"', 'class="ob-tile" data-injected="1"')).join(''));
+        // Injected results sit after every curated match
+        grid.querySelectorAll('.ob-tile[data-injected]').forEach((t, i) => { t.style.order = String(2000 + i); });
+      };
+
       ob._applyGridFilter = () => {
         const q = (searchInput?.value || '').trim().toLowerCase();
-        grid.querySelectorAll('.ob-tile[data-oid]').forEach(tile => {
-          tile.style.display = !q || (tile.dataset.title || '').includes(q) ? '' : 'none';
-        });
+        clearTimeout(_obqTimer);
+        if (!q) { // restore curated fit exactly
+          _obqToken++;
+          clearInjected();
+          grid.classList.remove('ob-searching');
+          grid.querySelectorAll('.ob-tile[data-oid]').forEach(t => { t.style.display = ''; t.style.order = ''; });
+          ob._fitGrid?.();
+          return;
+        }
+        grid.classList.add('ob-searching'); // search mode: grid may scroll
+        rankLocal(q);
+        _obqTimer = setTimeout(() => fetchRemote(q), 250);
       };
       searchInput?.addEventListener('input', ob._applyGridFilter);
+      // Enter jumps focus into the results for keyboard-first flows
+      searchInput?.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        grid.querySelector('.ob-tile[data-oid]:not([style*="display: none"])')?.focus();
+      });
     }
   }
 
@@ -4332,6 +4453,9 @@ export async function openMedia(id, type, hint = {}) {
   resetModal();
 
   state.currentMedia = { id, type, ...hint };
+  // Stats: a play began — the watch clock runs until the modal closes
+  recordPlay({ id, type });
+  window._svWatchCtx = { start: Date.now(), item: { id, type, title: hint.title || '', genre_ids: hint.genre_ids || [] } };
 
   try {
     let details, credits;
@@ -4536,6 +4660,11 @@ async function loadRelated(id, type, details) {
 
 /* ── MODAL CLOSE ─────────────────────────────────────────────────── */
 export function closeModal() {
+  // Stats: close the watch clock for this sitting
+  if (window._svWatchCtx?.start) {
+    recordWatchTime(Date.now() - window._svWatchCtx.start, window._svWatchCtx.item);
+    window._svWatchCtx = null;
+  }
   document.getElementById('modal-overlay')?.classList.remove('open');
   document.getElementById('player-frame')?.removeAttribute('src');
   document.body.style.overflow = '';
@@ -5179,6 +5308,9 @@ function initEventDelegation() {
       // selection history. All local-only; leaves the device only in this
       // manual export.
       rowDiagnostics: exportRowDiagnostics(),
+      // Long-term usage ledger (watch time, plays, per-genre/title/day) —
+      // powers future recaps; local-only until this manual export
+      usageStats: exportStats(),
       // Diagnostics — safe to share, helps improve search & recommendations
       diagnostics: (() => {
         const ls = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
@@ -7900,6 +8032,7 @@ function renderProfilesGrid() {
         ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : `<span class="material-icons-round">person</span>`}
       </div>
       <div class="profile-card-name">${esc(p.name)}</div>
+      ${profileUsageSummary(p.id) ? `<div class="profile-card-usage">${esc(profileUsageSummary(p.id))}</div>` : ''}
       ${p.id === activeId ? `<div class="profile-card-active-badge">Active</div>` : ''}
       <button class="profile-card-edit-btn" data-pid="${p.id}" title="Edit">
         <span class="material-icons-round">edit</span>
@@ -9807,6 +9940,7 @@ async function initTrailersFeed() {
         if (start) {
           const dwell = (Date.now() - start) / 1000;
           _dwellStart.delete(id);
+          if (dwell > 3) recordClipView(); // stats: a real clip view
           // Learn: >8s = positive signal, <1.5s = negative signal
           const delta = dwell > 8 ? 1 : dwell < 1.5 ? -1 : 0;
           if (delta !== 0) {

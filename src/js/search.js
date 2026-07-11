@@ -2,6 +2,7 @@ import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
 import { state, GENRES, addRecentSearch, clearRecentSearches } from './state.js';
 import { initSearchPipeline, prepareQuery, svFlag } from './search/searchPipeline.js';
+import { recordSearchStat } from './stats.js';
 import { rankResults } from './search/ranking.js';
 import { titleScore } from './search/fuzzy.js';
 
@@ -1122,6 +1123,7 @@ function _applyTypedFilters(q) {
    them (correction used, result count). Included in "Export All Data" so
    real-world queries can drive search improvements. */
 function _logSearch(entry) {
+  recordSearchStat(); // long-term ledger
   try {
     const log = JSON.parse(localStorage.getItem('sv_search_log') || '[]');
     log.unshift({ ...entry, ts: Date.now() });
