@@ -3223,3 +3223,47 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
   margin-top: 1.2rem;
 }
 #profile-editor-overlay .profile-editor-actions .ma.primary { flex: 2 1 auto; }
+
+/* ═══ CLIPS — commit 108 polish ══════════════════════════════════════ */
+/* COVER crop: the video fills the slide edge-to-edge (TikTok-style),
+   cropping sides instead of leaving letterbox bars. Width is whichever
+   is larger: the slide itself or 16:9 of the slide height. Centered. */
+.trailer-slide-iframe {
+  inset: auto;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 100%;
+  width: max(100%, calc(var(--slide-h, 100dvh) * 1.7778));
+}
+
+/* Volume: icon button grows a slider on hover/focus (desktop) and it is
+   always visible on touch */
+.clips-vol-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .45rem;
+}
+.clips-vol-slider {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 8px;
+  height: 84px;
+  accent-color: var(--red);
+  cursor: pointer;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity .18s, max-height .22s var(--ease);
+}
+.clips-vol-wrap:hover .clips-vol-slider,
+.clips-vol-wrap:focus-within .clips-vol-slider {
+  opacity: 1;
+  max-height: 84px;
+}
+@media (hover: none) {
+  .clips-vol-slider { opacity: 1; max-height: 84px; height: 64px; }
+}

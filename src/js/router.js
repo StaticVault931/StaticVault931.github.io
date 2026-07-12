@@ -42,23 +42,34 @@ function updatePageMeta(p) {
   document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', siteImg);
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', pageUrl);
 
-  // Inject BreadcrumbList JSON-LD per page
+  // Inject per-page JSON-LD: BreadcrumbList + a CollectionPage node so
+  // browse pages (movies/tv/anime/search) carry their own identity for
+  // rendered crawls instead of reading as copies of home
   const ldEl = document.getElementById('jsonld-media');
   if (ldEl) {
     const crumbs = PAGE_BREADCRUMBS[p] || [];
+    const graph = [];
     if (crumbs.length) {
-      const items = [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: base },
-        ...crumbs.map((c, i) => ({ '@type': 'ListItem', position: i + 2, name: c.name, item: c.url })),
-      ];
-      ldEl.textContent = JSON.stringify({
-        '@context': 'https://schema.org',
+      graph.push({
         '@type': 'BreadcrumbList',
-        itemListElement: items,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: base },
+          ...crumbs.map((c, i) => ({ '@type': 'ListItem', position: i + 2, name: c.name, item: c.url })),
+        ],
       });
-    } else {
-      ldEl.textContent = '';
     }
+    if (['movies', 'tv', 'anime', 'search', 'clips'].includes(p)) {
+      graph.push({
+        '@type': 'CollectionPage',
+        name: m.title,
+        description: m.desc,
+        url: pageUrl,
+        isPartOf: { '@type': 'WebSite', name: 'StaticVault931', url: base },
+      });
+    }
+    ldEl.textContent = graph.length
+      ? JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })
+      : '';
   }
 }
 

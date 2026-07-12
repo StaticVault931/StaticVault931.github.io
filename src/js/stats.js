@@ -43,7 +43,15 @@ function _blank() {
 }
 
 function _aggregate() {
-  return { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0, genres: {}, types: {}, titles: {}, hours: {}, days: {} };
+  return {
+    watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0,
+    genres: {}, types: {}, titles: {}, hours: {}, days: {},
+    // behavioral favorites — derived from what people actually DO
+    langs: {},        // { iso639: watchMs }
+    providers: {},    // { providerId: plays }
+    actors: {},       // { personId: { ms, name } } capped at 200
+    signals: { likeGenres: {}, likeLangs: {}, saveGenres: {} },
+  };
 }
 
 function _normalize(st) {
@@ -150,6 +158,28 @@ export function recordWatchTime(ms, item = {}) {
     L.genres[g] = (L.genres[g] || 0) + ms;
     Y.genres[g] = (Y.genres[g] || 0) + ms;
   });
+  if (item.lang) {
+    L.langs[item.lang] = (L.langs[item.lang] || 0) + ms;
+    Y.langs[item.lang] = (Y.langs[item.lang] || 0) + ms;
+  }
+  if (item.provider) {
+    L.providers[item.provider] = (L.providers[item.provider] || 0) + 1;
+    Y.providers[item.provider] = (Y.providers[item.provider] || 0) + 1;
+  }
+  (item.cast || []).slice(0, 4).forEach(a => {
+    if (!a?.id) return;
+    for (const agg of [L, Y]) {
+      const rec = agg.actors[a.id] || { ms: 0, name: a.name || '' };
+      rec.ms += ms; if (a.name) rec.name = a.name;
+      agg.actors[a.id] = rec;
+    }
+  });
+  // cap actor map (lifetime only — yearly stays small naturally)
+  const aKeys = Object.keys(L.actors);
+  if (aKeys.length > 200) {
+    aKeys.sort((x, y) => L.actors[x].ms - L.actors[y].ms);
+    aKeys.slice(0, aKeys.length - 200).forEach(x => delete L.actors[x]);
+  }
   if (item.id && item.type) {
     const k = `${item.type}:${item.id}`;
     const t = L.titles[k] || { ms: 0, plays: 0, title: item.title || '' };
@@ -233,6 +263,46 @@ export function lifetimeSummary() {
     clipViews: L.clipViews,
     pageViews: L.pageViews,
     activeDays: Object.values(st.daily).filter(v => v.watchMs || v.plays || v.searches || v.clipViews || v.pageViews).length,
+  };
+}
+
+/* Taste signals from explicit actions (like / save) — a second axis of
+   "favorite" beyond raw watch time */
+export function recordTasteSignal(kind, item = {}) {
+  const st = _load();
+  const sig = st.life.signals || (st.life.signals = { likeGenres: {}, likeLangs: {}, saveGenres: {} });
+  const bump = (map, key) => { if (key !== undefined && key !== null && key !== '') map[key] = (map[key] || 0) + 1; };
+  if (kind === 'like') {
+    (item.genre_ids || []).forEach(g => bump(sig.likeGenres, g));
+    bump(sig.likeLangs, item.lang);
+  } else if (kind === 'save') {
+    (item.genre_ids || []).forEach(g => bump(sig.saveGenres, g));
+  }
+  _touch(st);
+  _save();
+}
+
+/* Favorites across every tracked axis, blending watch time with explicit
+   signals — this is what recap/"Wrapped" features read */
+export function getFavorites(limit = 5) {
+  const st = _load();
+  const L = st.life;
+  const sig = L.signals || {};
+  const top = (obj, map = (k, v) => ({ key: k, value: v })) =>
+    Object.entries(obj || {}).sort((a, b) => (b[1].ms ?? b[1]) - (a[1].ms ?? a[1])).slice(0, limit).map(([k, v]) => map(k, v));
+  // Genres: watch-time hours + like/save counts blended into one score
+  const genreScore = {};
+  Object.entries(L.genres || {}).forEach(([g, ms]) => { genreScore[g] = (genreScore[g] || 0) + ms / 3600000; });
+  Object.entries(sig.likeGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) + n * 0.75; });
+  Object.entries(sig.saveGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) + n * 0.4; });
+  return {
+    genres: Object.entries(genreScore).sort((a, b) => b[1] - a[1]).slice(0, limit)
+      .map(([g, score]) => ({ genreId: +g, score: +score.toFixed(2) })),
+    langs: top(L.langs, (k, ms) => ({ lang: k, hours: +(ms / 3600000).toFixed(1) })),
+    providers: top(L.providers, (k, n) => ({ providerId: k, plays: n })),
+    actors: top(L.actors, (k, v) => ({ personId: +k, name: v.name, hours: +(v.ms / 3600000).toFixed(1) })),
+    types: top(L.types, (k, ms) => ({ type: k, hours: +(ms / 3600000).toFixed(1) })),
+    titles: top(L.titles, (k, v) => ({ key: k, title: v.title, hours: +(v.ms / 3600000).toFixed(1) })),
   };
 }
 

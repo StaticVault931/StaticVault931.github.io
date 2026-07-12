@@ -22,7 +22,7 @@ import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfi
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
-import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary } from './stats.js';
+import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary, getStats } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 
@@ -438,6 +438,53 @@ const SHORTCUTS = [
   { key: 'B',           desc: 'Bookmark / Watchlist',        group: 'Clips' },
   { key: 'X',           desc: 'Not Interested (hide clip)',  group: 'Clips' },
 ];
+
+/* ── PERSON PAGE SEO ─────────────────────────────────────────────────
+   Every person page gets its OWN canonical, title, description, and
+   schema.org Person markup — without this they all looked like alternates
+   of whatever page the crawler saw first, and Google refused to index
+   them individually. */
+function _setPersonSEO(personId, person) {
+  const base = 'https://staticvault931.github.io/';
+  const url = `${base}?person=${personId}`;
+  const name = person?.name || `Person #${personId}`;
+  const dept = person?.known_for_department || 'Acting';
+  const known = (person?.combined_credits?.cast || [])
+    .slice()
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+    .slice(0, 3)
+    .map(c => c.title || c.name)
+    .filter(Boolean);
+  const title = person
+    ? `${name} — Movies & TV Shows | StaticVault931`
+    : `Person — StaticVault931`;
+  const desc = person
+    ? `${name} (${dept})${known.length ? ` — known for ${known.join(', ')}` : ''}. Browse their full filmography and watch free on StaticVault931.`
+    : `Browse this person's filmography on StaticVault931.`;
+  document.title = title;
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', url);
+  document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', title);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', url);
+  if (person?.profile_path) {
+    document.querySelector('meta[property="og:image"]')?.setAttribute('content', `https://image.tmdb.org/t/p/w500${person.profile_path}`);
+  }
+  const ldEl = document.getElementById('jsonld-media');
+  if (ldEl && person) {
+    ldEl.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name,
+      url,
+      ...(person.profile_path ? { image: `https://image.tmdb.org/t/p/w500${person.profile_path}` } : {}),
+      ...(person.birthday ? { birthDate: person.birthday } : {}),
+      ...(person.biography ? { description: person.biography.slice(0, 300) } : {}),
+      jobTitle: dept,
+      ...(known.length ? { knowsAbout: known } : {}),
+    });
+  }
+}
 
 /* ── EXPERIMENTS ─────────────────────────────────────────────────────
    Alternate UIs testable from the dev panel (Experiments section).
@@ -2827,8 +2874,24 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
         with_genres: '10751|12', without_genres: '27|53', certification_country: 'US',
         'certification.lte': 'PG', sort_by: 'vote_count.desc', 'vote_count.gte': 100,
       }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
+    _scheduleRowLoad('row-kids-animated', 'sec-kids-animated', () =>
+      tmdb('/discover/movie', {
+        with_genres: '16', certification_country: 'US',
+        'certification.lte': 'G', sort_by: 'vote_count.desc', 'vote_count.gte': 200,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
+    _scheduleRowLoad('row-kids-magic', 'sec-kids-magic', () =>
+      tmdb('/discover/movie', {
+        with_genres: '14|10751', without_genres: '27|53', certification_country: 'US',
+        'certification.lte': 'PG', sort_by: 'popularity.desc', 'vote_count.gte': 150,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
+    _scheduleRowLoad('row-kids-nature', 'sec-kids-nature', () =>
+      tmdb('/discover/movie', {
+        with_genres: '99|10751', without_genres: '27|53|80', certification_country: 'US',
+        'certification.lte': 'PG', sort_by: 'popularity.desc', 'vote_count.gte': 40,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
   } else {
-    ['sec-kids-movies', 'sec-kids-shows', 'sec-family-adventures'].forEach(id => hideSection(id));
+    ['sec-kids-movies', 'sec-kids-shows', 'sec-family-adventures',
+     'sec-kids-animated', 'sec-kids-magic', 'sec-kids-nature'].forEach(id => hideSection(id));
   }
 
   // Recently Added Movies (from vidsrc-embed.ru)
@@ -4499,6 +4562,17 @@ export async function openMedia(id, type, hint = {}) {
     const year = String(details.release_date || details.first_air_date || '').slice(0, 4);
     state.currentMedia = { id, type, title, imdbId, useId, details };
 
+    // Stats: enrich the running watch context — language, genres, and top
+    // cast make "favorite languages/genres/actors by watch time" possible
+    if (window._svWatchCtx?.item?.id === id) {
+      Object.assign(window._svWatchCtx.item, {
+        title,
+        lang: details.original_language || null,
+        genre_ids: (details.genres || []).map(g => g.id),
+        cast: (credits?.cast || []).slice(0, 4).map(c => ({ id: c.id, name: c.name })),
+      });
+    }
+
     // Update URL + page meta for SEO + sharing
     const mediaUrl = buildMediaUrl(id, type, title, year);
     history.pushState({ id, type }, title, mediaUrl);
@@ -4681,9 +4755,11 @@ async function loadRelated(id, type, details) {
 
 /* ── MODAL CLOSE ─────────────────────────────────────────────────── */
 export function closeModal() {
-  // Stats: close the watch clock for this sitting
+  // Stats: close the watch clock for this sitting (with the provider that
+  // was actually active — feeds "favorite providers")
   if (window._svWatchCtx?.start) {
-    recordWatchTime(Date.now() - window._svWatchCtx.start, window._svWatchCtx.item);
+    const item = { ...window._svWatchCtx.item, provider: getActiveProvider()?.id || null };
+    recordWatchTime(Date.now() - window._svWatchCtx.start, item);
     window._svWatchCtx = null;
   }
   document.getElementById('modal-overlay')?.classList.remove('open');
@@ -7616,6 +7692,7 @@ export async function openPersonPage(personId) {
 
   ov._personId = personId;
   history.pushState({ personId }, '', `${location.pathname}?person=${personId}`);
+  _setPersonSEO(personId, null); // unique canonical immediately — data refines it below
 
   const nameEl  = document.getElementById('person-name');
   const metaEl  = document.getElementById('person-meta');
@@ -7634,6 +7711,7 @@ export async function openPersonPage(personId) {
     const person = await tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' });
 
     if (nameEl)  nameEl.textContent = person.name || '';
+    _setPersonSEO(personId, person); // full unique metadata now that we have the data
     if (photoEl) {
       photoEl.src = person.profile_path ? imgUrl(person.profile_path, 'w500') : '';
       photoEl.alt = person.name || '';
@@ -9694,6 +9772,13 @@ function _scoreClipItem(item) {
   // Quality signal: boost high-rated content slightly
   const quality = (item.vote_average || 0) - 5; // positive for >5, negative for <5
   score += quality * 0.3;
+  // Watch-TIME affinity from the stats ledger: genres you actually watch
+  // (not just clicked like on) pull their clips up; capped so it stays
+  // one signal among many
+  try {
+    const gHours = getStats()?.life?.genres || {};
+    genreIds.forEach(g => { score += Math.min(2, (gHours[g] || 0) / 3600000 / 4); });
+  } catch {}
   return score;
 }
 
@@ -10079,7 +10164,7 @@ async function _loadMoreTrailers() {
     const recentIds = new Set((state.recentlyViewed || []).map(r => r.id));
 
     const dislikedIds = new Set((state.disliked || []).map(x => x.id));
-    const combined = [...movies, ...shows].filter(i => {
+    let combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
       // Never show disliked content in clips
       if (dislikedIds.has(i.id)) return false;
@@ -10088,8 +10173,11 @@ async function _loadMoreTrailers() {
       return true;
     });
 
-    // Sort by personalization score (higher first)
+    // Sort by personalization score (higher first), then append only the
+    // BEST handful: small batches keep the feed responsive and let the
+    // algorithm re-rank between loads instead of dumping 40 slides at once
     combined.sort((a, b) => _scoreClipItem(b) - _scoreClipItem(a));
+    combined = combined.slice(0, 8);
 
     _trailersItems.push(...combined);
     _trailersPage++;
@@ -10145,14 +10233,18 @@ function _buildTrailerSlide(item) {
         </div>
       </div>
       <div class="trailer-slide-right">
-        <button class="trailer-icon-btn" data-action="mute" title="Toggle mute (M)" aria-label="Toggle mute">
-          <span class="material-icons-round">${_trailersMuted ? 'volume_off' : 'volume_up'}</span>
+        <div class="clips-vol-wrap">
+          <button class="trailer-icon-btn" data-action="mute" title="Volume (M mutes)" aria-label="Volume">
+            <span class="material-icons-round">${(_trailersMuted || _clipsVolume === 0) ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up'}</span>
+          </button>
+          <input type="range" class="clips-vol-slider" min="0" max="100" value="${_clipsVolume}"
+            aria-label="Trailer volume" data-action="volume">
+        </div>
+        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
+          <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
         </button>
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
-        </button>
-        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
-          <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
           <span class="material-icons-round">thumb_down_off_alt</span>
@@ -10160,7 +10252,12 @@ function _buildTrailerSlide(item) {
       </div>
     </div>`;
 
+  slide.querySelector('.clips-vol-slider')?.addEventListener('input', e => {
+    e.stopPropagation();
+    _setClipsVolume(+e.target.value);
+  });
   slide.addEventListener('click', e => {
+    if (e.target.closest('.clips-vol-slider')) { e.stopPropagation(); return; }
     const btn = e.target.closest('[data-action]');
     if (!btn) {
       // Tap on video area — toggle pause/play via YouTube postMessage
@@ -10297,7 +10394,9 @@ async function _playTrailerSlide(slide) {
   if (iframe.src && iframe.src.includes('youtube.com/embed')) {
     const sendPlay = () => {
       _ytCmd(iframe, 'playVideo');
-      _ytCmd(iframe, _trailersMuted ? 'mute' : 'unMute');
+      if (_trailersMuted || _clipsVolume === 0) _ytCmd(iframe, 'mute');
+      else { _ytCmd(iframe, 'unMute'); _ytCmd(iframe, 'setVolume', [_clipsVolume]); }
+      _ytCmd(iframe, 'setPlaybackQuality', ['hd1080']); // best-effort HD hint
     };
     sendPlay();
     // Re-send once — postMessage is dropped if the player wasn't ready yet
@@ -10331,8 +10430,27 @@ async function _playTrailerSlide(slide) {
   iframe.addEventListener('load', () => { _ytListen(iframe); _showClipIframe(slide, iframe); }, { once: true });
 }
 
-function _ytCmd(iframe, func) {
-  iframe.contentWindow?.postMessage(`{"event":"command","func":"${func}","args":""}`, '*');
+function _ytCmd(iframe, func, args) {
+  const a = args === undefined ? '""' : JSON.stringify(args);
+  iframe.contentWindow?.postMessage(`{"event":"command","func":"${func}","args":${a}}`, '*');
+}
+
+/* Clips volume (0-100, persisted). 0 behaves as mute. */
+let _clipsVolume = (() => { const v = +localStorage.getItem('sv_clips_volume'); return isNaN(v) ? 80 : v; })();
+function _setClipsVolume(v) {
+  _clipsVolume = Math.max(0, Math.min(100, Math.round(v)));
+  try { localStorage.setItem('sv_clips_volume', String(_clipsVolume)); } catch {}
+  _trailersMuted = _clipsVolume === 0;
+  const active = _getActiveClipSlide();
+  const iframe = active?.querySelector('.trailer-slide-iframe');
+  if (iframe?.src?.includes('youtube.com/embed')) {
+    if (_clipsVolume === 0) _ytCmd(iframe, 'mute');
+    else { _ytCmd(iframe, 'unMute'); _ytCmd(iframe, 'setVolume', [_clipsVolume]); }
+  }
+  document.querySelectorAll('.clips-vol-slider').forEach(sl => { sl.value = _clipsVolume; });
+  document.querySelectorAll('[data-action="mute"] .material-icons-round').forEach(ic => {
+    ic.textContent = _clipsVolume === 0 ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up';
+  });
 }
 
 // YouTube's embed API ignores commands (and sends no infoDelivery events)
@@ -10382,7 +10500,7 @@ window.addEventListener('message', e => {
 });
 
 function _clipsEmbedUrl(key, autoplay, mute) {
-  return `https://www.youtube.com/embed/${key}?autoplay=${autoplay}&mute=${mute}&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+  return `https://www.youtube.com/embed/${key}?autoplay=${autoplay}&mute=${mute}&vq=hd1080&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&loop=1&playlist=${key}&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
 }
 
 function _showClipIframe(slide, iframe) {

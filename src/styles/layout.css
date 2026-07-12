@@ -2989,3 +2989,16 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 .page-title-h1 { font-size: 2rem; font-weight: 900; color: var(--text); }
 /* Profile card usage line (stats ledger) */
 .profile-card-usage { font-size: .64rem; color: var(--dim); margin-top: .15rem; font-weight: 600; }
+
+/* Avatar gallery: a wide wrap-grid (~7 per row) — more faces at once,
+   horizontal-first use of space instead of one thin scroll line */
+.ob-avatar-strip {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr);
+  gap: .55rem;
+  overflow: visible;
+  max-height: none;
+}
+.ob-avatar-strip .ob-avatar-chip { width: 100%; height: auto; aspect-ratio: 1; }
+@media (max-width: 720px) { .ob-avatar-strip { grid-template-columns: repeat(5, 1fr); } }
+.ob-stage { max-width: 760px; }

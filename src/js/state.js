@@ -1,3 +1,4 @@
+import { recordTasteSignal } from './stats.js';
 /* ── PERSISTENCE ─────────────────────────────────────────────────── */
 export function store(k, v) {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
@@ -180,6 +181,7 @@ export function toggleLike(item) {
   if (idx >= 0) { state.liked.splice(idx, 1); persist('liked'); return false; }
   state.liked.push(item);
   persist('liked');
+  recordTasteSignal('like', item); // behavioral favorites ledger
   return true;
 }
 
@@ -189,6 +191,7 @@ export function toggleWatchlist(item) {
   if (idx >= 0) { state.watchlist.splice(idx, 1); persist('watchlist'); return false; }
   state.watchlist.push(item);
   persist('watchlist');
+  recordTasteSignal('save', item); // behavioral favorites ledger
   return true;
 }
 
