@@ -21,7 +21,7 @@
    Everything is local-only; included in Export All Data; cleared with the
    profile. Writes are batched (800ms) to avoid localStorage thrash.      */
 
-const V = 1;
+const V = 2;
 const MAX_TITLES = 500;
 const MAX_DAYS = 400;
 
@@ -38,14 +38,30 @@ function _blank() {
   return {
     v: V, firstUse: Date.now(),
     life: { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0, genres: {}, types: {}, titles: {}, hours: {}, days: {} },
-    daily: {},
+    daily: {}, yearly: {},
   };
+}
+
+function _aggregate() {
+  return { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0, genres: {}, types: {}, titles: {}, hours: {}, days: {} };
+}
+
+function _normalize(st) {
+  if (!st || typeof st !== 'object') return _blank();
+  st.life = { ..._aggregate(), ...(st.life || {}) };
+  st.daily ||= {};
+  st.yearly ||= {};
+  st.v = V;
+  st.firstUse ||= Date.now();
+  st.lastUse ||= st.firstUse;
+  return st;
 }
 
 function _load() {
   const k = _key();
   if (_cache && _cacheKey === k) return _cache;
-  try { _cache = JSON.parse(localStorage.getItem(k) || 'null') || _blank(); }
+  if (_cache && _cacheKey && _cacheKey !== k) flushStats();
+  try { _cache = _normalize(JSON.parse(localStorage.getItem(k) || 'null') || _blank()); }
   catch { _cache = _blank(); }
   _cacheKey = k;
   return _cache;
@@ -56,6 +72,31 @@ function _save() {
   _saveT = setTimeout(() => {
     try { localStorage.setItem(_cacheKey || _key(), JSON.stringify(_cache)); } catch {}
   }, 800);
+}
+
+export function flushStats() {
+  clearTimeout(_saveT);
+  _saveT = null;
+  if (!_cache || !_cacheKey) return;
+  try { localStorage.setItem(_cacheKey, JSON.stringify(_cache)); } catch {}
+}
+
+function _year(st, now = new Date()) {
+  const key = String(now.getFullYear());
+  st.yearly[key] ||= _aggregate();
+  return st.yearly[key];
+}
+
+function _touch(st) { st.lastUse = Date.now(); }
+
+function _bumpTitle(agg, item, ms = 0, play = false) {
+  if (!item.id || !item.type) return;
+  const key = `${item.type}:${item.id}`;
+  const title = agg.titles[key] || { ms: 0, plays: 0, title: item.title || '' };
+  title.ms += ms;
+  if (play) title.plays++;
+  if (item.title) title.title = item.title;
+  agg.titles[key] = title;
 }
 
 function _day(st) {
@@ -75,7 +116,12 @@ function _day(st) {
 export function recordPlay(item = {}) {
   const st = _load();
   st.life.plays++;
+  const year = _year(st);
+  year.plays++;
+  _bumpTitle(st.life, item, 0, true);
+  _bumpTitle(year, item, 0, true);
   _day(st).plays++;
+  _touch(st);
   _save();
 }
 
@@ -87,17 +133,27 @@ export function recordWatchTime(ms, item = {}) {
   ms = Math.min(ms, 6 * 3600000); // cap one sitting at 6h (left-open tabs)
   const st = _load();
   const L = st.life;
+  const Y = _year(st);
   L.watchMs += ms;
+  Y.watchMs += ms;
   _day(st).watchMs += ms;
   const now = new Date();
   L.hours[now.getHours()] = (L.hours[now.getHours()] || 0) + ms;
   L.days[now.getDay()] = (L.days[now.getDay()] || 0) + ms;
-  if (item.type) L.types[item.type] = (L.types[item.type] || 0) + ms;
-  (item.genre_ids || []).forEach(g => { L.genres[g] = (L.genres[g] || 0) + ms; });
+  Y.hours[now.getHours()] = (Y.hours[now.getHours()] || 0) + ms;
+  Y.days[now.getDay()] = (Y.days[now.getDay()] || 0) + ms;
+  if (item.type) {
+    L.types[item.type] = (L.types[item.type] || 0) + ms;
+    Y.types[item.type] = (Y.types[item.type] || 0) + ms;
+  }
+  (item.genre_ids || []).forEach(g => {
+    L.genres[g] = (L.genres[g] || 0) + ms;
+    Y.genres[g] = (Y.genres[g] || 0) + ms;
+  });
   if (item.id && item.type) {
     const k = `${item.type}:${item.id}`;
     const t = L.titles[k] || { ms: 0, plays: 0, title: item.title || '' };
-    t.ms += ms; t.plays++; if (item.title) t.title = item.title;
+    t.ms += ms; if (item.title) t.title = item.title;
     L.titles[k] = t;
     const keys = Object.keys(L.titles);
     if (keys.length > MAX_TITLES) { // evict the least-watched
@@ -105,12 +161,22 @@ export function recordWatchTime(ms, item = {}) {
       keys.slice(0, keys.length - MAX_TITLES).forEach(x => delete L.titles[x]);
     }
   }
+  _bumpTitle(Y, item, ms);
+  _touch(st);
   _save();
 }
 
-export function recordSearchStat() { const st = _load(); st.life.searches++; _day(st).searches++; _save(); }
-export function recordClipView()   { const st = _load(); st.life.clipViews++; _day(st).clipViews++; _save(); }
-export function recordPageView()   { const st = _load(); st.life.pageViews++; _day(st).pageViews++; _save(); }
+function _recordCounter(key) {
+  const st = _load();
+  st.life[key]++;
+  _year(st)[key]++;
+  _day(st)[key]++;
+  _touch(st);
+  _save();
+}
+export function recordSearchStat() { _recordCounter('searches'); }
+export function recordClipView()   { _recordCounter('clipViews'); }
+export function recordPageView()   { _recordCounter('pageViews'); }
 
 /* ── Readers ───────────────────────────────────────────────────────── */
 
@@ -120,10 +186,10 @@ export function getStats() { return _load(); }
 export function profileUsageSummary(profileId) {
   try {
     const raw = JSON.parse(localStorage.getItem(`sv_stats_v1_${profileId}`) || 'null');
-    if (!raw?.life?.watchMs) return null;
+    if (!raw?.life || (!raw.life.watchMs && !raw.life.plays && !raw.life.pageViews)) return null;
     const h = raw.life.watchMs / 3600000;
     const t = h >= 100 ? `${Math.round(h)}h` : h >= 1 ? `${h.toFixed(1)}h` : `${Math.round(raw.life.watchMs / 60000)}m`;
-    return `${t} watched`;
+    return raw.life.watchMs ? `${t} watched Â· ${raw.life.plays || 0} plays` : `${raw.life.plays || 0} plays`;
   } catch { return null; }
 }
 
@@ -132,10 +198,11 @@ export function yearSummary(year = new Date().getFullYear()) {
   const st = _load();
   const days = Object.entries(st.daily).filter(([d]) => d.startsWith(String(year)));
   const total = k => days.reduce((a, [, v]) => a + (v[k] || 0), 0);
-  const topTitles = Object.entries(st.life.titles)
+  const yearly = st.yearly?.[String(year)] || _aggregate();
+  const topTitles = Object.entries(yearly.titles)
     .sort((a, b) => b[1].ms - a[1].ms).slice(0, 10)
     .map(([k, v]) => ({ key: k, title: v.title, hours: +(v.ms / 3600000).toFixed(1) }));
-  const topGenres = Object.entries(st.life.genres)
+  const topGenres = Object.entries(yearly.genres)
     .sort((a, b) => b[1] - a[1]).slice(0, 5)
     .map(([g, ms]) => ({ genreId: +g, hours: +(ms / 3600000).toFixed(1) }));
   return {
@@ -146,7 +213,26 @@ export function yearSummary(year = new Date().getFullYear()) {
     clipViews: total('clipViews'),
     activeDays: days.filter(([, v]) => v.watchMs > 0 || v.plays > 0).length,
     topTitles, topGenres,
-    peakHour: Object.entries(st.life.hours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+    topTypes: Object.entries(yearly.types).sort((a, b) => b[1] - a[1])
+      .map(([type, ms]) => ({ type, hours: +(ms / 3600000).toFixed(1) })),
+    peakHour: Object.entries(yearly.hours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+    busiestDay: Object.entries(yearly.days).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+    detailTrackingSince: st.v >= 2 ? st.firstUse : null,
+  };
+}
+
+export function lifetimeSummary() {
+  const st = _load();
+  const L = st.life;
+  return {
+    firstUse: st.firstUse,
+    lastUse: st.lastUse,
+    watchHours: +(L.watchMs / 3600000).toFixed(1),
+    plays: L.plays,
+    searches: L.searches,
+    clipViews: L.clipViews,
+    pageViews: L.pageViews,
+    activeDays: Object.values(st.daily).filter(v => v.watchMs || v.plays || v.searches || v.clipViews || v.pageViews).length,
   };
 }
 
@@ -157,3 +243,5 @@ export function clearStats() {
 
 /* Everything, for Export All Data */
 export function exportStats() { return _load(); }
+
+if (typeof window !== 'undefined') window.addEventListener('pagehide', flushStats);

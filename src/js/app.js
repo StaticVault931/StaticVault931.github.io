@@ -2810,6 +2810,27 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     }, null);
   }
 
+  // Kid-guided profiles need a complete home feed, not one mixed row that
+  // becomes sparse after certification and duplicate filtering.
+  if (getSetting('kidsMode')) {
+    _scheduleRowLoad('row-kids-movies', 'sec-kids-movies', () =>
+      tmdb('/discover/movie', {
+        with_genres: '10751|16', certification_country: 'US',
+        'certification.lte': 'PG', sort_by: 'popularity.desc', 'vote_count.gte': 75,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
+    _scheduleRowLoad('row-kids-shows', 'sec-kids-shows', () =>
+      tmdb('/discover/tv', {
+        with_genres: '10762|10751', sort_by: 'popularity.desc', 'vote_count.gte': 25,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'tv' }))), 'tv');
+    _scheduleRowLoad('row-family-adventures', 'sec-family-adventures', () =>
+      tmdb('/discover/movie', {
+        with_genres: '10751|12', without_genres: '27|53', certification_country: 'US',
+        'certification.lte': 'PG', sort_by: 'vote_count.desc', 'vote_count.gte': 100,
+      }).then(d => (d.results || []).map(x => ({ ...x, media_type: 'movie' }))), 'movie');
+  } else {
+    ['sec-kids-movies', 'sec-kids-shows', 'sec-family-adventures'].forEach(id => hideSection(id));
+  }
+
   // Recently Added Movies (from vidsrc-embed.ru)
   _scheduleRowLoad('row-recently-added', 'sec-recently-added', async () => {
     const feed = await fetchVidsrcLatestMovies(1).catch(() => null);
@@ -4426,7 +4447,7 @@ function setupAC(inputId, dropId, onSelect) {
     }, 300);
   });
 
-  document.addEventListener('click', e => {
+  document.addEventListener('click', async e => {
     if (!inp.contains(e.target) && !drop.contains(e.target)) drop.style.display = 'none';
   });
 }
@@ -5045,6 +5066,10 @@ function initEventDelegation() {
     // Sandbox force-override toggle
     const sbBtn = e.target.closest('#prov-sandbox-btn');
     if (sbBtn) {
+      if (getSandboxForce() === null && !(await showConfirm(
+        'Turn Off Player Sandbox?',
+        'This gives the current third-party player more browser permissions and may allow pop-ups or redirects. Only continue if playback requires it.'
+      ))) return;
       const newState = cycleSandboxForce();
       const label = newState === false ? 'Sandbox: Off' : newState === true ? 'Sandbox: On' : 'Sandbox: Auto';
       if (newState === false) {
@@ -9779,7 +9804,11 @@ function _clipsGoTo(idx, { instant = false } = {}) {
 
   // Pin every slide to the feed's exact pixel height — fractional-vh rounding
   // otherwise lets the next clip peek in at the bottom edge
-  const feedH = feed.clientHeight;
+  const page = document.getElementById('page-clips');
+  const pageRect = page?.getBoundingClientRect();
+  const viewportBottom = Math.min(window.innerHeight, pageRect?.bottom || window.innerHeight);
+  const feedTop = feed.getBoundingClientRect().top;
+  const feedH = Math.max(240, Math.floor(viewportBottom - feedTop));
   if (feedH && feed._slideH !== feedH) {
     feed._slideH = feedH;
     feed.style.setProperty('--slide-h', `${feedH}px`);
@@ -10322,7 +10351,8 @@ function _ytListen(iframe) {
    YT error codes: 2 bad param, 5 HTML5 error, 100 not found/private,
    101/150 embedding disabled by owner. */
 window.addEventListener('message', e => {
-  if (typeof e.data !== 'string' || !e.origin.includes('youtube')) return;
+  const youtubeOrigins = new Set(['https://www.youtube.com', 'https://www.youtube-nocookie.com']);
+  if (typeof e.data !== 'string' || !youtubeOrigins.has(e.origin)) return;
   try {
     const d = JSON.parse(e.data);
     if (d.event === 'onError' || d.info?.playerState === -1 && d.event === 'infoDelivery' && d.info?.videoData?.errorCode) {

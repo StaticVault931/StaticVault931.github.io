@@ -180,7 +180,7 @@ export async function loadForYou() {
             (!window._svSafeItem || window._svSafeItem(m)) &&
             !dislikedIds.has(m.id) && !watchedIds.has(m.id))
           .slice(0, 18 - items.length);
-        items.push(...extraItems);
+        items.push(..._claim(extraItems, 18 - items.length));
       } catch {}
     }
 

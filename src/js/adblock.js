@@ -12,17 +12,16 @@ window.open = function(url, target, features) {
     return _nativeOpen.call(this, url, target, features);
   }
   try {
-    const hostname = new URL(url).hostname;
-    if (ALLOWED_OPEN_DOMAINS.some(d => hostname.endsWith(d))) {
+    const parsed = new URL(url, location.href);
+    const hostname = parsed.hostname.toLowerCase();
+    const allowedProtocol = parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    const allowedHost = ALLOWED_OPEN_DOMAINS.some(d => hostname === d || hostname.endsWith(`.${d}`));
+    if (allowedProtocol && allowedHost) {
       return _nativeOpen.call(this, url, target, features);
     }
   } catch {}
   return null;
 };
-
-/* Also intercept navigation attempts that are clearly ads */
-const _nativeAssign = location.assign?.bind(location);
-const _nativeReplace = location.replace?.bind(location);
 
 /* ── AD DETECTION ────────────────────────────────────────────────── */
 const AD_DOMAINS = [
