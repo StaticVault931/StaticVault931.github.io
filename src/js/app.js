@@ -5035,7 +5035,7 @@ function initEventDelegation() {
   }, true);
 
   // Provider bar
-  document.addEventListener('click', e => {
+  document.addEventListener('click', async e => {
     const pBtn = e.target.closest('[data-provider]');
     if (pBtn && (pBtn.closest('#provider-bar') || pBtn.closest('#prov-more-panel'))) {
       if (!state.currentMedia) return;
