@@ -56,11 +56,20 @@ function _aggregate() {
 
 function _normalize(st) {
   if (!st || typeof st !== 'object') return _blank();
-  st.life = { ..._aggregate(), ...(st.life || {}) };
+  const mergeAggregate = raw => {
+    const base = _aggregate();
+    const value = { ...base, ...(raw || {}) };
+    value.signals = { ...base.signals, ...(raw?.signals || {}) };
+    return value;
+  };
+  const previousVersion = Number(st.v) || 1;
+  st.life = mergeAggregate(st.life);
   st.daily ||= {};
   st.yearly ||= {};
+  Object.keys(st.yearly).forEach(year => { st.yearly[year] = mergeAggregate(st.yearly[year]); });
   st.v = V;
   st.firstUse ||= Date.now();
+  st.richSince ||= previousVersion >= 2 ? st.firstUse : Date.now();
   st.lastUse ||= st.firstUse;
   return st;
 }
@@ -219,7 +228,7 @@ export function profileUsageSummary(profileId) {
     if (!raw?.life || (!raw.life.watchMs && !raw.life.plays && !raw.life.pageViews)) return null;
     const h = raw.life.watchMs / 3600000;
     const t = h >= 100 ? `${Math.round(h)}h` : h >= 1 ? `${h.toFixed(1)}h` : `${Math.round(raw.life.watchMs / 60000)}m`;
-    return raw.life.watchMs ? `${t} watched Â· ${raw.life.plays || 0} plays` : `${raw.life.plays || 0} plays`;
+    return raw.life.watchMs ? `${t} watched | ${raw.life.plays || 0} plays` : `${raw.life.plays || 0} plays`;
   } catch { return null; }
 }
 
@@ -247,7 +256,7 @@ export function yearSummary(year = new Date().getFullYear()) {
       .map(([type, ms]) => ({ type, hours: +(ms / 3600000).toFixed(1) })),
     peakHour: Object.entries(yearly.hours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
     busiestDay: Object.entries(yearly.days).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
-    detailTrackingSince: st.v >= 2 ? st.firstUse : null,
+    detailTrackingSince: st.richSince,
   };
 }
 

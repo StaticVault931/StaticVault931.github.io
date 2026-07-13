@@ -1929,6 +1929,8 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 #dev-test-panel.dev-floating .dev-section { padding: .5rem .75rem; }
 #dev-test-panel.dev-floating .dev-btn { font-size: .68rem; padding: .3rem .5rem; }
+#dev-stats-preview { display: none; }
+body.sv-exp-stats-preview #dev-stats-preview { display: block; }
 body.sv-glass #dev-test-panel.dev-floating {
   background: rgba(16,16,20,.7);
   backdrop-filter: blur(24px) saturate(170%);
@@ -3250,6 +3252,7 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
   appearance: slider-vertical;
   writing-mode: vertical-lr;
   direction: rtl;
+  transform: rotate(180deg);
   width: 8px;
   height: 84px;
   accent-color: var(--red);

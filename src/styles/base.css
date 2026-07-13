@@ -228,6 +228,17 @@ a { text-decoration: none; color: inherit; }
   transform: translateX(-50%) translateY(0);
 }
 #toast .material-icons-round { font-size: .95rem; color: var(--red); }
+#toast:has(.toast-action) { pointer-events: auto; }
+.toast-action {
+  border: 0;
+  border-left: 1px solid var(--border3);
+  background: transparent;
+  color: var(--red);
+  padding: .15rem 0 .15rem .7rem;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
 
 /* ── CUSTOM CONFIRM DIALOG ───────────────────────────────────────── */
 #confirm-overlay {

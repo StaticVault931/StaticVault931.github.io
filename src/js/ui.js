@@ -8,14 +8,27 @@ export const esc = s =>
 
 /* ── TOAST ───────────────────────────────────────────────────────── */
 let _toastTimer;
-export function toast(msg, icon = 'info') {
+export function toast(msg, icon = 'info', options = {}) {
   clearTimeout(_toastTimer);
   const t = document.getElementById('toast');
   if (!t) return;
   t.querySelector('#ti').textContent = icon;
   t.querySelector('#tm').textContent = msg;
+  t.querySelector('.toast-action')?.remove();
+  if (options.actionLabel && typeof options.onAction === 'function') {
+    const action = document.createElement('button');
+    action.className = 'toast-action';
+    action.type = 'button';
+    action.textContent = options.actionLabel;
+    action.addEventListener('click', () => {
+      clearTimeout(_toastTimer);
+      t.classList.remove('on');
+      options.onAction();
+    }, { once: true });
+    t.appendChild(action);
+  }
   t.classList.add('on');
-  _toastTimer = setTimeout(() => t.classList.remove('on'), 2800);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), options.duration || 3600);
 }
 
 /* ── SKELETON ────────────────────────────────────────────────────── */

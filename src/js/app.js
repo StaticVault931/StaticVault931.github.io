@@ -22,7 +22,7 @@ import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfi
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
-import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary, getStats } from './stats.js';
+import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 
@@ -511,6 +511,13 @@ const SV_EXPERIMENTS = [
     desc: 'Tighter card gaps and slimmer section headers — more content per screen.',
     added: '2026-07-09', commit: 104,
     bodyClass: 'sv-exp-dense-rows',
+  },
+  {
+    id: 'stats-preview',
+    label: 'Profile Stats Preview',
+    desc: 'Shows current lifetime activity and behavioral favorites in the dev panel.',
+    added: '2026-07-12', commit: 109,
+    bodyClass: 'sv-exp-stats-preview',
   },
 ];
 function svExpOn(id) { try { return localStorage.getItem(`sv_exp_${id}`) === '1'; } catch { return false; } }
@@ -1825,17 +1832,34 @@ function _scheduleRowLoad(rowId, secId, fetchFn, type) {
 }
 
 /* ── ROW FETCH HELPER ────────────────────────────────────────────── */
-function _loadRow(rowId, secId, fetchFn, type) {
+const _rowLoadsInFlight = new Map();
+const _ROW_RETRY_DELAYS = [900, 2400];
+
+function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
+  if (attempt === 0 && _rowLoadsInFlight.has(rowId)) return _rowLoadsInFlight.get(rowId);
   const row = document.getElementById(rowId);
   const sec = secId ? document.getElementById(secId) : null;
   if (!row) return Promise.resolve();
   if (sec) sec.style.display = '';
 
   const _t0 = performance.now();
-  return fetchFn()
+  const task = Promise.race([
+    Promise.resolve().then(fetchFn),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Row request timed out')), 15000)),
+  ])
     .then(items => {
       recordRowStat('loadTime', rowId, performance.now() - _t0);
       if (!items || !items.length) {
+        if (attempt < _ROW_RETRY_DELAYS.length) {
+          return new Promise(resolve => setTimeout(resolve, _ROW_RETRY_DELAYS[attempt]))
+            .then(() => _loadRow(rowId, secId, fetchFn, type, attempt + 1));
+        }
+        const cached = _getRowCache(rowId, true);
+        if (cached?.length) {
+          renderRow(rowId, cached.slice(0, 14), type);
+          if (sec) sec.style.display = '';
+          return;
+        }
         console.warn(`[SV Row] "${rowId}" returned 0 items — hiding section`);
         recordRowStat('hiddenThin', rowId);
         if (sec) sec.style.display = 'none'; else { const r = document.getElementById(rowId); if(r) r.innerHTML = ''; }
@@ -1893,6 +1917,18 @@ function _loadRow(rowId, secId, fetchFn, type) {
       scheduledisambiguateTitles();
     })
     .catch(err => {
+      if (attempt < _ROW_RETRY_DELAYS.length) {
+        console.warn(`[SV Row] "${rowId}" attempt ${attempt + 1} failed; retrying`, err?.message || err);
+        return new Promise(resolve => setTimeout(resolve, _ROW_RETRY_DELAYS[attempt]))
+          .then(() => _loadRow(rowId, secId, fetchFn, type, attempt + 1));
+      }
+      const cached = _getRowCache(rowId, true);
+      if (cached?.length) {
+        console.warn(`[SV Row] "${rowId}" failed; showing stale cache`, err?.message || err);
+        renderRow(rowId, cached.slice(0, 14), type);
+        if (sec) sec.style.display = '';
+        return;
+      }
       console.error(`[SV Row] "${rowId}" failed:`, err?.message || err);
       recordRowStat('failed', rowId);
       recordRowStat('error', rowId, err?.message || err);
@@ -1904,6 +1940,13 @@ function _loadRow(rowId, secId, fetchFn, type) {
         else if (rowEl) rowEl.innerHTML = '';
       }
     });
+  if (attempt === 0) {
+    _rowLoadsInFlight.set(rowId, task);
+    task.finally(() => {
+      if (_rowLoadsInFlight.get(rowId) === task) _rowLoadsInFlight.delete(rowId);
+    });
+  }
+  return task;
 }
 
 /* ── HOME ROW CACHE (stale-while-revalidate) ─────────────────────── */
@@ -1916,12 +1959,13 @@ function _saveRowCache(rowId, items) {
   } catch {}
 }
 
-function _getRowCache(rowId) {
+function _getRowCache(rowId, allowStale = false) {
   try {
     const raw = localStorage.getItem(`sv_row_${rowId}`);
     if (!raw) return null;
     const { items, ts } = JSON.parse(raw);
-    if (Date.now() - ts > _ROW_CACHE_TTL) { localStorage.removeItem(`sv_row_${rowId}`); return null; }
+    if (Date.now() - ts > _ROW_CACHE_TTL && !allowStale) return null;
+    if (Date.now() - ts > 7 * 86400000) { localStorage.removeItem(`sv_row_${rowId}`); return null; }
     return items;
   } catch { return null; }
 }
@@ -2808,10 +2852,46 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     if (sec) sec.style.display = shouldShow ? '' : 'none';
   });
 
-  const rowDefs = STD_ROW_POOL.filter(r => stdActive.has(r.id))
+  const rowDefs = STD_ROW_POOL.filter(r =>
+    stdActive.has(r.id) && !(hideAnime && r.type === 'anime'));
+
+  const KIDS_THEMES = [
+    ['Popular Family Movies','movie','10751'], ['Animated Favorites','movie','16'],
+    ['Family Adventures','movie','10751|12'], ['Funny Family Movies','movie','10751|35'],
+    ['Magic and Imagination','movie','10751|14'], ['Animal Stories','movie','10751'],
+    ['Kids Shows','tv','10762'], ['Family Shows','tv','10751'],
+    ['Animated Shows','tv','16'], ['Funny Kids Shows','tv','10762|35'],
+    ['Action Adventures for Kids','tv','10762|10759'], ['Music and Dance','movie','10751|10402'],
+    ['Nature for Young Explorers','movie','10751|99'], ['Classic Family Movies','movie','10751'],
+    ['New Family Movies','movie','10751'], ['Top Rated Animation','movie','16'],
+    ['Weekend Family Picks','movie','10751|12'], ['Cozy Cartoons','tv','10762|16'],
+    ['Fantasy Shows for Kids','tv','10762|10765'], ['Learning and Discovery','tv','10762|99'],
+    ['Friendship Stories','movie','10751|35'], ['Big Screen Animation','movie','16|10751'],
+    ['Family Movie Night','movie','10751'], ['After School Shows','tv','10762'],
+    ['Young Heroes','tv','10762|10759'], ['Musical Animation','movie','16|10402'],
+    ['Worldwide Family Favorites','movie','10751'], ['Gentle Adventures','movie','10751|12'],
+    ['Beloved Kids Series','tv','10762'], ['Hidden Family Gems','movie','10751'],
+    ['Award Winning Animation','movie','16'], ['More Family Favorites','movie','10751'],
+  ];
+  const effectiveRowDefs = getSetting('kidsMode') ? rowDefs.map((row, i) => {
+    const [label, mediaType, genres] = KIDS_THEMES[i % KIDS_THEMES.length];
+    const endpoint = mediaType === 'tv' ? '/discover/tv' : '/discover/movie';
+    const title = document.querySelector(`#${row.sec} .sec-title`);
+    if (title) title.textContent = label;
+    const params = {
+      with_genres: genres,
+      without_genres: '27|53|80|10752|9648',
+      sort_by: i % 3 === 0 ? 'vote_count.desc' : 'popularity.desc',
+      'vote_count.gte': mediaType === 'tv' ? 20 : 50,
+      page: (i % 4) + 1,
+      ...(mediaType === 'movie' ? { certification_country: 'US', 'certification.lte': 'PG' } : {}),
+    };
+    return { ...row, type: mediaType, fn: () => tmdb(endpoint, params).then(d =>
+      (d.results || []).map(x => ({ ...x, media_type: mediaType }))) };
+  }) : rowDefs;
 
   // Each row observes itself — visible ones load first, others load as you scroll
-  rowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
+  effectiveRowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
 
   // Seasonal rows — the calendar windows cover the whole year
   _loadHolidayRows();
@@ -8583,6 +8663,11 @@ function populateTestPanel() {
         <div id="dev-experiments"></div>
       </div>
 
+      <div class="dev-section" id="dev-stats-preview">
+        <div class="dev-sec-title">Profile Stats Preview</div>
+        <div id="dev-stats-preview-body" style="font-size:.72rem;line-height:1.7"></div>
+      </div>
+
       <div class="dev-section">
         <div class="dev-sec-title">Row Summoner — Holiday &amp; Seasonal</div>
         <div class="dev-btn-row" style="margin-bottom:.45rem">
@@ -8685,11 +8770,15 @@ function populateTestPanel() {
     });
 
     // Sandbox toggle — removes sandbox from player iframe (may allow more player features)
-    document.getElementById('dev-btn-sandbox')?.addEventListener('click', function() {
+    document.getElementById('dev-btn-sandbox')?.addEventListener('click', async function() {
       const sandboxOn = this.textContent.includes('ON');
       const iframe = document.getElementById('player-frame');
       const ncFrame = document.getElementById('nc-frame');
       if (sandboxOn) {
+        if (!(await showConfirm(
+          'Disable Player Sandbox?',
+          'This grants third-party players more browser permissions and can allow pop-ups or redirects. Use only while testing a provider that requires it.'
+        ))) return;
         iframe?.removeAttribute('sandbox');
         ncFrame?.removeAttribute('sandbox');
         this.textContent = 'Sandbox: OFF';
@@ -8780,6 +8869,19 @@ function populateTestPanel() {
     // ── Experiments: alternate UIs, labeled + timestamped + commit ───
     const expEl = panel.querySelector('#dev-experiments');
     if (expEl) {
+      const renderStatsPreview = () => {
+        const el = panel.querySelector('#dev-stats-preview-body');
+        if (!el) return;
+        const life = lifetimeSummary();
+        const fav = getFavorites(3);
+        const titleList = fav.titles.map(x => esc(x.title || x.key)).join(', ') || 'Not enough activity yet';
+        const actorList = fav.actors.map(x => esc(x.name || `Person ${x.personId}`)).join(', ') || 'Not enough activity yet';
+        el.innerHTML = `
+          Watch time: <b>${life.watchHours}h</b> | Plays: <b>${life.plays}</b> | Active days: <b>${life.activeDays}</b><br>
+          Searches: <b>${life.searches}</b> | Clips viewed: <b>${life.clipViews}</b> | Page views: <b>${life.pageViews}</b><br>
+          Favorite titles: <b>${titleList}</b><br>
+          Favorite actors: <b>${actorList}</b>`;
+      };
       const renderExps = () => {
         expEl.innerHTML = SV_EXPERIMENTS.map(e => `
           <div class="dev-exp-row">
@@ -8793,6 +8895,7 @@ function populateTestPanel() {
               ${svExpOn(e.id) ? 'ON' : 'OFF'}
             </button>
           </div>`).join('');
+        renderStatsPreview();
       };
       renderExps();
       expEl.addEventListener('click', ev => {
@@ -9747,6 +9850,37 @@ function _saveClipsDwellPrefs() {
   try { sessionStorage.setItem('sv_clips_dwell', JSON.stringify([..._clipsDwellPrefs])); } catch {}
 }
 
+const _CLIPS_SEEN_KEY = 'sv_clips_seen_v1';
+function _getClipsSeen() {
+  try {
+    const seen = JSON.parse(localStorage.getItem(_CLIPS_SEEN_KEY) || '{}');
+    const cutoff = Date.now() - 30 * 86400000;
+    Object.keys(seen).forEach(key => { if (seen[key] < cutoff) delete seen[key]; });
+    return seen;
+  } catch { return {}; }
+}
+function _markClipSeen(slide) {
+  if (!slide?.dataset.id) return;
+  try {
+    const seen = _getClipsSeen();
+    seen[`${slide.dataset.type}:${slide.dataset.id}`] = Date.now();
+    localStorage.setItem(_CLIPS_SEEN_KEY, JSON.stringify(seen));
+  } catch {}
+}
+function _startClipPlayClock(slide) {
+  if (!slide || slide.dataset.clipsPaused === '1' || slide.dataset.playClockStart) return;
+  slide.dataset.playClockStart = String(Date.now());
+}
+function _stopClipPlayClock(slide) {
+  const start = +(slide?.dataset.playClockStart || 0);
+  if (!start) return +(slide?.dataset.playedMs || 0);
+  const total = +(slide.dataset.playedMs || 0) + Math.max(0, Date.now() - start);
+  slide.dataset.playedMs = String(total);
+  delete slide.dataset.playClockStart;
+  if (total >= 5000) _markClipSeen(slide);
+  return total;
+}
+
 // Score a clip item based on user preferences (higher = more relevant)
 function _scoreClipItem(item) {
   // Genre ids arrive as numbers from TMDB but may be stored as strings or
@@ -10052,12 +10186,16 @@ async function initTrailersFeed() {
       } else {
         const start = _dwellStart.get(id);
         if (start) {
-          const dwell = (Date.now() - start) / 1000;
+          const dwell = _stopClipPlayClock(slide) / 1000;
           _dwellStart.delete(id);
           if (dwell > 3) recordClipView(); // stats: a real clip view
           // Learn: >8s = positive signal, <1.5s = negative signal
-          const delta = dwell > 8 ? 1 : dwell < 1.5 ? -1 : 0;
+          const durationMs = +(slide.dataset.trailerDurationMs || 0);
+          const watchedFraction = durationMs ? Math.min(1, (dwell * 1000) / durationMs) : 0;
+          const delta = slide.dataset.dwellScored ? 0 :
+            (dwell >= 8 || (dwell >= 5 && watchedFraction >= 0.25)) ? 1 : dwell < 1.5 ? -1 : 0;
           if (delta !== 0) {
+            slide.dataset.dwellScored = '1';
             genreIds.forEach(g => {
               _clipsDwellPrefs.set(g, Math.max(-5, Math.min(5, (_clipsDwellPrefs.get(g) || 0) + delta)));
             });
@@ -10164,10 +10302,16 @@ async function _loadMoreTrailers() {
     const recentIds = new Set((state.recentlyViewed || []).map(r => r.id));
 
     const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+    const watchedIds = new Set((state.watched || []).map(x => x.id));
+    const clipsSeen = _getClipsSeen();
+    const hideAnimeClips = !!(getSetting('hideAnime') || getSetting('kidsMode'));
     let combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
       // Never show disliked content in clips
       if (dislikedIds.has(i.id)) return false;
+      if (watchedIds.has(i.id)) return false;
+      if (clipsSeen[`${i._type}:${i.id}`]) return false;
+      if (hideAnimeClips && i.original_language === 'ja' && (i.genre_ids || []).includes(16)) return false;
       // Suppress recently-viewed on low repeat tolerance (but watchlisted items always show)
       if (recentIds.has(i.id) && !watchlistIds.has(i.id) && (state._repeatTolerance === 'minimum' || !state._repeatTolerance)) return false;
       return true;
@@ -10246,6 +10390,9 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
+        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched" aria-label="Mark as already watched">
+          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
+        </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
           <span class="material-icons-round">thumb_down_off_alt</span>
         </button>
@@ -10268,6 +10415,7 @@ function _buildTrailerSlide(item) {
         const cmd = nowPaused ? 'pauseVideo' : 'playVideo';
         iframe.contentWindow?.postMessage(`{"event":"command","func":"${cmd}","args":""}`, '*');
         slide.dataset.clipsPaused = nowPaused ? '1' : '0';
+        if (nowPaused) _stopClipPlayClock(slide); else _startClipPlayClock(slide);
         const ind = slide.querySelector('.trailer-slide-pause-ind');
         if (ind) {
           ind.textContent = nowPaused ? 'pause' : 'play_arrow';
@@ -10312,6 +10460,22 @@ function _buildTrailerSlide(item) {
       const icon = btn.querySelector('.material-icons-round');
       if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
       btn.classList.toggle('on', isInWatchlist(id));
+    } else if (action === 'watched') {
+      const watchedItem = { id, type, media_type: type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
+      const nowWatched = toggleWatched(watchedItem);
+      const icon = btn.querySelector('.material-icons-round');
+      if (icon) icon.textContent = nowWatched ? 'done_all' : 'check_circle_outline';
+      btn.classList.toggle('on', nowWatched);
+      if (nowWatched) {
+        toast('Marked as already watched', 'done_all', {
+          actionLabel: 'Undo',
+          onAction: () => {
+            if (isWatched(id)) toggleWatched(watchedItem);
+            toast('Watched mark removed', 'undo');
+          },
+        });
+        _clipsNavSlide(1);
+      }
     } else if (action === 'dislike') {
       // Down-weight genres and remove slide
       const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
@@ -10319,16 +10483,36 @@ function _buildTrailerSlide(item) {
         _clipsDwellPrefs.set(g, Math.max(-5, (_clipsDwellPrefs.get(g) || 0) - 2));
       });
       _saveClipsDwellPrefs();
+      const dislikeItem = { id, type, media_type: type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
+      addDislike(dislikeItem);
+      const parent = slide.parentNode;
+      const nextSibling = slide.nextSibling;
+      let removeTimer;
       _unloadClipSlide(slide);
       slide.style.transition = 'opacity .28s, transform .28s';
       slide.style.opacity = '0';
       slide.style.transform = 'translateX(-50px)';
-      setTimeout(() => {
+      removeTimer = setTimeout(() => {
         slide.remove();
         // Slide indexes shifted — re-align and activate the slide now at this position
         _clipsGoTo(_clipsIdx, { instant: true });
       }, 320);
-      toast('Showing less like this', 'thumb_down');
+      toast('Showing less like this', 'thumb_down', {
+        actionLabel: 'Undo',
+        onAction: () => {
+          clearTimeout(removeTimer);
+          state.disliked = (state.disliked || []).filter(x => x.id != id);
+          persist('disliked');
+          genreIds.forEach(g => _clipsDwellPrefs.set(g, Math.min(5, (_clipsDwellPrefs.get(g) || 0) + 2)));
+          _saveClipsDwellPrefs();
+          if (!slide.isConnected && parent) parent.insertBefore(slide, nextSibling);
+          slide.style.opacity = '';
+          slide.style.transform = '';
+          slide.style.transition = '';
+          _clipsGoTo(Math.max(0, _clipsIdx), { instant: true });
+          toast('Not interested removed', 'undo');
+        },
+      });
     }
   });
 
@@ -10399,6 +10583,7 @@ async function _playTrailerSlide(slide) {
       _ytCmd(iframe, 'setPlaybackQuality', ['hd1080']); // best-effort HD hint
     };
     sendPlay();
+    _startClipPlayClock(slide);
     // Re-send once — postMessage is dropped if the player wasn't ready yet
     setTimeout(() => {
       if (slide.isConnected && _clipsSlides()[_clipsIdx] === slide && slide.dataset.clipsPaused !== '1') sendPlay();
@@ -10427,7 +10612,11 @@ async function _playTrailerSlide(slide) {
   if (!slide.isConnected) return;
 
   iframe.src = _clipsEmbedUrl(key, 1, _trailersMuted ? 1 : 0);
-  iframe.addEventListener('load', () => { _ytListen(iframe); _showClipIframe(slide, iframe); }, { once: true });
+  iframe.addEventListener('load', () => {
+    _ytListen(iframe);
+    _showClipIframe(slide, iframe);
+    _startClipPlayClock(slide);
+  }, { once: true });
 }
 
 function _ytCmd(iframe, func, args) {
@@ -10473,6 +10662,12 @@ window.addEventListener('message', e => {
   if (typeof e.data !== 'string' || !youtubeOrigins.has(e.origin)) return;
   try {
     const d = JSON.parse(e.data);
+    if (d.event === 'infoDelivery' && Number.isFinite(d.info?.duration)) {
+      const frame = [...document.querySelectorAll('.trailer-slide-iframe')]
+        .find(iframe => iframe.contentWindow === e.source);
+      const slide = frame?.closest('.trailer-slide');
+      if (slide) slide.dataset.trailerDurationMs = String(d.info.duration * 1000);
+    }
     if (d.event === 'onError' || d.info?.playerState === -1 && d.event === 'infoDelivery' && d.info?.videoData?.errorCode) {
       console.warn('[SV YT] player error:', d.info ?? d);
     }
@@ -10528,6 +10723,7 @@ function _preloadTrailerSlide(slide) {
 
 // Neighbor slide: keep loaded but paused + muted (instant resume, no audio bleed)
 function _standbyClipSlide(slide) {
+  _stopClipPlayClock(slide);
   const iframe = slide.querySelector('.trailer-slide-iframe');
   if (iframe?.src?.includes('youtube.com/embed')) {
     _ytCmd(iframe, 'pauseVideo');
@@ -10540,6 +10736,7 @@ function _standbyClipSlide(slide) {
 
 // Far-away slide: fully unload the iframe to free memory
 function _unloadClipSlide(slide) {
+  _stopClipPlayClock(slide);
   const iframe = slide.querySelector('.trailer-slide-iframe');
   if (iframe && iframe.src) {
     iframe.style.opacity = '0';
