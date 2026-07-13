@@ -11,6 +11,7 @@ const PAGE_META = {
   library: { title: 'My Library — StaticVault931',                                desc: 'Your personal watchlist, liked titles, and viewing history.' },
   prefs:   { title: 'Customize Your Feed — StaticVault931',                       desc: 'Set preferred genres, content ratings, and titles to personalize your recommendations.' },
   seeall:   { title: 'Browse All Content — StaticVault931',                       desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
+  mix:      { title: 'Mix & Match — Blend Titles Into New Picks | StaticVault931', desc: 'Pick a few movies or shows you love and blend them — Mix & Match finds titles that match the combination, not just one of them.' },
   clips:    { title: 'Watch Clips — StaticVault931',                              desc: 'Scroll through short clips for the latest movies and TV shows. Discover your next watch.' },
 };
 
@@ -22,6 +23,7 @@ const PAGE_BREADCRUMBS = {
   search:  [{ name: 'Search',       url: 'https://staticvault931.github.io/?page=search' }],
   library: [{ name: 'My Library',   url: 'https://staticvault931.github.io/?page=library' }],
   prefs:    [{ name: 'Customize Feed', url: 'https://staticvault931.github.io/?page=prefs' }],
+  mix:      [{ name: 'Mix & Match',  url: 'https://staticvault931.github.io/?page=mix' }],
   clips:    [{ name: 'Clips',           url: 'https://staticvault931.github.io/?page=clips' }],
 };
 

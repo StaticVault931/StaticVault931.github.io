@@ -486,6 +486,205 @@ function _setPersonSEO(personId, person) {
   }
 }
 
+/* ══ MIX & MATCH ═════════════════════════════════════════════════════
+   Pick 2-5 titles you love and BLEND them: recommendations that match
+   the combination, not just any one seed. Scoring favors titles that
+   multiple seeds independently recommend, then genre overlap with the
+   union of the seeds, then quality. Everything runs through the same
+   safety + preference gates as the home feed. Seeds persist locally. */
+
+function _mixSeeds() {
+  try { return JSON.parse(localStorage.getItem('sv_mix_seeds') || '[]'); } catch { return []; }
+}
+function _mixSaveSeeds(seeds) {
+  try { localStorage.setItem('sv_mix_seeds', JSON.stringify(seeds.slice(0, 5))); } catch {}
+}
+
+function _ensureMixPage() {
+  let page = document.getElementById('page-mix');
+  if (page) return page;
+  page = document.createElement('main');
+  page.className = 'page';
+  page.id = 'page-mix';
+  page.tabIndex = -1;
+  page.innerHTML = `
+    <div class="mix-head">
+      <h2 class="page-title-h1"><span class="material-icons-round" style="color:var(--red);vertical-align:-4px;font-size:1.6rem">blender</span> Mix &amp; Match</h2>
+      <p class="mix-sub">Add a few titles you love. We find content that matches the <b>combination</b> — not just one of them.</p>
+    </div>
+    <div class="mix-bench">
+      <div class="mix-seeds" id="mix-seeds" aria-label="Your mix"></div>
+      <div class="mix-add">
+        <div class="pref-input-wrap">
+          <input class="pref-input" id="mix-search-input" placeholder="Add a movie or show to the mix…" autocomplete="off">
+          <div class="pref-ac-drop" id="mix-search-drop"></div>
+        </div>
+        <button class="mix-go-btn" id="mix-go" disabled>
+          <span class="material-icons-round">auto_awesome</span> Mix it
+        </button>
+      </div>
+    </div>
+    <div class="mix-results" id="mix-results">
+      <div class="mix-empty" id="mix-empty">
+        <span class="material-icons-round">blender</span>
+        <p>Add at least <b>2</b> titles above, then hit <b>Mix it</b>.</p>
+        <p class="muted-note">Try pairs that feel impossible — a horror movie + a comedy, or an anime + a crime drama.</p>
+      </div>
+    </div>`;
+  document.getElementById('page-home')?.after(page);
+
+  const seedsEl = page.querySelector('#mix-seeds');
+  const goBtn = page.querySelector('#mix-go');
+
+  const renderSeeds = () => {
+    const seeds = _mixSeeds();
+    seedsEl.innerHTML = seeds.map((x, i) => `
+      <div class="mix-seed" data-idx="${i}">
+        ${x.poster_path ? `<img src="${imgUrl(x.poster_path, 'w154')}" alt="">` : '<span class="material-icons-round mix-seed-ph">movie</span>'}
+        <span class="mix-seed-title">${esc(x.title || '')}</span>
+        <button class="mix-seed-x" data-remove-seed="${i}" aria-label="Remove ${esc(x.title || '')} from the mix">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>`).join('') +
+      (seeds.length < 5 ? `<div class="mix-seed mix-seed-empty" aria-hidden="true"><span class="material-icons-round">add</span></div>` : '');
+    goBtn.disabled = seeds.length < 2;
+    goBtn.innerHTML = `<span class="material-icons-round">auto_awesome</span> Mix ${seeds.length >= 2 ? `these ${seeds.length}` : 'it'}`;
+  };
+  renderSeeds();
+  page._renderSeeds = renderSeeds;
+
+  seedsEl.addEventListener('click', e => {
+    const rm = e.target.closest('[data-remove-seed]');
+    if (!rm) return;
+    const seeds = _mixSeeds();
+    seeds.splice(+rm.dataset.removeSeed, 1);
+    _mixSaveSeeds(seeds);
+    renderSeeds();
+  });
+
+  // Reuse the standard title autocomplete
+  setupAC('mix-search-input', 'mix-search-drop', item => {
+    const seeds = _mixSeeds();
+    if (seeds.length >= 5) { toast('Five titles max — remove one first', 'blender'); return; }
+    if (seeds.some(x => x.id === item.id)) { toast('Already in the mix', 'blender'); return; }
+    seeds.push({
+      id: item.id,
+      type: item._type || item.media_type || 'movie',
+      title: item.title || item.name || '',
+      poster_path: item.poster_path || null,
+      genre_ids: item.genre_ids || [],
+    });
+    _mixSaveSeeds(seeds);
+    renderSeeds();
+    if (seeds.length >= 2) _runMix(); // instant gratification once mixable
+  });
+
+  goBtn.addEventListener('click', _runMix);
+  return page;
+}
+
+let _mixToken = 0;
+async function _runMix() {
+  const page = _ensureMixPage();
+  const results = page.querySelector('#mix-results');
+  const seeds = _mixSeeds();
+  if (seeds.length < 2 || !results) return;
+  const my = ++_mixToken;
+  results.innerHTML = `<div class="mix-blending"><div class="spin"></div><p>Blending ${seeds.map(s => `<b>${esc(s.title)}</b>`).join(' + ')}…</p></div>`;
+
+  try {
+    // Per seed: recommendations + similar (movie or tv as appropriate)
+    const perSeed = await Promise.allSettled(seeds.map(async x => {
+      const t = x.type === 'tv' ? 'tv' : 'movie';
+      const [rec, sim] = await Promise.allSettled([
+        tmdb(`/${t}/${x.id}/recommendations`),
+        tmdb(`/${t}/${x.id}/similar`),
+      ]);
+      const merge = [];
+      const seen = new Set();
+      [...(rec.status === 'fulfilled' ? rec.value.results || [] : []),
+       ...(sim.status === 'fulfilled' ? sim.value.results || [] : [])].forEach(m => {
+        if (m?.id && !seen.has(m.id)) { seen.add(m.id); merge.push({ ...m, media_type: m.media_type || t }); }
+      });
+      return merge;
+    }));
+    if (my !== _mixToken) return;
+
+    const seedIds = new Set(seeds.map(x => x.id));
+    const seedGenres = new Set(seeds.flatMap(x => x.genre_ids || []));
+    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+    const watchedIds = new Set((state.watched || []).map(x => x.id));
+
+    // Blend: count how many seeds independently surface each candidate
+    const scoreMap = new Map(); // id → { item, seedHits, score }
+    perSeed.forEach(r => {
+      if (r.status !== 'fulfilled') return;
+      const seenThisSeed = new Set();
+      r.value.forEach(m => {
+        if (seedIds.has(m.id) || dislikedIds.has(m.id) || watchedIds.has(m.id)) return;
+        if (window._svSafeItem && !window._svSafeItem(m)) return;
+        if (seenThisSeed.has(m.id)) return;
+        seenThisSeed.add(m.id);
+        const rec = scoreMap.get(m.id) || { item: m, seedHits: 0 };
+        rec.seedHits++;
+        scoreMap.set(m.id, rec);
+      });
+    });
+
+    let blended = [...scoreMap.values()].map(r => {
+      const m = r.item;
+      const overlap = (m.genre_ids || []).filter(g => seedGenres.has(g)).length;
+      return {
+        item: m,
+        hits: r.seedHits,
+        score: r.seedHits * 3 + overlap * 0.8 + (m.vote_average || 0) / 10 + Math.min(1, (m.vote_count || 0) / 3000),
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    // Backfill with combined-genre discover when the intersection is thin
+    if (blended.length < 12 && seedGenres.size) {
+      const d = await tmdb('/discover/movie', {
+        with_genres: [...seedGenres].slice(0, 3).join(','),
+        sort_by: 'vote_average.desc', 'vote_count.gte': 500,
+      }).catch(() => null);
+      if (my !== _mixToken) return;
+      const have = new Set(blended.map(b => b.item.id));
+      (d?.results || []).forEach(m => {
+        if (have.has(m.id) || seedIds.has(m.id) || dislikedIds.has(m.id) || watchedIds.has(m.id)) return;
+        if (window._svSafeItem && !window._svSafeItem(m)) return;
+        blended.push({ item: { ...m, media_type: 'movie' }, hits: 0, score: 0 });
+      });
+    }
+
+    blended = blended.slice(0, 24);
+    if (my !== _mixToken) return;
+    if (!blended.length) {
+      results.innerHTML = `<div class="mix-empty"><span class="material-icons-round">search_off</span><p>No blend found for this combination — try swapping one title.</p></div>`;
+      return;
+    }
+    const strong = blended.filter(b => b.hits >= 2).length;
+    results.innerHTML = `
+      <div class="mix-results-head">
+        <span class="material-icons-round" style="color:var(--red)">auto_awesome</span>
+        <span><b>${blended.length}</b> matches${strong ? ` — <b>${strong}</b> fit ${seeds.length > 2 ? 'several' : 'both'} of your picks` : ''}</span>
+      </div>
+      <div class="search-grid mix-grid">
+        ${blended.map(b => {
+          const card = makeCard(b.item, b.item.media_type === 'tv' ? 'tv' : 'movie');
+          return b.hits >= 2
+            ? card.replace('<div class="card-poster">', `<div class="card-poster"><div class="mix-hit-badge" title="Matches ${b.hits} of your picks">×${b.hits}</div>`)
+            : card;
+        }).join('')}
+      </div>`;
+  } catch (err) {
+    console.error('[SV Mix] blend failed:', err?.message || err);
+    if (my === _mixToken) results.innerHTML = `<div class="mix-empty"><span class="material-icons-round">wifi_off</span><p>Couldn't blend right now — try again.</p></div>`;
+  }
+}
+
+registerLoader('mix', () => { _ensureMixPage()._renderSeeds?.(); if (_mixSeeds().length >= 2) _runMix(); });
+window._svOpenMix = () => { _ensureMixPage(); goPage('mix'); };
+
 /* ── EXPERIMENTS ─────────────────────────────────────────────────────
    Alternate UIs testable from the dev panel (Experiments section).
    Each is a body class + localStorage flag; fully working, dev-gated
@@ -678,7 +877,7 @@ let _cardLogoMutObs   = null;
     // Has ?id= but it's not a valid number (NaN, empty, text)
     if (watchId && (isNaN(+watchId) || +watchId <= 0)) return true;
     // Has ?page= but it's not a known page
-    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider','clips','holidayrows'].includes(pageParam)) return true;
+    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider','clips','holidayrows','mix'].includes(pageParam)) return true;
     // Has no useful params but also has garbage (avoid 404ing clean URLs)
     return false;
   };
@@ -1212,15 +1411,14 @@ async function maybeShowOnboarding() {
     const box = grid.parentElement; // .ob-main
     const W = box?.clientWidth, H = box?.clientHeight;
     if (!W || !H) return;
-    const GAP = 10;
-    // Onboarding is a broad taste sample, so density matters more than the
-    // normal card size. Choose a column count that exposes about six rows.
-    const targetRows = H >= 760 ? 7 : 6;
-    const maxTileWForRows = Math.max(72, ((H - GAP * (targetRows - 1)) / targetRows) / 1.5);
-    const cols = Math.max(7, Math.min(11, Math.ceil((W + GAP) / (maxTileWForRows + GAP))));
-    const tileW = (W - GAP * (cols - 1)) / cols;
-    const tileH = tileW * 1.5;
-    const rows = Math.max(3, Math.floor((H + GAP) / (tileH + GAP)));
+    const GAP = 12;
+    // HEIGHT-FIRST wall: exactly 4 tall rows (3 on short screens) of the
+    // biggest posters that fit, columns filling the full width — a wide
+    // ~14x4 layout instead of many small rows
+    const rows = H >= 560 ? 4 : 3;
+    const tileH = (H - GAP * (rows - 1)) / rows;
+    const tileW = tileH * (2 / 3);
+    const cols = Math.max(6, Math.floor((W + GAP) / (tileW + GAP)));
     const visible = cols * rows;
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gap = `${GAP}px`;
@@ -1272,6 +1470,29 @@ async function maybeShowOnboarding() {
       ...take(grab(intense, 'movie'), 8),
       ...take(grab(trend), 6),
     ];
+    // ONE title per franchise: the wall samples different KINDS of taste —
+    // Toy Story 1+2+3 or four Harry Potters waste slots that could show a
+    // whole different genre. Franchise key = leading words of the
+    // normalized title (subtitle, sequel numbers, romans stripped).
+    const _franchiseKey = t => (t || '')
+      .toLowerCase()
+      .split(/[:–—]/)[0]
+      .replace(/\b(part|chapter|episode|vol|volume|season|returns|reloaded|revolutions|resurrection)\b.*$/i, '')
+      .replace(/\b\d+\b|\b[ivx]{1,4}\b/gi, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .split(' ')
+      .slice(0, 3)
+      .join(' ');
+    const _seenFranchise = new Set();
+    const dedupedPool = pool.filter(x => {
+      const k = _franchiseKey(x.title || x.name);
+      if (!k) return true;
+      if (_seenFranchise.has(k)) return false;
+      _seenFranchise.add(k);
+      return true;
+    });
+
     // Order the grid from lightest (kid-friendly) to most adult — no labels,
     // no sections, just a gentle gradient down the page
     const G_WEIGHT = { 10751: 0, 16: 1, 10402: 2, 35: 2, 12: 3, 14: 3, 10765: 3, 878: 4, 10749: 4, 10762: 0, 18: 5, 36: 5, 99: 5, 9648: 6, 10768: 6, 53: 7, 80: 7, 10752: 7, 27: 8 };
@@ -1281,7 +1502,7 @@ async function maybeShowOnboarding() {
       const peak = gs.length ? Math.max(...gs) : 4;
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
-    const mixed = pool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
+    const mixed = dedupedPool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
     mixed.forEach(x => allItems.set(x.id, x));
     grid.innerHTML = mixed.map(tileHtml).join('');
     ob._fitGrid?.();          // size to the screen — complete rows only
