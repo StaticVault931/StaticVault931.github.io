@@ -13,6 +13,7 @@ const MAX_PROFILES = 10;
 const PROFILE_STATE_KEYS = [
   'watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed',
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
+  'prefGenreDislikes', 'prefLangs',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
   'disabledShortcuts', // per-profile shortcut overrides
 ];
@@ -27,6 +28,8 @@ const PERSIST_MAP_KEYS = {
   prefLikes:        'sv_pref_likes',
   prefDislikes:     'sv_pref_dislikes',
   prefGenres:       'sv_pref_genres',
+  prefGenreDislikes:'sv_pref_genre_dislikes',
+  prefLangs:        'sv_pref_langs',
   ageRating:        'sv_age',
   lastProvider:     'sv_last_provider',
   impressions:      'sv_impressions',
@@ -80,6 +83,10 @@ export function deleteProfile(id) {
 function saveProfileData(profileId) {
   const data = {};
   PROFILE_STATE_KEYS.forEach(k => { data[k] = state[k]; });
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    data.profileSettings = { kidsMode: !!settings.kidsMode };
+  } catch { data.profileSettings = { kidsMode: false }; }
   try { localStorage.setItem(`sv_pd_${profileId}`, JSON.stringify(data)); }
   catch {}
 }
@@ -103,6 +110,12 @@ export function switchProfile(toId) {
   setActiveProfileId(toId);
   const data = loadProfileData(toId);
 
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    settings.kidsMode = !!data?.profileSettings?.kidsMode;
+    localStorage.setItem('sv_settings', JSON.stringify(settings));
+  } catch {}
+
   PROFILE_STATE_KEYS.forEach(k => {
     if (data && data[k] !== undefined) {
       state[k] = data[k];
@@ -112,6 +125,7 @@ export function switchProfile(toId) {
         watchlist: [], liked: [], disliked: [], watched: [],
         recentlyViewed: [], continueWatching: {},
         prefLikes: [], prefDislikes: [], prefGenres: [],
+        prefGenreDislikes: [], prefLangs: [],
         ageRating: 'PG-13', lastProvider: 'vidsrc',
         impressions: {}, recentSearches: [],
       };

@@ -370,6 +370,7 @@ export function injectOverlays() {
         <button class="person-tab" data-tab="movie">Movies</button>
         <button class="person-tab" data-tab="tv">TV Shows</button>
       </div>
+      <div class="person-network" id="person-network" aria-live="polite"></div>
       <div class="search-grid person-grid" id="person-grid"></div>
     </div>
   </div>
@@ -473,6 +474,11 @@ export function injectOverlays() {
       <div class="pe-avatar-col">
         <div class="profile-avatar-preview" id="profile-avatar-preview">
           <span class="material-icons-round">person</span>
+        </div>
+        <div class="profile-crop-controls" id="profile-crop-controls" hidden>
+          <label>Zoom <input type="range" id="profile-crop-zoom" min="100" max="260" value="100"></label>
+          <label>Horizontal <input type="range" id="profile-crop-x" min="0" max="100" value="50"></label>
+          <label>Vertical <input type="range" id="profile-crop-y" min="0" max="100" value="50"></label>
         </div>
         <div class="pe-quick-avatars" id="pe-quick-avatars">
           <div class="pe-quick-avatar pe-qa-default" data-avatar="" title="Default">

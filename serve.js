@@ -9,7 +9,8 @@ const mime = {
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 http.createServer((req, res) => {
-  let p = path.join(root, req.url === '/' ? 'index.html' : req.url);
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  let p = path.join(root, pathname === '/' ? 'index.html' : pathname);
   if (!fs.existsSync(p)) { res.writeHead(404); return res.end('Not found'); }
   const ext = path.extname(p);
   res.writeHead(200, { 'Content-Type': mime[ext] || 'text/plain' });

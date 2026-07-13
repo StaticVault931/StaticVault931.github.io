@@ -2191,6 +2191,22 @@ body.sv-glass .trailer-icon-btn {
 /* MIDDLE CONTENT — independently scrollable */
 .person-content { overflow-y: auto; height: 100%; padding: 2rem; min-width: 0; }
 .person-credits-header { display: flex; gap: .4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.person-network { margin-bottom: 1.2rem; }
+.person-network-heading { font-size: .72rem; font-weight: 900; text-transform: uppercase; color: var(--muted); margin-bottom: .55rem; }
+.person-network-list { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .35rem; scrollbar-width: thin; }
+.person-network-node {
+  display: flex; align-items: center; gap: .5rem; flex: 0 0 180px;
+  min-width: 0; padding: .45rem; border: 1px solid var(--border2); border-radius: 7px;
+  background: var(--s2); color: var(--text); cursor: pointer; text-align: left;
+}
+.person-network-node:hover { border-color: var(--red); background: var(--s3); }
+.person-network-node img, .person-network-node > .material-icons-round { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.person-network-node > .material-icons-round { display: grid; place-items: center; background: var(--s3); }
+.person-network-node span { min-width: 0; }
+.person-network-node b, .person-network-node small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-network-node b { font-size: .75rem; }
+.person-network-node small { color: var(--muted); font-size: .62rem; margin-top: .12rem; }
+.person-network-loading { color: var(--muted); font-size: .72rem; }
 .person-tab {
   padding: .4rem 1rem; border-radius: 20px; font-size: .8rem; font-weight: 800;
   cursor: pointer; background: var(--s3); border: 1.5px solid var(--border2);
@@ -2380,6 +2396,10 @@ body.sv-glass .trailer-icon-btn {
 .profile-avatar-preview:hover { box-shadow: 0 0 0 3px rgba(255,255,255,.25), 0 12px 32px rgba(0,0,0,.6); }
 .profile-avatar-preview .material-icons-round { font-size: 3.2rem; color: rgba(255,255,255,.85); }
 .profile-avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.profile-crop-controls { width: 100%; display: grid; gap: .35rem; }
+.profile-crop-controls[hidden] { display: none; }
+.profile-crop-controls label { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: .4rem; color: var(--muted); font-size: .65rem; }
+.profile-crop-controls input { width: 100%; accent-color: var(--red); }
 .profile-change-avatar-btn {
   display: flex; align-items: center; gap: .45rem;
   padding: .55rem 1.1rem; border-radius: var(--r);

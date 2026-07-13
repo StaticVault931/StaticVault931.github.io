@@ -1212,11 +1212,15 @@ async function maybeShowOnboarding() {
     const box = grid.parentElement; // .ob-main
     const W = box?.clientWidth, H = box?.clientHeight;
     if (!W || !H) return;
-    const GAP = 12, IDEAL_W = 205; // ~7 posters across on a typical desktop
-    const cols = Math.max(4, Math.round((W + GAP) / (IDEAL_W + GAP)));
+    const GAP = 10;
+    // Onboarding is a broad taste sample, so density matters more than the
+    // normal card size. Choose a column count that exposes about six rows.
+    const targetRows = H >= 760 ? 7 : 6;
+    const maxTileWForRows = Math.max(72, ((H - GAP * (targetRows - 1)) / targetRows) / 1.5);
+    const cols = Math.max(7, Math.min(11, Math.ceil((W + GAP) / (maxTileWForRows + GAP))));
     const tileW = (W - GAP * (cols - 1)) / cols;
     const tileH = tileW * 1.5;
-    const rows = Math.max(2, Math.floor((H + GAP) / (tileH + GAP)));
+    const rows = Math.max(3, Math.floor((H + GAP) / (tileH + GAP)));
     const visible = cols * rows;
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gap = `${GAP}px`;
@@ -7177,6 +7181,14 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     });
     // Card clicks → close overlay first
     ov.addEventListener('click', e => {
+      const personLink = e.target.closest('[data-related-person-id]');
+      if (personLink) {
+        const relatedId = +personLink.dataset.relatedPersonId;
+        if (!relatedId) return;
+        closePersonPage({ restoreHistory: false });
+        openPersonPage(relatedId);
+        return;
+      }
       const card = e.target.closest('.card[data-id][data-type]');
       if (!card || e.target.closest('button')) return;
       e.preventDefault(); // card is now an <a>
@@ -7775,7 +7787,7 @@ export async function openPersonPage(personId) {
       const itemId = +card.dataset.id;
       const itemType = card.dataset.type;
       if (!itemId || !itemType) return;
-      closePersonPage();
+      closePersonPage({ restoreHistory: false });
       // Small delay so person overlay fully closes before modal opens
       setTimeout(() => openMedia(itemId, itemType, {
         title: card.dataset.title,
@@ -7874,6 +7886,7 @@ export async function openPersonPage(personId) {
     });
 
     ov._credits = person.combined_credits || {};
+    _loadPersonNetwork(person);
     loadPersonCredits(personId, 'all'); // default: show all credits
   } catch (e) {
     if (nameEl) nameEl.textContent = 'Could not load person';
@@ -7899,11 +7912,68 @@ function loadPersonCredits(personId, type) {
   grid.innerHTML = html || `<p style="color:var(--muted);padding:1rem;text-align:center;">No credits found.</p>`;
 }
 
-function closePersonPage() {
+const _personNetworkCache = new Map();
+async function _loadPersonNetwork(person) {
+  const el = document.getElementById('person-network');
+  if (!el || !person?.id) return;
+  el.innerHTML = '<div class="person-network-loading">Finding collaborators...</div>';
+  try {
+    let data = _personNetworkCache.get(person.id);
+    if (!data) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(`sv_person_network_${person.id}`) || 'null');
+        if (saved && Date.now() - saved.ts < 86400000) data = saved.data;
+      } catch {}
+    }
+    if (!data) {
+      const topTitles = [...(person.combined_credits?.cast || [])]
+        .filter(m => m.id && (m.media_type === 'movie' || m.media_type === 'tv'))
+        .sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+        .slice(0, 5);
+      const credits = await Promise.all(topTitles.map(title =>
+        tmdb(`/${title.media_type}/${title.id}/credits`).catch(() => ({ cast: [] }))));
+      const people = new Map();
+      credits.forEach((credit, titleIndex) => {
+        (credit.cast || []).slice(0, 15).forEach(actor => {
+          if (!actor.id || actor.id === person.id) return;
+          const rec = people.get(actor.id) || {
+            id: actor.id, name: actor.name || '', profile_path: actor.profile_path || '',
+            shared: 0, titles: [], weight: 0,
+          };
+          rec.shared++;
+          rec.weight += Math.max(1, 5 - titleIndex);
+          if (!rec.titles.includes(topTitles[titleIndex]?.title || topTitles[titleIndex]?.name)) {
+            rec.titles.push(topTitles[titleIndex]?.title || topTitles[titleIndex]?.name);
+          }
+          people.set(actor.id, rec);
+        });
+      });
+      data = [...people.values()].sort((a, b) => b.shared - a.shared || b.weight - a.weight).slice(0, 10);
+      _personNetworkCache.set(person.id, data);
+      try { sessionStorage.setItem(`sv_person_network_${person.id}`, JSON.stringify({ ts: Date.now(), data })); } catch {}
+    }
+    if (!data.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div class="person-network-heading">Frequently works with</div>
+      <div class="person-network-list">${data.map(actor => `
+        <button class="person-network-node" data-related-person-id="${actor.id}" type="button"
+          title="Shared work: ${esc(actor.titles.join(', '))}">
+          ${actor.profile_path ? `<img src="${imgUrl(actor.profile_path, 'w185')}" alt="">` : '<span class="material-icons-round">person</span>'}
+          <span><b>${esc(actor.name)}</b><small>${actor.shared} shared ${actor.shared === 1 ? 'title' : 'titles'}</small></span>
+        </button>`).join('')}</div>`;
+  } catch (err) {
+    console.warn('[SV Person] collaborator graph failed:', err?.message || err);
+    el.innerHTML = '';
+  }
+}
+
+function closePersonPage({ restoreHistory = true } = {}) {
   document.getElementById('person-overlay')?.classList.remove('open');
   document.body.style.overflow = '';
+  document.getElementById('jsonld-person')?.remove();
   // Restore URL when closing person page
-  if (location.search.includes('person=')) history.back();
+  if (restoreHistory && location.search.includes('person=')) history.back();
+  else if (!restoreHistory) resetPageSEO();
 }
 
 export function closeInfoPage() {
@@ -8134,6 +8204,28 @@ function initShortcutsModal() {
 /* ── PROFILES ──────────────────────────────────────────────────────── */
 // PROFILE_COLORS declared at top of file (before init IIFE)
 let _editingProfileId = null;
+const _normalizeAvatarCrop = crop => ({
+  x: Math.max(0, Math.min(100, Number(crop?.x) || 50)),
+  y: Math.max(0, Math.min(100, Number(crop?.y) || 50)),
+  zoom: Math.max(1, Math.min(2.6, Number(crop?.zoom) || 1)),
+});
+const _avatarCropStyle = crop => {
+  const c = _normalizeAvatarCrop(crop);
+  return `object-position:${c.x}% ${c.y}%;transform:scale(${c.zoom});transform-origin:${c.x}% ${c.y}%;`;
+};
+
+function _readAvatarCropControls() {
+  return _normalizeAvatarCrop({
+    x: document.getElementById('profile-crop-x')?.value,
+    y: document.getElementById('profile-crop-y')?.value,
+    zoom: +(document.getElementById('profile-crop-zoom')?.value || 100) / 100,
+  });
+}
+
+function _applyAvatarCropPreview() {
+  const img = document.querySelector('#profile-avatar-preview img');
+  if (img) img.style.cssText = `width:100%;height:100%;object-fit:cover;${_avatarCropStyle(_readAvatarCropControls())}`;
+}
 
 function initProfilesUI() {
   document.getElementById('profile-header-btn')?.addEventListener('click', openProfilesOverlay);
@@ -8195,6 +8287,8 @@ function initProfilesUI() {
     });
   }
   document.getElementById('profile-change-avatar-btn')?.addEventListener('click', openPersonSearchForAvatar);
+  ['profile-crop-zoom', 'profile-crop-x', 'profile-crop-y'].forEach(id =>
+    document.getElementById(id)?.addEventListener('input', _applyAvatarCropPreview));
   updateProfileHeaderBtn();
 }
 
@@ -8204,7 +8298,7 @@ function updateProfileHeaderBtn() {
   const mini = document.getElementById('profile-avatar-mini');
   if (!mini || !active) return;
   mini.innerHTML = active.avatar
-    ? `<img src="${esc(active.avatar)}" alt="${esc(active.name)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`
+    ? `<img src="${esc(active.avatar)}" alt="${esc(active.name)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;${_avatarCropStyle(active.avatarCrop)}">`
     : `<span class="material-icons-round" style="font-size:.9rem">person</span>`;
   const btn = document.getElementById('profile-header-btn');
   if (btn && active.color) btn.style.outline = `2px solid ${active.color}`;
@@ -8230,7 +8324,7 @@ function renderProfilesGrid() {
   grid.innerHTML = profiles.map(p => `
     <div class="profile-card${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" tabindex="0" role="button">
       <div class="profile-avatar-circle" style="background:${p.color && p.color !== 'transparent' ? p.color : 'transparent'}">
-        ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : `<span class="material-icons-round">person</span>`}
+        ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;${_avatarCropStyle(p.avatarCrop)}">` : `<span class="material-icons-round">person</span>`}
       </div>
       <div class="profile-card-name">${esc(p.name)}</div>
       ${profileUsageSummary(p.id) ? `<div class="profile-card-usage">${esc(profileUsageSummary(p.id))}</div>` : ''}
@@ -8293,12 +8387,18 @@ function openProfileEditor(profileId) {
   if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
   const color = profile?.color || '#e50914';
   const currentAvatar = profile?.avatar || '';
+  const crop = _normalizeAvatarCrop(profile?.avatarCrop);
   if (preview) {
     preview.style.background = color && color !== 'transparent' ? color : 'transparent';
     preview.innerHTML = currentAvatar
-      ? `<img src="${esc(currentAvatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+      ? `<img src="${esc(currentAvatar)}" alt="" style="width:100%;height:100%;object-fit:cover;${_avatarCropStyle(crop)}">`
       : `<span class="material-icons-round">person</span>`;
   }
+  const cropControls = document.getElementById('profile-crop-controls');
+  if (cropControls) cropControls.hidden = !currentAvatar;
+  const cropX = document.getElementById('profile-crop-x'); if (cropX) cropX.value = crop.x;
+  const cropY = document.getElementById('profile-crop-y'); if (cropY) cropY.value = crop.y;
+  const cropZoom = document.getElementById('profile-crop-zoom'); if (cropZoom) cropZoom.value = Math.round(crop.zoom * 100);
   // Highlight active quick avatar
   ov.querySelectorAll('.pe-quick-avatar').forEach(el => {
     el.classList.toggle('on', el.dataset.avatar === currentAvatar);
@@ -8335,6 +8435,10 @@ function openProfileEditor(profileId) {
           ? `<img src="${esc(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
           : `<span class="material-icons-round">person</span>`;
       }
+      const controls = document.getElementById('profile-crop-controls');
+      if (controls) controls.hidden = !avatarUrl;
+      ['profile-crop-x','profile-crop-y'].forEach(id => { const input = document.getElementById(id); if (input) input.value = 50; });
+      const zoom = document.getElementById('profile-crop-zoom'); if (zoom) zoom.value = 100;
       ov.querySelectorAll('.pe-quick-avatar').forEach(el => el.classList.toggle('on', el === qa));
     });
   }
@@ -8355,8 +8459,9 @@ function saveProfileFromEditor() {
   const activeQA = document.getElementById('profile-editor-overlay')?.querySelector('.pe-quick-avatar.on');
   const avatarImg = document.getElementById('profile-avatar-preview')?.querySelector('img');
   const avatar = activeQA != null ? (activeQA.dataset.avatar || null) : (avatarImg?.src || null);
+  const avatarCrop = avatar ? _readAvatarCropControls() : null;
   if (_editingProfileId) {
-    updateProfile(_editingProfileId, { name, color, avatar });
+    updateProfile(_editingProfileId, { name, color, avatar, avatarCrop });
     toast('Profile updated!', 'check_circle');
     closeProfileEditor();
     updateProfileHeaderBtn();
@@ -8364,6 +8469,7 @@ function saveProfileFromEditor() {
     return;
   }
   const p = createProfile(name, avatar, color);
+  if (p && avatarCrop) updateProfile(p.id, { avatarCrop });
   if (!p) { toast('Maximum 10 profiles reached', 'warning'); return; }
   toast('Profile created!', 'check_circle');
   closeProfileEditor();
@@ -8480,6 +8586,10 @@ function openPersonSearchForAvatar() {
     const url = opt.dataset.url;
     const prev = document.getElementById('profile-avatar-preview');
     if (prev) prev.innerHTML = `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    const cropControls = document.getElementById('profile-crop-controls');
+    if (cropControls) cropControls.hidden = !url;
+    ['profile-crop-x','profile-crop-y'].forEach(id => { const input = document.getElementById(id); if (input) input.value = 50; });
+    const cropZoom = document.getElementById('profile-crop-zoom'); if (cropZoom) cropZoom.value = 100;
     picker.remove();
     // Easter egg for special avatars
     if (opt.dataset.special === 'sv931') toast('You chose the StaticVault931 logo!', 'movie');
