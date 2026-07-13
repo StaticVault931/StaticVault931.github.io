@@ -101,10 +101,12 @@ function loadProfileData(profileId) {
 
 /* ── SWITCH PROFILE ───────────────────────────────────────────────── */
 export function switchProfile(toId) {
+  const profiles = getProfiles();
+  if (!profiles.some(p => p.id === toId)) return false;
   const currentId = getActiveProfileId();
 
   // Save current state to current profile's bucket
-  if (currentId) saveProfileData(currentId);
+  if (currentId && profiles.some(p => p.id === currentId)) saveProfileData(currentId);
 
   // Load new profile's data
   setActiveProfileId(toId);
@@ -137,6 +139,7 @@ export function switchProfile(toId) {
       catch {}
     }
   });
+  return true;
 }
 
 /* ── INIT: ensure at least one profile exists ─────────────────────── */
@@ -149,8 +152,33 @@ export function initProfiles() {
     saveProfileData(defaultProfile.id);
     return;
   }
-  // If no active profile set, use first
-  if (!getActiveProfileId()) setActiveProfileId(profiles[0].id);
+  // Recover stale/deleted active IDs without discarding the browser's data.
+  let activeId = getActiveProfileId();
+  const orphanData = activeId && !profiles.some(p => p.id === activeId)
+    ? loadProfileData(activeId)
+    : null;
+  if (!profiles.some(p => p.id === activeId)) {
+    activeId = profiles[0].id;
+    setActiveProfileId(activeId);
+  }
+  if (orphanData && !loadProfileData(activeId)) {
+    try { localStorage.setItem(`sv_pd_${activeId}`, JSON.stringify(orphanData)); } catch {}
+    PROFILE_STATE_KEYS.forEach(k => {
+      if (orphanData[k] === undefined) return;
+      state[k] = orphanData[k];
+      if (PERSIST_MAP_KEYS[k]) {
+        try { localStorage.setItem(PERSIST_MAP_KEYS[k], JSON.stringify(state[k])); } catch {}
+      }
+    });
+    try {
+      const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+      settings.kidsMode = !!orphanData.profileSettings?.kidsMode;
+      localStorage.setItem('sv_settings', JSON.stringify(settings));
+    } catch {}
+  }
+  // Migrate profiles created before per-profile buckets existed. The
+  // standard storage keys are still the only copy, so preserve them now.
+  if (!loadProfileData(activeId)) saveProfileData(activeId);
 }
 
 export { MAX_PROFILES, PROFILE_STATE_KEYS };

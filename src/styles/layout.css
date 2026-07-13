@@ -1890,9 +1890,11 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .footer-logo .n { color: var(--red); }
 .footer-tagline { color: var(--muted); font-size: .82rem; margin-bottom: .6rem; }
 .footer-disclaimer { color: var(--dim); font-size: .72rem; line-height: 1.7; }
-/* Default footer: original spacing (flex, natural column widths) */
-.footer-links { display: flex; gap: 2.5rem; flex-wrap: wrap; flex: 1; }
-.footer-col { display: flex; flex-direction: column; gap: .4rem; min-width: 110px; }
+/* Equal tracks keep columns aligned when one gains an extra destination. */
+.footer-links { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 2rem; flex: 1; }
+.footer-col { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+@media (max-width: 900px) { .footer-links { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
+@media (max-width: 520px) { .footer-links { grid-template-columns: 1fr 1fr; gap: 1.5rem 1rem; } }
 .footer-col h4 { font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: .2rem; }
 .footer-col a, .footer-legal-btn {
   font-size: .82rem; color: var(--dim); cursor: pointer; background: none; border: none;

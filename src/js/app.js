@@ -992,6 +992,7 @@ function dismissLoadingScreen() {
    prefGenres + liked titles, then dissolves into the CYF page. */
 async function maybeShowOnboarding() {
   if (localStorage.getItem('sv_onboarded')) return;
+  if (document.getElementById('onboard-screen')) return;
   // NOTE: the flag is set when the user finishes or skips — NOT here.
   // A mid-onboarding refresh brings it right back.
 
@@ -1411,14 +1412,14 @@ async function maybeShowOnboarding() {
     const box = grid.parentElement; // .ob-main
     const W = box?.clientWidth, H = box?.clientHeight;
     if (!W || !H) return;
-    const GAP = 12;
-    // HEIGHT-FIRST wall: exactly 4 tall rows (3 on short screens) of the
-    // biggest posters that fit, columns filling the full width — a wide
-    // ~14x4 layout instead of many small rows
-    const rows = H >= 560 ? 4 : 3;
-    const tileH = (H - GAP * (rows - 1)) / rows;
-    const tileW = tileH * (2 / 3);
-    const cols = Math.max(6, Math.floor((W + GAP) / (tileW + GAP)));
+    const GAP = 10;
+    // Dense taste wall: target five or six complete rows and use the width.
+    const targetRows = H >= 620 ? 6 : 5;
+    const maxTileWForRows = Math.max(70, ((H - GAP * (targetRows - 1)) / targetRows) / 1.5);
+    const cols = Math.max(7, Math.min(12, Math.ceil((W + GAP) / (maxTileWForRows + GAP))));
+    const tileW = (W - GAP * (cols - 1)) / cols;
+    const tileH = tileW * 1.5;
+    const rows = Math.max(4, Math.min(targetRows, Math.floor((H + GAP) / (tileH + GAP))));
     const visible = cols * rows;
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gap = `${GAP}px`;
@@ -8556,6 +8557,11 @@ function renderProfilesGrid() {
     </div>`).join('');
 
   grid.querySelectorAll('.profile-card').forEach(card => {
+    card.addEventListener('keydown', e => {
+      if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      card.click();
+    });
     card.addEventListener('click', e => {
       if (e.target.closest('.profile-card-edit-btn')) return;
       const pid = card.dataset.pid;
