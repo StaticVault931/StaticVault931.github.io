@@ -249,6 +249,14 @@
   </section>
 
   <!-- Genre rail (hidden from home — accessible via search/genre pages) -->
+  <section class="mix-home-entry" aria-labelledby="mix-home-title">
+    <div class="mix-home-copy">
+      <span class="material-icons-round" aria-hidden="true">blender</span>
+      <div><h2 id="mix-home-title">Mix &amp; Match</h2><p>Blend two to five movies or shows into recommendations that fit the combination.</p></div>
+    </div>
+    <a class="mix-home-open" href="/?page=mix" data-page="mix">Build a mix <span class="material-icons-round" aria-hidden="true">arrow_forward</span></a>
+  </section>
+
   <div class="genre-wrap" style="display:none" aria-hidden="true">
     <div class="genre-scroll" id="genre-scroll" role="list" aria-label="Browse by genre"></div>
   </div>
@@ -1303,7 +1311,7 @@
         <span class="s">Static</span><span class="v">Vault</span><span class="n">931</span>
       </div>
       <p class="footer-tagline">Your personal cinema, everywhere.</p>
-      <p class="footer-disclaimer">StaticVault931 does not host any media. Content is streamed via third-party providers. Ads may appear and are outside our control.</p>
+      <p class="footer-disclaimer">StaticVault931 does not host any media. Content is streamed via third-party providers. Ads may appear and are outside our control. Streaming availability data is provided by <a href="https://www.justwatch.com/" target="_blank" rel="noopener">JustWatch</a> through TMDB.</p>
     </div>
     <div class="footer-links">
       <div class="footer-col">
@@ -1319,7 +1327,6 @@
         <a href="/?page=library" data-page="library">Library</a>
         <a href="/?page=mix" data-page="mix">Mix &amp; Match</a>
         <a href="/?page=prefs" data-page="prefs">Customize Feed</a>
-        <a role="button" tabindex="0" id="footer-onboarding-btn">Taste Onboarding</a>
       </div>
       <div class="footer-col">
         <h4>Community</h4>

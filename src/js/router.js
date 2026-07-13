@@ -60,7 +60,7 @@ function updatePageMeta(p) {
         ],
       });
     }
-    if (['movies', 'tv', 'anime', 'search', 'clips'].includes(p)) {
+    if (['movies', 'tv', 'anime', 'search', 'clips', 'mix'].includes(p)) {
       graph.push({
         '@type': 'CollectionPage',
         name: m.title,
@@ -94,7 +94,13 @@ export function goPage(p) {
     el.classList.toggle('on', el.dataset.page === p);
   });
 
-  const pg = document.getElementById('page-' + p);
+  let pg = document.getElementById('page-' + p);
+  let loadedBeforeActivation = false;
+  if (!pg && PAGE_LOADERS[p]) {
+    PAGE_LOADERS[p]();
+    loadedBeforeActivation = true;
+    pg = document.getElementById('page-' + p);
+  }
   if (pg) {
     pg.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -121,7 +127,7 @@ export function goPage(p) {
 
   state.currentPage = p;
   recordPageView(); // stats ledger
-  if (PAGE_LOADERS[p]) PAGE_LOADERS[p]();
+  if (!loadedBeforeActivation && PAGE_LOADERS[p]) PAGE_LOADERS[p]();
 }
 
 /* ── SEE-ALL ─────────────────────────────────────────────────────── */

@@ -1890,6 +1890,7 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 .footer-logo .n { color: var(--red); }
 .footer-tagline { color: var(--muted); font-size: .82rem; margin-bottom: .6rem; }
 .footer-disclaimer { color: var(--dim); font-size: .72rem; line-height: 1.7; }
+.footer-disclaimer a { color: var(--muted); }
 /* Equal tracks keep columns aligned when one gains an extra destination. */
 .footer-links { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 2rem; flex: 1; }
 .footer-col { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
@@ -3032,6 +3033,14 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 @media (max-width: 720px) { #page-mix { padding: 1rem 1rem 4.5rem; } }
 .mix-head { margin-bottom: 1.1rem; }
 .mix-sub { color: var(--muted); font-size: .88rem; margin-top: .3rem; max-width: 560px; line-height: 1.55; }
+.mix-home-entry { margin: 1.1rem 3.5rem .4rem; padding: 1rem 1.15rem; border-block: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.mix-home-copy { display: flex; align-items: center; gap: .8rem; min-width: 0; }
+.mix-home-copy > .material-icons-round { color: var(--red); font-size: 1.7rem; }
+.mix-home-copy h2 { font-size: .95rem; font-weight: 900; }
+.mix-home-copy p { color: var(--muted); font-size: .75rem; margin-top: .12rem; }
+.mix-home-open { display: inline-flex; align-items: center; gap: .35rem; color: var(--text); text-decoration: none; font-size: .78rem; font-weight: 900; white-space: nowrap; }
+.mix-home-open .material-icons-round { color: var(--red); font-size: 1rem; }
+@media (max-width: 720px) { .mix-home-entry { margin: .8rem 1rem .2rem; align-items: flex-start; } .mix-home-copy p { display: none; } }
 
 .mix-bench {
   background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 40%), var(--s1);
@@ -3101,6 +3110,11 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
   color: var(--dim);
 }
 .mix-add { display: flex; gap: .7rem; align-items: stretch; }
+.mix-tools { display: flex; gap: .55rem; margin-top: .75rem; flex-wrap: wrap; }
+.mix-tools button { display: inline-flex; align-items: center; gap: .35rem; min-height: 36px; padding: .4rem .7rem; border: 1px solid var(--border); border-radius: 7px; background: var(--s2); color: var(--muted); font: inherit; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.mix-tools button:hover:not(:disabled) { color: var(--text); border-color: var(--border3); }
+.mix-tools button:disabled { opacity: .4; cursor: default; }
+.mix-tools .material-icons-round { font-size: .95rem; }
 .mix-add .pref-input-wrap { flex: 1; position: relative; }
 .mix-go-btn {
   display: inline-flex;

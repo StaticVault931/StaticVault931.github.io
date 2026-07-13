@@ -496,6 +496,7 @@ function _setPersonSEO(personId, person) {
 function _mixSeeds() {
   try { return JSON.parse(localStorage.getItem('sv_mix_seeds') || '[]'); } catch { return []; }
 }
+const _mixKey = x => `${x?.type || x?.media_type || 'movie'}:${x?.id}`;
 function _mixSaveSeeds(seeds) {
   try { localStorage.setItem('sv_mix_seeds', JSON.stringify(seeds.slice(0, 5))); } catch {}
 }
@@ -523,6 +524,10 @@ function _ensureMixPage() {
           <span class="material-icons-round">auto_awesome</span> Mix it
         </button>
       </div>
+      <div class="mix-tools">
+        <button type="button" id="mix-from-likes"><span class="material-icons-round">favorite</span> Use my likes</button>
+        <button type="button" id="mix-reroll" disabled><span class="material-icons-round">shuffle</span> Reroll blend</button>
+      </div>
     </div>
     <div class="mix-results" id="mix-results">
       <div class="mix-empty" id="mix-empty">
@@ -535,6 +540,7 @@ function _ensureMixPage() {
 
   const seedsEl = page.querySelector('#mix-seeds');
   const goBtn = page.querySelector('#mix-go');
+  const rerollBtn = page.querySelector('#mix-reroll');
 
   const renderSeeds = () => {
     const seeds = _mixSeeds();
@@ -548,6 +554,7 @@ function _ensureMixPage() {
       </div>`).join('') +
       (seeds.length < 5 ? `<div class="mix-seed mix-seed-empty" aria-hidden="true"><span class="material-icons-round">add</span></div>` : '');
     goBtn.disabled = seeds.length < 2;
+    if (rerollBtn) rerollBtn.disabled = seeds.length < 2;
     goBtn.innerHTML = `<span class="material-icons-round">auto_awesome</span> Mix ${seeds.length >= 2 ? `these ${seeds.length}` : 'it'}`;
   };
   renderSeeds();
@@ -562,18 +569,33 @@ function _ensureMixPage() {
     renderSeeds();
   });
 
+  page.querySelector('#mix-from-likes')?.addEventListener('click', () => {
+    const source = [...(state.liked || []), ...(state.prefLikes || [])];
+    const seen = new Set();
+    const seeds = source.filter(x => x?.id).map(x => ({
+      id: +x.id, type: x.type || x.media_type || 'movie', title: x.title || x.name || '',
+      poster_path: x.poster_path || x.poster || null, genre_ids: x.genre_ids || [],
+    })).filter(x => !seen.has(_mixKey(x)) && seen.add(_mixKey(x))).slice(0, 5);
+    if (seeds.length < 2) { toast('Like at least two titles first', 'favorite_border'); return; }
+    _mixSaveSeeds(seeds);
+    renderSeeds();
+    _runMix();
+  });
+  rerollBtn?.addEventListener('click', () => { _mixShuffle++; _runMix(); });
+
   // Reuse the standard title autocomplete
   setupAC('mix-search-input', 'mix-search-drop', item => {
     const seeds = _mixSeeds();
     if (seeds.length >= 5) { toast('Five titles max — remove one first', 'blender'); return; }
-    if (seeds.some(x => x.id === item.id)) { toast('Already in the mix', 'blender'); return; }
-    seeds.push({
+    const seed = {
       id: item.id,
       type: item._type || item.media_type || 'movie',
       title: item.title || item.name || '',
       poster_path: item.poster_path || null,
       genre_ids: item.genre_ids || [],
-    });
+    };
+    if (seeds.some(x => _mixKey(x) === _mixKey(seed))) { toast('Already in the mix', 'blender'); return; }
+    seeds.push(seed);
     _mixSaveSeeds(seeds);
     renderSeeds();
     if (seeds.length >= 2) _runMix(); // instant gratification once mixable
@@ -584,6 +606,7 @@ function _ensureMixPage() {
 }
 
 let _mixToken = 0;
+let _mixShuffle = 0;
 async function _runMix() {
   const page = _ensureMixPage();
   const results = page.querySelector('#mix-results');
@@ -610,10 +633,10 @@ async function _runMix() {
     }));
     if (my !== _mixToken) return;
 
-    const seedIds = new Set(seeds.map(x => x.id));
+    const seedIds = new Set(seeds.map(_mixKey));
     const seedGenres = new Set(seeds.flatMap(x => x.genre_ids || []));
-    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
-    const watchedIds = new Set((state.watched || []).map(x => x.id));
+    const dislikedIds = new Set((state.disliked || []).map(_mixKey));
+    const watchedIds = new Set((state.watched || []).map(_mixKey));
 
     // Blend: count how many seeds independently surface each candidate
     const scoreMap = new Map(); // id → { item, seedHits, score }
@@ -621,13 +644,14 @@ async function _runMix() {
       if (r.status !== 'fulfilled') return;
       const seenThisSeed = new Set();
       r.value.forEach(m => {
-        if (seedIds.has(m.id) || dislikedIds.has(m.id) || watchedIds.has(m.id)) return;
+        const key = _mixKey(m);
+        if (seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
         if (window._svSafeItem && !window._svSafeItem(m)) return;
-        if (seenThisSeed.has(m.id)) return;
-        seenThisSeed.add(m.id);
-        const rec = scoreMap.get(m.id) || { item: m, seedHits: 0 };
+        if (seenThisSeed.has(key)) return;
+        seenThisSeed.add(key);
+        const rec = scoreMap.get(key) || { item: m, seedHits: 0 };
         rec.seedHits++;
-        scoreMap.set(m.id, rec);
+        scoreMap.set(key, rec);
       });
     });
 
@@ -637,7 +661,7 @@ async function _runMix() {
       return {
         item: m,
         hits: r.seedHits,
-        score: r.seedHits * 3 + overlap * 0.8 + (m.vote_average || 0) / 10 + Math.min(1, (m.vote_count || 0) / 3000),
+        score: r.seedHits * 3 + overlap * 0.8 + (m.vote_average || 0) / 10 + Math.min(1, (m.vote_count || 0) / 3000) + (_mixShuffle ? Math.random() * 1.2 : 0),
       };
     }).sort((a, b) => b.score - a.score);
 
@@ -648,11 +672,14 @@ async function _runMix() {
         sort_by: 'vote_average.desc', 'vote_count.gte': 500,
       }).catch(() => null);
       if (my !== _mixToken) return;
-      const have = new Set(blended.map(b => b.item.id));
+      const have = new Set(blended.map(b => _mixKey(b.item)));
       (d?.results || []).forEach(m => {
-        if (have.has(m.id) || seedIds.has(m.id) || dislikedIds.has(m.id) || watchedIds.has(m.id)) return;
+        const item = { ...m, media_type: 'movie' };
+        const key = _mixKey(item);
+        if (have.has(key) || seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
         if (window._svSafeItem && !window._svSafeItem(m)) return;
-        blended.push({ item: { ...m, media_type: 'movie' }, hits: 0, score: 0 });
+        have.add(key);
+        blended.push({ item, hits: 0, score: 0 });
       });
     }
 
@@ -8584,9 +8611,7 @@ function renderProfilesGrid() {
       buildAgeRatingUI();
       buildSettingsUI();
       // Rebuild prefs UI if on that page
-      if (state.currentPage === 'prefs') {
-        buildGenreChips('genre-scroll', GENRES, () => {}, state.prefGenres);
-      }
+      if (state.currentPage === 'prefs') loadPrefsPage();
       toast(e.shiftKey ? 'Profile switched!' : 'Switched!', 'person');
     });
     card.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
@@ -8712,6 +8737,7 @@ function saveProfileFromEditor() {
   ]).then(choice => {
     if (choice === 'quiz') {
       switchProfile(p.id);
+      applyAllSettings();
       updateProfileHeaderBtn();
       renderProfilesGrid();
       closeProfilesOverlay();
@@ -8728,7 +8754,13 @@ function deleteProfileFromEditor() {
   deleteProfile(_editingProfileId);
   if (activeId === _editingProfileId) {
     const rem = getProfiles();
-    if (rem.length) switchProfile(rem[0].id);
+    if (rem.length) {
+      switchProfile(rem[0].id);
+      applyAllSettings();
+      renderLibrary();
+      buildSettingsUI();
+      if (state.currentPage === 'prefs') loadPrefsPage();
+    }
   }
   closeProfileEditor();
   updateProfileHeaderBtn();

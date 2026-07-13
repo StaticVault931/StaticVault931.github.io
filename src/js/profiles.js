@@ -13,7 +13,7 @@ const MAX_PROFILES = 10;
 const PROFILE_STATE_KEYS = [
   'watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed',
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
-  'prefGenreDislikes', 'prefLangs',
+  'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'prefLangs',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
   'disabledShortcuts', // per-profile shortcut overrides
 ];
@@ -29,6 +29,8 @@ const PERSIST_MAP_KEYS = {
   prefDislikes:     'sv_pref_dislikes',
   prefGenres:       'sv_pref_genres',
   prefGenreDislikes:'sv_pref_genre_dislikes',
+  prefTagLikes:      'sv_pref_tag_likes',
+  prefTagDislikes:   'sv_pref_tag_dislikes',
   prefLangs:        'sv_pref_langs',
   ageRating:        'sv_age',
   lastProvider:     'sv_last_provider',
@@ -85,8 +87,8 @@ function saveProfileData(profileId) {
   PROFILE_STATE_KEYS.forEach(k => { data[k] = state[k]; });
   try {
     const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
-    data.profileSettings = { kidsMode: !!settings.kidsMode };
-  } catch { data.profileSettings = { kidsMode: false }; }
+    data.profileSettings = { ...settings };
+  } catch { data.profileSettings = {}; }
   try { localStorage.setItem(`sv_pd_${profileId}`, JSON.stringify(data)); }
   catch {}
 }
@@ -113,9 +115,7 @@ export function switchProfile(toId) {
   const data = loadProfileData(toId);
 
   try {
-    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
-    settings.kidsMode = !!data?.profileSettings?.kidsMode;
-    localStorage.setItem('sv_settings', JSON.stringify(settings));
+    localStorage.setItem('sv_settings', JSON.stringify(data?.profileSettings || {}));
   } catch {}
 
   PROFILE_STATE_KEYS.forEach(k => {
@@ -127,7 +127,7 @@ export function switchProfile(toId) {
         watchlist: [], liked: [], disliked: [], watched: [],
         recentlyViewed: [], continueWatching: {},
         prefLikes: [], prefDislikes: [], prefGenres: [],
-        prefGenreDislikes: [], prefLangs: [],
+        prefGenreDislikes: [], prefTagLikes: [], prefTagDislikes: [], prefLangs: [],
         ageRating: 'PG-13', lastProvider: 'vidsrc',
         impressions: {}, recentSearches: [],
       };
@@ -171,9 +171,7 @@ export function initProfiles() {
       }
     });
     try {
-      const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
-      settings.kidsMode = !!orphanData.profileSettings?.kidsMode;
-      localStorage.setItem('sv_settings', JSON.stringify(settings));
+      localStorage.setItem('sv_settings', JSON.stringify(orphanData.profileSettings || {}));
     } catch {}
   }
   // Migrate profiles created before per-profile buckets existed. The
