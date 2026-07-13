@@ -3270,3 +3270,86 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 @media (hover: none) {
   .clips-vol-slider { opacity: 1; max-height: 84px; height: 64px; }
 }
+
+/* ═══ COMMIT 109 — DESIGN LAYER ══════════════════════════════════════ */
+
+/* ── WHO'S WATCHING: cinematic entrance ─────────────────────────── */
+#profiles-overlay.open .profile-card { animation: pcIn .4s var(--ease) backwards; }
+#profiles-overlay.open .profile-card:nth-child(2) { animation-delay: .06s; }
+#profiles-overlay.open .profile-card:nth-child(3) { animation-delay: .12s; }
+#profiles-overlay.open .profile-card:nth-child(4) { animation-delay: .18s; }
+#profiles-overlay.open .profile-card:nth-child(5) { animation-delay: .24s; }
+@keyframes pcIn { from { opacity: 0; transform: translateY(16px) scale(.94); } }
+#profiles-overlay .profile-card-usage {
+  font-size: .62rem;
+  color: var(--dim);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+/* ── CLIPS: matching action styles ─────────────────────────────────
+   Like / Watched / Dislike share one visual language; dislike no longer
+   looks like a different species */
+.trailer-icon-dislike { background: rgba(255,255,255,.18); }
+@media (hover: hover) {
+  .trailer-icon-dislike:hover { background: rgba(239,68,68,.4); color: #fca5a5; }
+  [data-action="watched"]:hover { background: rgba(96,165,250,.35); color: #bfdbfe; }
+}
+[data-action="watched"].on { background: #2563eb; }
+
+/* Tutorial preference chips — real controls, presented like a choice bar */
+.clips-tut-prefs {
+  display: flex;
+  justify-content: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+.clips-pref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .5rem 1rem;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 999px;
+  background: rgba(255,255,255,.07);
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .16s, border-color .16s, transform .14s var(--ease);
+}
+.clips-pref-chip .material-icons-round { font-size: 1rem; }
+.clips-pref-chip:hover { background: rgba(255,255,255,.14); transform: translateY(-1px); }
+.clips-pref-chip:active { transform: scale(.96); }
+.clips-pref-chip.on { background: var(--red); border-color: var(--red); }
+
+/* ── LIBRARY: stats banner + smooth service row ────────────────────── */
+#lib-stats-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+  margin: .9rem 0 1.1rem;
+}
+.lib-stat {
+  display: flex;
+  align-items: baseline;
+  gap: .45rem;
+  padding: .55rem .95rem;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 60%), var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.lib-stat .material-icons-round { font-size: 1rem; color: var(--red); align-self: center; }
+.lib-stat-big {
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: var(--text);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-stat-small { font-size: .68rem; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+#lib-qp-row { scroll-behavior: smooth; }

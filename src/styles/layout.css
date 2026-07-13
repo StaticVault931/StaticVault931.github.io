@@ -3002,3 +3002,25 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 .ob-avatar-strip .ob-avatar-chip { width: 100%; height: auto; aspect-ratio: 1; }
 @media (max-width: 720px) { .ob-avatar-strip { grid-template-columns: repeat(5, 1fr); } }
 .ob-stage { max-width: 760px; }
+
+/* ═══ COMMIT 109 — onboarding stage: two-column with compact side rail ═
+   Picture picker gets the wide left column; Kid-Guided + Accessibility
+   stack in a slim right rail — horizontal-first use of the screen. */
+@media (min-width: 821px) {
+  .ob-stage {
+    max-width: 900px;
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 1rem 1.2rem;
+    align-items: start;
+  }
+  .ob-stage-hero { grid-column: 1 / -1; }
+  .ob-stage-sec:nth-of-type(1) { grid-column: 1; grid-row: 2 / 4; }
+  .ob-stage-sec:nth-of-type(2) { grid-column: 2; }
+  .ob-stage-sec:nth-of-type(3) { grid-column: 2; }
+  .ob-stage-note { grid-column: 1 / -1; }
+  /* compact a11y chips in the rail */
+  .ob-stage-sec:nth-of-type(3) .ob-chip { font-size: .74rem; padding: .4rem .8rem; }
+  .ob-stage-sec:nth-of-type(3) .ob-hint { font-size: .64rem; }
+}
+.ob-avatar-search-top { margin-bottom: .7rem; }

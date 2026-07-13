@@ -863,8 +863,8 @@ async function maybeShowOnboarding() {
 
           <section class="ob-stage-sec">
             <div class="ob-label"><span class="material-icons-round">face</span>Choose a picture</div>
+            <input type="search" class="ob-search ob-avatar-search-top" id="ob-avatar-search" placeholder="Search any actor for your picture…" autocomplete="off" aria-label="Search actors for a profile picture">
             <div class="ob-avatar-strip ob-chips" id="ob-profile-avatars" aria-label="Profile pictures"></div>
-            <input type="search" class="ob-search" id="ob-avatar-search" placeholder="Search any actor for your picture…" autocomplete="off" aria-label="Search actors for a profile picture">
           </section>
 
           <section class="ob-stage-sec">
@@ -930,7 +930,7 @@ async function maybeShowOnboarding() {
     ob.querySelector('.ob-inner').scrollTop = 0;
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
-  nextBtn.addEventListener('click', () => gotoStep(2));
+  nextBtn.addEventListener('click', () => { gotoStep(2); ob._loadRelevantFaces?.(); });
   backBtn.addEventListener('click', () => gotoStep(1));
 
   // Right-click reset (dispatched by the global contextmenu handler)
@@ -1052,12 +1052,30 @@ async function maybeShowOnboarding() {
         c.classList.toggle('picked', (c.dataset.avatar || '') === pickedAvatar));
     };
     renderAvatars();
-    // Gallery: popular actors as ready-made profile pictures (the actor-
-    // avatar system is the foundation — this makes it browsable in place)
-    tmdb('/person/popular').then(d => {
-      const faces = (d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14);
-      if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
-    }).catch(() => {});
+    // Gallery: faces RELEVANT to what they just picked — cast from their
+    // liked titles first; popular actors only as the no-picks fallback
+    ob._loadRelevantFaces = async () => {
+      try {
+        const picks = [...likedTitles.values()].slice(0, 3);
+        if (picks.length) {
+          const credits = await Promise.allSettled(picks.map(x =>
+            tmdb(`/${x.media_type === 'tv' ? 'tv' : 'movie'}/${x.id}/credits`)));
+          const seenIds = new Set();
+          const faces = credits
+            .flatMap(r => r.status === 'fulfilled' ? (r.value?.cast || []).slice(0, 6) : [])
+            .filter(pn => pn.profile_path && !pn.adult && !seenIds.has(pn.id) && seenIds.add(pn.id))
+            .slice(0, 14);
+          if (faces.length >= 5) {
+            if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
+            return;
+          }
+        }
+        const d = await tmdb('/person/popular');
+        const faces = (d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14);
+        if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
+      } catch {}
+    };
+    ob._loadRelevantFaces();
     // Search ANY actor for a picture — replaces the gallery portion live
     const avSearch = ob.querySelector('#ob-avatar-search');
     let _avTimer = null, _avToken = 0;
@@ -1194,7 +1212,7 @@ async function maybeShowOnboarding() {
     const box = grid.parentElement; // .ob-main
     const W = box?.clientWidth, H = box?.clientHeight;
     if (!W || !H) return;
-    const GAP = 12, IDEAL_W = 168; // premium-large posters
+    const GAP = 12, IDEAL_W = 205; // ~7 posters across on a typical desktop
     const cols = Math.max(4, Math.round((W + GAP) / (IDEAL_W + GAP)));
     const tileW = (W - GAP * (cols - 1)) / cols;
     const tileH = tileW * 1.5;
@@ -9940,6 +9958,18 @@ function _maybeShowClipsTutorial(feed) {
         <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">thumb_down_off_alt</span></span><span>Never again <kbd>X</kbd></span></div>
       </div>
 
+      <div class="clips-tut-prefs" aria-label="Clip feed preferences">
+        <button class="clips-pref-chip${_clipsVolume > 0 ? ' on' : ''}" data-tut-pref="sound">
+          <span class="material-icons-round">${_clipsVolume > 0 ? 'volume_up' : 'volume_off'}</span> Start with sound
+        </button>
+        <button class="clips-pref-chip${localStorage.getItem('sv_clips_noanime') === '1' ? ' on' : ''}" data-tut-pref="noanime">
+          <span class="material-icons-round">auto_awesome</span> Hide anime clips
+        </button>
+        <button class="clips-pref-chip" data-tut-pref="reset">
+          <span class="material-icons-round">restart_alt</span> Reset clip history
+        </button>
+      </div>
+
       <div class="clips-tut-tips">
         <div class="clips-tut-tip"><span class="material-icons-round">swipe_vertical</span>Scroll, swipe, use the arrows, or press <kbd>↓</kbd>/<kbd>S</kbd> — whatever feels right</div>
         <div class="clips-tut-tip"><span class="material-icons-round">touch_app</span>Tap the video to pause. Tap again to resume.</div>
@@ -9954,6 +9984,27 @@ function _maybeShowClipsTutorial(feed) {
   slide.querySelector('.clips-tut-start-btn')?.addEventListener('click', e => {
     e.stopPropagation();
     _clipsNavSlide(1);
+  });
+
+  // Feed preference chips — real settings, applied instantly
+  slide.querySelectorAll('[data-tut-pref]').forEach(chip => {
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      const pref = chip.dataset.tutPref;
+      if (pref === 'sound') {
+        _setClipsVolume(_clipsVolume > 0 ? 0 : 80);
+        chip.classList.toggle('on', _clipsVolume > 0);
+        chip.querySelector('.material-icons-round').textContent = _clipsVolume > 0 ? 'volume_up' : 'volume_off';
+      } else if (pref === 'noanime') {
+        const next = localStorage.getItem('sv_clips_noanime') !== '1';
+        try { localStorage.setItem('sv_clips_noanime', next ? '1' : '0'); } catch {}
+        chip.classList.toggle('on', next);
+        toast(next ? 'Anime clips hidden from your feed' : 'Anime clips back in the mix', 'auto_awesome');
+      } else if (pref === 'reset') {
+        try { localStorage.removeItem(_CLIPS_SEEN_KEY); } catch {}
+        toast('Clip history cleared — everything is fresh again', 'restart_alt');
+      }
+    });
   });
 
   const track = _clipsTrack() || feed;
@@ -10304,7 +10355,7 @@ async function _loadMoreTrailers() {
     const dislikedIds = new Set((state.disliked || []).map(x => x.id));
     const watchedIds = new Set((state.watched || []).map(x => x.id));
     const clipsSeen = _getClipsSeen();
-    const hideAnimeClips = !!(getSetting('hideAnime') || getSetting('kidsMode'));
+    const hideAnimeClips = !!(getSetting('hideAnime') || getSetting('kidsMode') || localStorage.getItem('sv_clips_noanime') === '1');
     let combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
       // Never show disliked content in clips
@@ -10390,7 +10441,7 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
-        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched" aria-label="Mark as already watched">
+        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — shows fewer like this (W)" aria-label="Already watched — shows fewer like this">
           <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">

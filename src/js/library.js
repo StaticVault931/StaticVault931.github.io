@@ -2,9 +2,60 @@ import { state, persist, isLiked, isInWatchlist } from './state.js';
 import { makeCard, skelCards, emptyState, toast } from './ui.js';
 import { tmdb } from './api.js';
 import { goPage } from './router.js';
+import { getStats, getFavorites } from './stats.js';
+import { GENRES } from './state.js';
 
 /* ── RENDER LIBRARY PAGE ─────────────────────────────────────────── */
+/* Library stats banner — your viewing at a glance (reads the local
+   stats ledger; hidden until there is anything to show) */
+function ensureLibStatsBanner() {
+  const tabs = document.querySelector('#page-library .lib-tabs');
+  if (!tabs) return;
+  let banner = document.getElementById('lib-stats-banner');
+  try {
+    const st = getStats();
+    const fav = getFavorites(1);
+    if (!st?.life?.watchMs && !st?.life?.plays) { banner?.remove(); return; }
+    const h = st.life.watchMs / 3600000;
+    const hours = h >= 100 ? Math.round(h) + 'h' : h >= 1 ? h.toFixed(1) + 'h' : Math.round(st.life.watchMs / 60000) + 'm';
+    const topGenre = fav.genres?.[0] ? (GENRES.find(g => g.id === fav.genres[0].genreId)?.name || '') : '';
+    const topTitle = fav.titles?.[0]?.title || '';
+    const cells = [
+      ['schedule', hours, 'watched'],
+      ['play_circle', String(st.life.plays || 0), 'plays'],
+      topGenre ? ['category', topGenre, 'top genre'] : null,
+      topTitle ? ['star', topTitle, 'most watched'] : null,
+    ].filter(Boolean);
+    const html = cells.map(([ic, big, small]) => `
+      <div class="lib-stat">
+        <span class="material-icons-round">${ic}</span>
+        <span class="lib-stat-big">${big}</span>
+        <span class="lib-stat-small">${small}</span>
+      </div>`).join('');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'lib-stats-banner';
+      tabs.after(banner);
+    }
+    banner.innerHTML = html;
+  } catch { banner?.remove(); }
+}
+
+/* Service chips: mouse wheel scrolls the row horizontally */
+function wireServiceWheel() {
+  const row = document.getElementById('lib-qp-row');
+  if (!row || row.dataset.wheelWired) return;
+  row.dataset.wheelWired = '1';
+  row.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // native horizontal
+    e.preventDefault();
+    row.scrollLeft += e.deltaY;
+  }, { passive: false });
+}
+
 export function renderLibrary() {
+  ensureLibStatsBanner();
+  wireServiceWheel();
   renderContinueSection();
   renderWatchlistSection();
   renderLikedSection();
