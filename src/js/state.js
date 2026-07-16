@@ -29,8 +29,8 @@ export const GENRES = [
   { id: 10402, name: 'Music',       icon: 'music_note' },
   { id: 9648,  name: 'Mystery',     icon: 'search' },
   { id: 10764, name: 'Reality TV',  icon: 'videocam' },
-  { id: 37,    name: 'Western',            icon: 'landscape' },
-  { id: 10768, name: 'War & Politics',     icon: 'account_balance' },
+  { id: 36,    name: 'History',     icon: 'history_edu' },
+  { id: 10752, name: 'War',         icon: 'military_tech' },
 ];
 
 export const AGE_LEVELS = {

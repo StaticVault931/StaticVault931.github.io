@@ -3373,3 +3373,90 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 }
 .lib-stat-small { font-size: .68rem; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 #lib-qp-row { scroll-behavior: smooth; }
+
+/* ═══ COMMIT 117 — Who's Watching: content-hugging, one active indicator ═
+   The panel sizes to its profiles instead of stretching to 600px around
+   one card; Add Profile is a normal tile inside the same grid; the active
+   profile is marked by its badge + a single subtle ring, not three nested
+   red outlines. */
+#profiles-panel {
+  width: auto !important;
+  min-width: 300px;
+  /* four 148px tiles + gaps + padding fit on one line */
+  max-width: min(724px, 94vw) !important;
+}
+.profiles-grid {
+  /* Flex, not grid: a flex row's intrinsic width is the sum of its tiles,
+     so the auto-width panel hugs 1 profile as tightly as 4 */
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem !important;
+  padding: 1.4rem 1.6rem 1.5rem;
+}
+.profiles-grid .profile-card { flex: 0 0 148px; }
+.profile-card { padding: 1.1rem .7rem 1rem !important; }
+.profile-card.active {
+  border-color: transparent !important;
+  background: var(--s3);
+  box-shadow: none;
+}
+.profile-card.active .profile-avatar-circle {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+/* Edit control reachable by keyboard, not only hover */
+.profile-card:focus-visible .profile-card-edit-btn,
+.profile-card:focus-within .profile-card-edit-btn { opacity: 1; }
+
+/* Add Profile: a real tile, same footprint as a profile card */
+.profile-card-add {
+  border: 2px dashed var(--border2) !important;
+  background: transparent !important;
+  min-height: unset !important;
+  font: inherit;
+  cursor: pointer;
+}
+.profile-card-add:hover {
+  border-color: var(--red) !important;
+  background: rgba(229,9,20,.05) !important;
+}
+.profile-add-circle {
+  background: var(--s2);
+  color: var(--muted);
+}
+.profile-card-add:hover .profile-add-circle { color: var(--red); }
+.profile-card-add .profile-card-name { color: var(--muted); font-weight: 700; }
+.profile-card-add:hover .profile-card-name { color: var(--text); }
+/* The old bottom actions bar is redundant now that Add lives in the grid */
+#profiles-panel .profiles-actions { display: none; }
+
+/* ═══ COMMIT 117 — Profile editor: deliberate controls ═══════════════ */
+.profile-crop-controls label {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  align-items: center;
+  gap: .5rem;
+  font-size: .66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  margin-bottom: .4rem;
+}
+.profile-crop-controls input[type="range"] { accent-color: var(--red); width: 100%; }
+.profile-color-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; }
+.profile-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: 1.1rem;
+}
+.profile-editor-actions .ma { min-height: 40px; }
+.profile-editor-actions #profile-save-btn { flex: 1 1 100%; }
+.profile-editor-actions #profile-delete-btn { margin-left: auto; }
+
+/* Kid-Guided row: icon | text | switch — the switch stays pinned to the
+   right edge, vertically centered, never mid-sentence */
+.ob-kids-row { flex-wrap: nowrap; }
+.ob-kids-row .ob-kids-check { margin-left: auto; align-self: center; flex: none; }

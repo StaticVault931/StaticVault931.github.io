@@ -1374,7 +1374,7 @@ async function maybeShowOnboarding() {
               <div class="ob-search-results" id="ob-search-results"></div>
             </div>
             <div class="ob-block">
-              <div class="ob-label"><span class="material-icons-round">category</span>Genres — tap once to love, twice to avoid</div>
+              <div class="ob-label"><span class="material-icons-round">category</span>Genres — love or avoid</div>
               <div class="ob-chips" id="ob-chips"></div>
             </div>
             <div class="ob-block">
@@ -1587,9 +1587,14 @@ async function maybeShowOnboarding() {
         ${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : '<span class="material-icons-round">font_download</span>'}
       </button>`;
     const renderAvatars = (people = []) => {
-      avatarsEl.innerHTML =
-        OB_AVATARS.map(([url, label]) => avatarChip(url, label)).join('') +
-        people.map(pn => avatarChip(imgUrl(pn.profile_path, 'w185'), pn.name)).join('');
+      // The gallery is a 7-column grid — render only complete rows so it
+      // never ends on a ragged half-line (3 defaults + up to 18 faces)
+      const chips = [
+        ...OB_AVATARS.map(([url, label]) => avatarChip(url, label)),
+        ...people.slice(0, 18).map(pn => avatarChip(imgUrl(pn.profile_path, 'w185'), pn.name)),
+      ];
+      const fullRows = Math.max(7, Math.floor(chips.length / 7) * 7);
+      avatarsEl.innerHTML = chips.slice(0, fullRows).join('');
       // keep the current pick ringed even if it isn't in the visible set
       avatarsEl.querySelectorAll('.ob-avatar-chip').forEach(c =>
         c.classList.toggle('picked', (c.dataset.avatar || '') === pickedAvatar));
@@ -1607,16 +1612,27 @@ async function maybeShowOnboarding() {
           const faces = credits
             .flatMap(r => r.status === 'fulfilled' ? (r.value?.cast || []).slice(0, 6) : [])
             .filter(pn => pn.profile_path && !pn.adult && !seenIds.has(pn.id) && seenIds.add(pn.id))
-            .slice(0, 14);
+            .slice(0, 18);
           if (faces.length >= 5) {
             if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
             return;
           }
         }
-        const d = await tmdb('/person/popular');
-        const faces = (d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14);
+        // Two pages: the popular-person feed loses many entries to the
+        // adult/no-photo filter, and a half-empty gallery row looks broken
+        const faces = await _obPopularFaces();
         if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
       } catch {}
+    };
+    const _obPopularFaces = async () => {
+      const pages = await Promise.allSettled([
+        tmdb('/person/popular'),
+        tmdb('/person/popular', { page: 2 }),
+      ]);
+      return pages
+        .flatMap(r => r.status === 'fulfilled' ? r.value?.results || [] : [])
+        .filter(pn => pn.profile_path && !pn.adult)
+        .slice(0, 18);
     };
     ob._loadRelevantFaces();
     // Search ANY actor for a picture — replaces the gallery portion live
@@ -1628,13 +1644,13 @@ async function maybeShowOnboarding() {
       _avTimer = setTimeout(async () => {
         const my = ++_avToken;
         if (!q) { // restore the popular gallery
-          const d = await tmdb('/person/popular').catch(() => null);
-          if (my === _avToken) renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14));
+          const faces = await _obPopularFaces().catch(() => []);
+          if (my === _avToken) renderAvatars(faces);
           return;
         }
         const d = await tmdb('/search/person', { query: q }).catch(() => null);
         if (my !== _avToken) return;
-        renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 14));
+        renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 18));
       }, 280);
     });
     avatarsEl.addEventListener('click', e => {
@@ -1784,12 +1800,15 @@ async function maybeShowOnboarding() {
   //   • 4 currently trending (a couple of fresh faces)
   try {
     const cutoff = `${new Date().getFullYear() - 3}-01-01`;
-    const [cm, ct, kids, cozy, intense, trend] = await Promise.allSettled([
+    const [cm, ct, kids, cozy, intense, anime, trend] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff }),
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '10751', certification_country: 'US', 'certification.lte': 'PG', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '35', without_genres: '27|53', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', with_genres: '27|53', 'primary_release_date.lte': cutoff }),
+      // anime classics — the wall must sample anime taste too, or that whole
+      // audience calibrates on nothing
+      tmdb('/discover/tv',    { sort_by: 'vote_count.desc', with_genres: '16', with_original_language: 'ja', 'first_air_date.lte': cutoff }),
       tmdb('/trending/all/week'),
     ]);
     const grab = (r, type = null) => r.status === 'fulfilled'
@@ -1808,10 +1827,11 @@ async function maybeShowOnboarding() {
     };
     const pool = [
       ...take(grab(kids, 'movie'), 12),
-      ...take(grab(cm, 'movie'), 18),
-      ...take(grab(ct, 'tv'), 18),
+      ...take(grab(cm, 'movie'), 16),
+      ...take(grab(ct, 'tv'), 16),
       ...take(grab(cozy, 'movie'), 8),
       ...take(grab(intense, 'movie'), 8),
+      ...take(grab(anime, 'tv'), 6),
       ...take(grab(trend), 6),
     ];
     // ONE title per franchise: the wall samples different KINDS of taste —
@@ -8990,9 +9010,17 @@ function renderProfilesGrid() {
       <button class="profile-card-edit-btn" data-pid="${p.id}" title="Edit">
         <span class="material-icons-round">edit</span>
       </button>
-    </div>`).join('');
+    </div>`).join('') + `
+    <button class="profile-card profile-card-add" id="profiles-grid-add" aria-label="Add a new profile">
+      <span class="profile-avatar-circle profile-add-circle"><span class="material-icons-round">add</span></span>
+      <span class="profile-card-name">Add Profile</span>
+    </button>`;
 
-  grid.querySelectorAll('.profile-card').forEach(card => {
+  // The add tile lives inside the grid (same size as a profile) — it is
+  // re-created on every render, so it is wired here, not at init
+  grid.querySelector('#profiles-grid-add')?.addEventListener('click', () => openProfileEditor(null));
+
+  grid.querySelectorAll('.profile-card:not(.profile-card-add)').forEach(card => {
     card.addEventListener('keydown', e => {
       if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
       e.preventDefault();

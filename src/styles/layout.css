@@ -1502,8 +1502,13 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  align-items: start;
+  /* Both cards end on the same line — the same aligned finish the
+     Titles/Content-Rating pair above already has */
+  align-items: stretch;
 }
+.cyf-wide-grid .cyf-card { display: flex; flex-direction: column; }
+.cyf-wide-grid #pref-tags-section,
+.cyf-wide-grid .pref-genres-wrap { flex: 1; }
 
 /* Responsive */
 @media (max-width: 1100px) {
@@ -3258,3 +3263,152 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
   font-weight: 900;
   box-shadow: 0 3px 12px rgba(0,0,0,.5);
 }
+
+/* ═══ COMMIT 117 — onboarding step 1: even sidebar, no internal scroll ═
+   Every chip group is a uniform grid so rows start and end together:
+   genres and languages in two even columns, ratings in one even five-up
+   row. Compact sizing keeps all four blocks inside the column height at
+   common desktop sizes, so the sidebar column ends exactly with the
+   poster wall instead of growing its own scrollbar. */
+@media (min-width: 881px) {
+  .ob-side { gap: .8rem; justify-content: space-between; padding-top: 2px; }
+  .ob-side .ob-block { padding: .8rem .9rem; }
+  .ob-side .ob-chips {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .4rem;
+  }
+  .ob-side .ob-chip {
+    justify-content: center;
+    padding: .38rem .45rem;
+    font-size: .74rem;
+    gap: .3rem;
+    white-space: nowrap;
+  }
+  .ob-side .ob-chip .material-icons-round { font-size: .9rem; }
+  #ob-ages { grid-template-columns: repeat(5, 1fr); }
+  #ob-ages .ob-chip { padding: .38rem .2rem; font-size: .72rem; }
+  .ob-side .ob-hint { margin-top: .45rem; }
+  .ob-side .ob-label { margin-bottom: .5rem; }
+}
+
+/* ═══ COMMIT 117 — onboarding step 2 polish ══════════════════════════ */
+/* Kid-Guided Mode: a real switch, not a bare checkbox */
+.ob-kids-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--s3);
+  border: 1px solid var(--border);
+  position: relative;
+  transition: background .18s, border-color .18s;
+  margin: 0;
+}
+.ob-kids-check::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  transition: transform .18s var(--ease);
+}
+.ob-kids-check:checked { background: #fbbf24; border-color: #fbbf24; }
+.ob-kids-check:checked::after { transform: translateX(20px); }
+.ob-kids-check:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* Avatar gallery: 7 columns everywhere so 3 defaults + 18 faces always
+   land as three complete rows — no empty cells at the end */
+@media (max-width: 720px) { .ob-avatar-strip { grid-template-columns: repeat(7, 1fr); gap: .4rem; } }
+
+/* Stage rhythm: tighter hero, aligned section paddings */
+.ob-stage-hero { padding: 1.25rem 1rem 1.15rem; }
+.ob-stage { gap: 1rem; }
+
+/* Sidebar must hold all four blocks with zero internal scroll at common
+   desktop heights — tighter rhythm than the base pass above */
+@media (min-width: 881px) {
+  .ob-side { gap: .7rem; padding-bottom: 0; }
+  .ob-side .ob-block { padding: .7rem .8rem; }
+  .ob-side .ob-chips { gap: .32rem; }
+  .ob-side .ob-chip { padding: .3rem .4rem; font-size: .72rem; }
+  .ob-side .ob-hint { display: none; } /* nice-to-know, not worth a scrollbar */
+  .ob-search { padding: .45rem .7rem; }
+}
+/* Short desktop windows (≤800px tall): shrink the header and go denser —
+   three chip columns, no icons — so Content Rating never scrolls away */
+@media (min-width: 881px) and (max-height: 800px) {
+  .ob-title { font-size: 2rem; }
+  .ob-head { margin-bottom: .6rem; }
+  .ob-steps { margin-top: .4rem; }
+  .ob-side { gap: .55rem; }
+  .ob-side .ob-block { padding: .55rem .7rem; }
+  .ob-side .ob-label { margin-bottom: .4rem; font-size: .66rem; }
+  .ob-side .ob-chips { grid-template-columns: repeat(3, 1fr); gap: .28rem; }
+  .ob-side .ob-chip { font-size: .67rem; padding: .26rem .3rem; }
+  .ob-side .ob-chip .material-icons-round { display: none; }
+  #ob-ages { grid-template-columns: repeat(5, 1fr); }
+}
+
+/* ═══ COMMIT 117 — Library presentation ══════════════════════════════ */
+/* Browse by Service: one deliberate horizontal rail — never a ragged
+   two-row logo wall. Wheel/touch scrolls it; edges fade to hint at more. */
+.lib-qp-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 28px), transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 28px), transparent 100%);
+}
+.lib-qp-row::-webkit-scrollbar { height: 6px; }
+.lib-qp-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
+.lib-qp-btn { flex: none; }
+
+/* Empty sections collapse to a single compact line with inline actions —
+   a bare list should never cost 300px of blank card */
+.lib-grid.lib-grid-empty { display: block; }
+.lib-grid-empty .empty-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem .8rem;
+  padding: .8rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  text-align: left;
+}
+.lib-grid-empty .empty-state .material-icons-round { font-size: 1.3rem; opacity: .5; }
+.lib-grid-empty .empty-state p { margin: 0; font-size: .8rem; color: var(--muted); flex: 1; min-width: 200px; }
+.lib-grid-empty .empty-state .empty-action {
+  margin: 0;
+  padding: .35rem .8rem;
+  font-size: .72rem;
+}
+
+/* Clear: quiet ghost control — present, but never begging to be tapped */
+.lib-clear-btn {
+  opacity: .55;
+  transition: opacity .15s, color .15s;
+}
+.lib-section-header:hover .lib-clear-btn,
+.lib-clear-btn:focus-visible { opacity: 1; }
+
+/* ═══ COMMIT 117 — Mix & Match presentation ══════════════════════════ */
+/* Disabled actions read as OFF, not as dimmed red */
+.mix-go-btn:disabled {
+  background: var(--s3);
+  color: var(--muted);
+  opacity: 1;
+  box-shadow: none;
+}
+/* Filter bar: tighter wrap rhythm so a second line still looks designed */
+.mix-filters { gap: .5rem .8rem; }
+/* Denser results: four columns on a desktop instead of three giants */
+.mix-grid { --card-w: 300px; }
+@media (max-width: 720px) { .mix-grid { --card-w: 44vw; } }

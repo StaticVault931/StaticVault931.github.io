@@ -131,8 +131,9 @@ function renderWatchlistSection() {
   const grid = document.getElementById('lib-watchlist-grid');
   if (!grid) return;
 
+  grid.classList.toggle('lib-grid-empty', !state.watchlist.length);
   if (!state.watchlist.length) {
-    grid.innerHTML = emptyState('bookmark_add', 'Your watchlist is empty.', [
+    grid.innerHTML = emptyState('bookmark_add', 'Nothing saved yet — tap the bookmark on any title.', [
       { action: 'go-home', label: 'Browse Trending' },
       { action: 'go-search', label: 'Search' },
     ]);
@@ -145,8 +146,9 @@ function renderLikedSection() {
   const grid = document.getElementById('lib-liked-grid');
   if (!grid) return;
 
+  grid.classList.toggle('lib-grid-empty', !state.liked.length);
   if (!state.liked.length) {
-    grid.innerHTML = emptyState('favorite_border', "Nothing liked yet. Tap ❤ on any title.", [
+    grid.innerHTML = emptyState('favorite_border', 'Nothing liked yet — tap ❤ on any title to shape your feed.', [
       { action: 'go-home', label: 'Browse Home' },
     ]);
     return;
