@@ -160,6 +160,17 @@
   #page-prefs { padding-top: 70px; }
   .pref-two-col { grid-template-columns: 1fr !important; }
   .pref-actions-row { flex-direction: column; }
+  .sv-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  #sv-settings-section .cyf-card-head { flex-wrap: wrap; }
+  #sv-settings-section .cyf-card-head > div:last-child {
+    flex: 1 1 100% !important;
+    flex-wrap: wrap;
+    margin-left: 44px;
+  }
+  #sv-settings-section .sv-reset-settings-btn {
+    flex: 1 1 120px;
+    justify-content: center;
+  }
 }
 
 /* ── 480px ────────────────────────────────────────────────────────── */

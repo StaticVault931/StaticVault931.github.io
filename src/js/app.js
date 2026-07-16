@@ -2911,8 +2911,19 @@ window._svSummonRow = function (rowId) {
 
 /* ── HOME ROWS ───────────────────────────────────────────────────── */
 let _homeLoading = false; // kept for refreshFeed compat only
+let _homeLoadPromise = null;
 
-async function loadHomeRows() {
+function loadHomeRows() {
+  if (_homeLoadPromise) return _homeLoadPromise;
+  _homeLoading = true;
+  _homeLoadPromise = _loadHomeRowsOnce().finally(() => {
+    _homeLoading = false;
+    _homeLoadPromise = null;
+  });
+  return _homeLoadPromise;
+}
+
+async function _loadHomeRowsOnce() {
   _resetHomeSeen();
   _lazyObs.forEach(o => o.disconnect());
   _lazyObs.clear();
@@ -8453,15 +8464,17 @@ function initShortcutsModal() {
 /* ── PROFILES ──────────────────────────────────────────────────────── */
 // PROFILE_COLORS declared at top of file (before init IIFE)
 let _editingProfileId = null;
-const _normalizeAvatarCrop = crop => ({
-  x: Math.max(0, Math.min(100, Number(crop?.x) || 50)),
-  y: Math.max(0, Math.min(100, Number(crop?.y) || 50)),
-  zoom: Math.max(1, Math.min(2.6, Number(crop?.zoom) || 1)),
-});
-const _avatarCropStyle = crop => {
+function _normalizeAvatarCrop(crop) {
+  return {
+    x: Math.max(0, Math.min(100, Number(crop?.x) || 50)),
+    y: Math.max(0, Math.min(100, Number(crop?.y) || 50)),
+    zoom: Math.max(1, Math.min(2.6, Number(crop?.zoom) || 1)),
+  };
+}
+function _avatarCropStyle(crop) {
   const c = _normalizeAvatarCrop(crop);
   return `object-position:${c.x}% ${c.y}%;transform:scale(${c.zoom});transform-origin:${c.x}% ${c.y}%;`;
-};
+}
 
 function _readAvatarCropControls() {
   return _normalizeAvatarCrop({
