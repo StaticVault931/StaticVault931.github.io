@@ -249,14 +249,6 @@
   </section>
 
   <!-- Genre rail (hidden from home — accessible via search/genre pages) -->
-  <section class="mix-home-entry" aria-labelledby="mix-home-title">
-    <div class="mix-home-copy">
-      <span class="material-icons-round" aria-hidden="true">blender</span>
-      <div><h2 id="mix-home-title">Mix &amp; Match</h2><p>Blend two to five movies or shows into recommendations that fit the combination.</p></div>
-    </div>
-    <a class="mix-home-open" href="/?page=mix" data-page="mix">Build a mix <span class="material-icons-round" aria-hidden="true">arrow_forward</span></a>
-  </section>
-
   <div class="genre-wrap" style="display:none" aria-hidden="true">
     <div class="genre-scroll" id="genre-scroll" role="list" aria-label="Browse by genre"></div>
   </div>
@@ -845,6 +837,7 @@
 
   <div class="lib-tabs">
     <button class="lib-tab on" data-lib-tab="library"><span class="material-icons-round">video_library</span>My Library</button>
+    <button class="lib-tab" data-lib-tab="mix"><span class="material-icons-round">blender</span>Mix &amp; Match</button>
     <button class="lib-tab" data-lib-tab="prefs"><span class="material-icons-round">favorite</span>Titles</button>
   </div>
 
@@ -1019,6 +1012,9 @@
     </div>
     <div style="height:2rem"></div>
   </div>
+
+  <!-- Mix & Match tab — UI is built lazily by app.js (_ensureMixUI) -->
+  <div id="lib-tab-mix" style="display:none"></div>
 
   <!-- Settings / Prefs tab -->
   <div id="lib-tab-prefs" style="display:none">

@@ -12,7 +12,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
-import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
+import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, scrollRowEl, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched, resetTitleRowAnchors } from './recommendations.js';
 import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip, setProviderFilter } from './search.js';
 import { svFlag, setSvFlag } from './search/searchPipeline.js';
@@ -230,6 +230,7 @@ const SV_SETTINGS = [
   { id: 'dimImages',         label: 'Dim Images',             desc: 'Slightly darken posters and backgrounds to reduce glare',     default: false, icon: 'brightness_medium', group: 'Accessibility', keywords: 'dim dark glare brightness images photosensitive' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
+  { id: 'featureTips',       label: 'Feature Tips',           desc: 'Occasional tip rows on Home that point out features you haven\'t tried yet', default: true, icon: 'tips_and_updates', group: 'Content', keywords: 'tips hints suggestions discover features banner' },
   { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
   // Language (UI text only — content audio is whatever providers have)
   { id: 'uiLanguage',        label: 'Interface Language',     desc: 'Language for app menus and buttons (not movie audio)',        default: 'auto', icon: 'language', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Auto (browser)', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'language idioma langue translate locale interface' },
@@ -501,17 +502,27 @@ function _mixSaveSeeds(seeds) {
   try { localStorage.setItem('sv_mix_seeds', JSON.stringify(seeds.slice(0, 5))); } catch {}
 }
 
+/* Result filters — persisted so a returning mixer keeps their setup */
+function _mixFilters() {
+  const def = { type: 'all', era: 'all', rating: 0, gems: false };
+  try { return { ...def, ...JSON.parse(localStorage.getItem('sv_mix_filters') || '{}') }; }
+  catch { return def; }
+}
+function _mixSaveFilters(f) {
+  try { localStorage.setItem('sv_mix_filters', JSON.stringify(f)); } catch {}
+}
+
 function _ensureMixPage() {
-  let page = document.getElementById('page-mix');
-  if (page) return page;
-  page = document.createElement('main');
-  page.className = 'page';
-  page.id = 'page-mix';
-  page.tabIndex = -1;
+  // Mix & Match lives inside the Library (#lib-tab-mix). The function
+  // name is kept for existing callers; it builds the UI once, lazily.
+  const page = document.getElementById('lib-tab-mix');
+  if (!page) return null;
+  if (page.dataset.built) return page;
+  page.dataset.built = '1';
   page.innerHTML = `
     <div class="mix-head">
-      <h2 class="page-title-h1"><span class="material-icons-round" style="color:var(--red);vertical-align:-4px;font-size:1.6rem">blender</span> Mix &amp; Match</h2>
-      <p class="mix-sub">Add a few titles you love. We find content that matches the <b>combination</b> — not just one of them.</p>
+      <h3 class="mix-title"><span class="material-icons-round" aria-hidden="true">blender</span> Mix &amp; Match</h3>
+      <p class="mix-sub">Add 2–5 titles you love. We find content that matches the <b>combination</b> — not just one of them.</p>
     </div>
     <div class="mix-bench">
       <div class="mix-seeds" id="mix-seeds" aria-label="Your mix"></div>
@@ -526,17 +537,44 @@ function _ensureMixPage() {
       </div>
       <div class="mix-tools">
         <button type="button" id="mix-from-likes"><span class="material-icons-round">favorite</span> Use my likes</button>
+        <button type="button" id="mix-surprise"><span class="material-icons-round">casino</span> Surprise seed</button>
         <button type="button" id="mix-reroll" disabled><span class="material-icons-round">shuffle</span> Reroll blend</button>
+      </div>
+      <div class="mix-filters" id="mix-filters" aria-label="Filter the blend">
+        <div class="mix-filter-group" role="group" aria-label="Type">
+          <button type="button" data-mix-f="type" data-v="all">All</button>
+          <button type="button" data-mix-f="type" data-v="movie">Movies</button>
+          <button type="button" data-mix-f="type" data-v="tv">TV</button>
+        </div>
+        <div class="mix-filter-group" role="group" aria-label="Era">
+          <button type="button" data-mix-f="era" data-v="all">Any era</button>
+          <button type="button" data-mix-f="era" data-v="new">2015+</button>
+          <button type="button" data-mix-f="era" data-v="2000s">2000s</button>
+          <button type="button" data-mix-f="era" data-v="classic">Pre-2000</button>
+        </div>
+        <div class="mix-filter-group" role="group" aria-label="Minimum rating">
+          <button type="button" data-mix-f="rating" data-v="0">Any rating</button>
+          <button type="button" data-mix-f="rating" data-v="7">7+</button>
+          <button type="button" data-mix-f="rating" data-v="8">8+</button>
+        </div>
+        <div class="mix-filter-group" role="group" aria-label="Discovery">
+          <button type="button" data-mix-f="gems" data-v="1"><span class="material-icons-round">diamond</span>Hidden gems</button>
+        </div>
       </div>
     </div>
     <div class="mix-results" id="mix-results">
       <div class="mix-empty" id="mix-empty">
-        <span class="material-icons-round">blender</span>
+        <div class="mix-empty-art" aria-hidden="true">
+          <span class="material-icons-round">movie</span>
+          <span class="mix-empty-op">+</span>
+          <span class="material-icons-round">live_tv</span>
+          <span class="mix-empty-op">=</span>
+          <span class="material-icons-round mix-empty-spark">auto_awesome</span>
+        </div>
         <p>Add at least <b>2</b> titles above, then hit <b>Mix it</b>.</p>
         <p class="muted-note">Try pairs that feel impossible — a horror movie + a comedy, or an anime + a crime drama.</p>
       </div>
     </div>`;
-  document.getElementById('page-home')?.after(page);
 
   const seedsEl = page.querySelector('#mix-seeds');
   const goBtn = page.querySelector('#mix-go');
@@ -583,6 +621,51 @@ function _ensureMixPage() {
   });
   rerollBtn?.addEventListener('click', () => { _mixShuffle++; _runMix(); });
 
+  // Surprise seed — one random trending title thrown into the blender
+  page.querySelector('#mix-surprise')?.addEventListener('click', async () => {
+    const seeds = _mixSeeds();
+    if (seeds.length >= 5) { toast('Five titles max — remove one first', 'blender'); return; }
+    try {
+      const d = await tmdb('/trending/all/week', { page: 1 + Math.floor(Math.random() * 3) });
+      const pool = (d?.results || []).filter(m => m?.id && m.media_type !== 'person'
+        && (!window._svSafeItem || window._svSafeItem(m))
+        && !seeds.some(x => _mixKey(x) === _mixKey(m)));
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (!pick) { toast('No surprise found — try again', 'casino'); return; }
+      seeds.push({
+        id: pick.id, type: pick.media_type === 'tv' ? 'tv' : 'movie',
+        title: pick.title || pick.name || '', poster_path: pick.poster_path || null,
+        genre_ids: pick.genre_ids || [],
+      });
+      _mixSaveSeeds(seeds);
+      renderSeeds();
+      toast(`Surprise: ${pick.title || pick.name}`, 'casino');
+      if (seeds.length >= 2) _runMix();
+    } catch { toast('No surprise found — try again', 'casino'); }
+  });
+
+  // Filter chips — persisted; re-blend live when a mix is already showing
+  const syncFilters = () => {
+    const F = _mixFilters();
+    page.querySelectorAll('[data-mix-f]').forEach(b => {
+      const f = b.dataset.mixF;
+      b.classList.toggle('on', f === 'gems' ? !!F.gems : String(F[f]) === b.dataset.v);
+    });
+  };
+  page.querySelector('#mix-filters')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-mix-f]');
+    if (!btn) return;
+    const F = _mixFilters();
+    const f = btn.dataset.mixF;
+    if (f === 'gems') F.gems = !F.gems;
+    else if (f === 'rating') F.rating = +btn.dataset.v;
+    else F[f] = btn.dataset.v;
+    _mixSaveFilters(F);
+    syncFilters();
+    if (_mixSeeds().length >= 2) _runMix();
+  });
+  syncFilters();
+
   // Reuse the standard title autocomplete
   setupAC('mix-search-input', 'mix-search-drop', item => {
     const seeds = _mixSeeds();
@@ -609,9 +692,10 @@ let _mixToken = 0;
 let _mixShuffle = 0;
 async function _runMix() {
   const page = _ensureMixPage();
-  const results = page.querySelector('#mix-results');
+  const results = page?.querySelector('#mix-results');
   const seeds = _mixSeeds();
   if (seeds.length < 2 || !results) return;
+  _svMarkFeatureUse('mix');
   const my = ++_mixToken;
   results.innerHTML = `<div class="mix-blending"><div class="spin"></div><p>Blending ${seeds.map(s => `<b>${esc(s.title)}</b>`).join(' + ')}…</p></div>`;
 
@@ -665,19 +749,36 @@ async function _runMix() {
       };
     }).sort((a, b) => b.score - a.score);
 
+    // Apply the user's blend filters (type / era / rating / hidden gems)
+    const F = _mixFilters();
+    const _mixYear = m => +(String(m.release_date || m.first_air_date || '').slice(0, 4)) || 0;
+    const passesFilters = m =>
+      (F.type === 'all' || (m.media_type === 'tv' ? 'tv' : 'movie') === F.type) &&
+      (F.era === 'all' ||
+        (F.era === 'new' ? _mixYear(m) >= 2015 :
+         F.era === '2000s' ? (_mixYear(m) >= 2000 && _mixYear(m) < 2015) :
+         (_mixYear(m) > 0 && _mixYear(m) < 2000))) &&
+      (!F.rating || (m.vote_average || 0) >= F.rating) &&
+      (!F.gems || ((m.vote_count || 0) < 20000 && (m.vote_average || 0) >= 6.5));
+    blended = blended.filter(b => passesFilters(b.item));
+
     // Backfill with combined-genre discover when the intersection is thin
     if (blended.length < 12 && seedGenres.size) {
-      const d = await tmdb('/discover/movie', {
+      const dType = F.type === 'tv' ? 'tv' : 'movie';
+      const dParams = {
         with_genres: [...seedGenres].slice(0, 3).join(','),
-        sort_by: 'vote_average.desc', 'vote_count.gte': 500,
-      }).catch(() => null);
+        sort_by: 'vote_average.desc', 'vote_count.gte': F.gems ? 200 : 500,
+      };
+      if (F.rating) dParams['vote_average.gte'] = F.rating;
+      const d = await tmdb(`/discover/${dType}`, dParams).catch(() => null);
       if (my !== _mixToken) return;
       const have = new Set(blended.map(b => _mixKey(b.item)));
       (d?.results || []).forEach(m => {
-        const item = { ...m, media_type: 'movie' };
+        const item = { ...m, media_type: dType };
         const key = _mixKey(item);
         if (have.has(key) || seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
         if (window._svSafeItem && !window._svSafeItem(m)) return;
+        if (!passesFilters(item)) return;
         have.add(key);
         blended.push({ item, hits: 0, score: 0 });
       });
@@ -686,7 +787,8 @@ async function _runMix() {
     blended = blended.slice(0, 24);
     if (my !== _mixToken) return;
     if (!blended.length) {
-      results.innerHTML = `<div class="mix-empty"><span class="material-icons-round">search_off</span><p>No blend found for this combination — try swapping one title.</p></div>`;
+      const filtered = F.type !== 'all' || F.era !== 'all' || F.rating > 0 || F.gems;
+      results.innerHTML = `<div class="mix-empty"><span class="material-icons-round">search_off</span><p>No blend found for this combination — try swapping one title${filtered ? ' or loosening the filters' : ''}.</p></div>`;
       return;
     }
     const strong = blended.filter(b => b.hits >= 2).length;
@@ -709,8 +811,131 @@ async function _runMix() {
   }
 }
 
-registerLoader('mix', () => { _ensureMixPage()._renderSeeds?.(); if (_mixSeeds().length >= 2) _runMix(); });
-window._svOpenMix = () => { _ensureMixPage(); goPage('mix'); };
+/* Mix & Match lives inside the Library — the mix "page" only exists so
+   old links and ?page=mix deep links keep working; they land on the
+   Library with the Mix tab open. */
+function _libShowMixTab() {
+  document.querySelectorAll('.lib-tab').forEach(t => t.classList.toggle('on', t.dataset.libTab === 'mix'));
+  ['library', 'providers', 'prefs', 'mix'].forEach(n => {
+    const el = document.getElementById(`lib-tab-${n}`);
+    if (el) el.style.display = n === 'mix' ? '' : 'none';
+  });
+  const host = _ensureMixPage();
+  host?._renderSeeds?.();
+  if (_mixSeeds().length >= 2) _runMix();
+}
+registerLoader('mix', () => { setTimeout(() => { goPage('library'); _libShowMixTab(); }, 0); });
+window._svOpenMix = () => { goPage('library'); _libShowMixTab(); };
+
+/* ── FEATURE TIP ROWS ────────────────────────────────────────────────
+   Slim banners slotted between home rows that point at features the
+   viewer hasn't tried. Usage signals come from the stats ledger, saved
+   state, and a small local counter (sv_feature_use). Rules: never in
+   the top 3 or bottom 3 rows, never adjacent to another tip, spread
+   evenly; each tip individually dismissible (30-day snooze); the whole
+   system can be turned off in Settings ("Feature Tips", on by default). */
+
+function _svMarkFeatureUse(id) {
+  try {
+    const m = JSON.parse(localStorage.getItem('sv_feature_use') || '{}');
+    m[id] = (m[id] || 0) + 1;
+    localStorage.setItem('sv_feature_use', JSON.stringify(m));
+  } catch {}
+}
+function _svFeatureUses(id) {
+  try { return JSON.parse(localStorage.getItem('sv_feature_use') || '{}')[id] || 0; } catch { return 0; }
+}
+const _TIP_SNOOZE_MS = 30 * 24 * 3600000;
+function _tipDismissed(id) {
+  try {
+    const m = JSON.parse(localStorage.getItem('sv_tips_dismissed') || '{}');
+    return !!m[id] && Date.now() - m[id] < _TIP_SNOOZE_MS;
+  } catch { return false; }
+}
+function _dismissTip(id) {
+  try {
+    const m = JSON.parse(localStorage.getItem('sv_tips_dismissed') || '{}');
+    m[id] = Date.now();
+    localStorage.setItem('sv_tips_dismissed', JSON.stringify(m));
+  } catch {}
+}
+
+const SV_TIPS = [
+  { id: 'mix', icon: 'blender', title: 'Mix & Match', text: 'Blend 2–5 titles you love into picks that match the combination — it lives in your Library.', cta: 'Build a mix',
+    open: () => window._svOpenMix?.(),
+    unused: () => _svFeatureUses('mix') === 0 && !_mixSeeds().length },
+  { id: 'clips', icon: 'movie_filter', title: 'Clips', text: 'A scrollable feed of trailers — swipe through and discover your next watch.', cta: 'Watch Clips',
+    open: () => goPage('clips'),
+    unused: () => !(getStats()?.life?.clipViews > 0) && !getSetting('hideTabClips') },
+  { id: 'cyf', icon: 'tune', title: 'Customize Feed', text: 'Tell us the genres and titles you love (or hate) and every row gets smarter.', cta: 'Customize',
+    open: () => goPage('prefs'),
+    unused: () => !(state.prefGenres?.length) && !(state.prefLikes?.length) },
+  { id: 'watchlist', icon: 'bookmark_add', title: 'Watchlist', text: 'Tap the bookmark on any card to save it for later — everything lands in your Library.', cta: 'Open Library',
+    open: () => goPage('library'),
+    unused: () => !(state.watchlist?.length) },
+  { id: 'service', icon: 'live_tv', title: 'Browse by Service', text: 'See what\'s on Netflix, Disney+, Prime and more — service shelves live in your Library.', cta: 'Browse services',
+    open: () => goPage('library'),
+    unused: () => _svFeatureUses('provider') === 0 },
+  { id: 'profiles', icon: 'group_add', title: 'Profiles', text: 'Separate tastes, watchlists, and kid-safe spaces — one profile per person.', cta: 'Add a profile',
+    open: () => openProfilesOverlay(),
+    unused: () => { try { return (JSON.parse(localStorage.getItem('sv_profiles') || '[]').length || 1) <= 1; } catch { return true; } } },
+];
+
+function _placeTipRows() {
+  document.querySelectorAll('#page-home .sv-tip-row').forEach(el => el.remove());
+  if (!getSetting('featureTips')) return;
+  const home = document.getElementById('page-home');
+  if (!home) return;
+  const rows = [...home.querySelectorAll('.section')].filter(s =>
+    !s.classList.contains('sv-tip-row') && s.style.display !== 'none' && s.querySelector('.card'));
+  if (rows.length < 8) return; // not enough rows to slot between safely
+  const tips = SV_TIPS.filter(t => { try { return !_tipDismissed(t.id) && t.unused(); } catch { return false; } });
+  if (!tips.length) return;
+  const count = Math.min(2, tips.length, Math.max(1, Math.floor((rows.length - 6) / 3)));
+  tips.slice(0, count).forEach((tip, i) => {
+    // even spacing across the middle band — rows 0-2 and the last 3 stay tip-free
+    const slot = Math.round(3 + ((rows.length - 6) * (i + 1)) / (count + 1));
+    const anchor = rows[Math.min(slot, rows.length - 4)];
+    if (!anchor) return;
+    const sec = document.createElement('section');
+    sec.className = 'section sv-tip-row';
+    sec.dataset.tipId = tip.id;
+    sec.innerHTML = `
+      <div class="sv-tip-card">
+        <div class="sv-tip-copy">
+          <span class="material-icons-round" aria-hidden="true">${tip.icon}</span>
+          <div>
+            <div class="sv-tip-eyebrow">Tip — have you tried…</div>
+            <h3>${tip.title}</h3>
+            <p>${tip.text}</p>
+          </div>
+        </div>
+        <div class="sv-tip-actions">
+          <button class="sv-tip-cta" data-tip-open>${tip.cta} <span class="material-icons-round" aria-hidden="true">arrow_forward</span></button>
+          <button class="sv-tip-dismiss" data-tip-dismiss aria-label="Dismiss this tip for a month"><span class="material-icons-round">close</span></button>
+        </div>
+      </div>`;
+    sec.querySelector('[data-tip-open]').addEventListener('click', () => { _svMarkFeatureUse(tip.id); tip.open(); });
+    sec.querySelector('[data-tip-dismiss]').addEventListener('click', () => { _dismissTip(tip.id); sec.remove(); });
+    anchor.after(sec);
+  });
+}
+
+/* Home rows fill in lazily as the user scrolls, so the first placement
+   attempt usually sees too few rows. Retry on scroll (debounced) until
+   a tip lands — then stop relocating so banners don't jump around. */
+let _tipScrollWired = false;
+function _wireTipRetry() {
+  if (_tipScrollWired) return;
+  _tipScrollWired = true;
+  let t = null;
+  window.addEventListener('scroll', () => {
+    if (document.querySelector('#page-home .sv-tip-row')) return;
+    if (state.currentPage && state.currentPage !== 'home') return;
+    clearTimeout(t);
+    t = setTimeout(_placeTipRows, 800);
+  }, { passive: true });
+}
 
 /* ── EXPERIMENTS ─────────────────────────────────────────────────────
    Alternate UIs testable from the dev panel (Experiments section).
@@ -2105,6 +2330,10 @@ function _scheduleRowLoad(rowId, secId, fetchFn, type) {
 /* ── ROW FETCH HELPER ────────────────────────────────────────────── */
 const _rowLoadsInFlight = new Map();
 const _ROW_RETRY_DELAYS = [900, 2400];
+// Rows render up to 20 cards (a full TMDB page). 14 barely covered one
+// desktop viewport, so filtered rows often had nothing to scroll to and
+// their arrows never appeared.
+const _ROW_MAX = 20;
 
 function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
   if (attempt === 0 && _rowLoadsInFlight.has(rowId)) return _rowLoadsInFlight.get(rowId);
@@ -2127,7 +2356,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
         }
         const cached = _getRowCache(rowId, true);
         if (cached?.length) {
-          renderRow(rowId, cached.slice(0, 14), type);
+          renderRow(rowId, cached.slice(0, _ROW_MAX), type);
           if (sec) sec.style.display = '';
           return;
         }
@@ -2158,7 +2387,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       const toRender = [...deduped];
       const have = new Set(toRender.map(m => m.id));
       const backfill = pool => pool.forEach(m => {
-        if (m?.id && !have.has(m.id) && !_homeItemSeen(m) && toRender.length < 14) { have.add(m.id); toRender.push(m); }
+        if (m?.id && !have.has(m.id) && !_homeItemSeen(m) && toRender.length < _ROW_MAX) { have.add(m.id); toRender.push(m); }
       });
       if (toRender.length < 10) backfill(impressionFiltered);
       if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)));
@@ -2170,8 +2399,8 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
         return;
       }
       recordRowStat('dedupRemoved', rowId, impressionFiltered.length - deduped.length);
-      toRender.slice(0, 14).forEach(m => _claimHomeItem(m));
-      const final = toRender.slice(0, 14);
+      toRender.slice(0, _ROW_MAX).forEach(m => _claimHomeItem(m));
+      const final = toRender.slice(0, _ROW_MAX);
       recordRowStat('itemCount', rowId, final.length);
       recordRowStat('shown', rowId);
       recordRowImpression(rowId);
@@ -2196,7 +2425,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       const cached = _getRowCache(rowId, true);
       if (cached?.length) {
         console.warn(`[SV Row] "${rowId}" failed; showing stale cache`, err?.message || err);
-        renderRow(rowId, cached.slice(0, 14), type);
+        renderRow(rowId, cached.slice(0, _ROW_MAX), type);
         if (sec) sec.style.display = '';
         return;
       }
@@ -2919,6 +3148,10 @@ function loadHomeRows() {
   _homeLoadPromise = _loadHomeRowsOnce().finally(() => {
     _homeLoading = false;
     _homeLoadPromise = null;
+    // Slot feature-tip banners once the initial rows have settled;
+    // lazy rows keep arriving, so a scroll-driven retry finishes the job
+    setTimeout(_placeTipRows, 2500);
+    _wireTipRetry();
   });
   return _homeLoadPromise;
 }
@@ -3023,7 +3256,13 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Trending + For You first
   await Promise.allSettled([
-    tmdb('/trending/all/week').then(async d => {
+    Promise.allSettled([
+      tmdb('/trending/all/week'),
+      tmdb('/trending/all/week', { page: 2 }),
+    ]).then(async pages => {
+      // Two pages (40 raw) so the chart still fills 20 slots after the
+      // safety gates thin it out — a full row is what earns the arrow.
+      const d = { results: pages.flatMap(p => p.status === 'fulfilled' ? p.value?.results || [] : []) };
       // SAFETY GATE: trending bypasses _loadRow, so it must filter here —
       // age rating, kid mode, and disliked genres all apply. Raw trending
       // was the main way R-rated content leaked onto restricted profiles.
@@ -3042,7 +3281,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
           if (!have.has(m.id) && _ageSafeItem(m) && _prefSafeItem(m)) { have.add(m.id); pool.push({ ...m, media_type: 'movie' }); }
         });
       }
-      const items = pool.slice(0, 14);
+      const items = pool.slice(0, 20);
       // Rename the row so restricted profiles see what they're getting
       const trendTitle = document.querySelector('#sec-trending .sec-title');
       if (trendTitle) {
@@ -3584,7 +3823,7 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
       if (!picks.length) return tmdb('/movie/top_rated', { page: pRng2 }).then(d => d.results || []);
       const recs = await Promise.allSettled(picks.map(p => tmdb(`/${p.type || 'movie'}/${p.id}/recommendations`).then(d => d.results || [])));
       const all = recs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-      const seen = new Set(); return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 14);
+      const seen = new Set(); return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 20);
     },
     'row-awards':        () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 1500, 'vote_average.gte': 7.8, page: pRng2 }).then(d => d.results || []),
     'row-tv-faves':      () => tmdb('/tv/top_rated', { page: pRng2 }).then(d => d.results || []),
@@ -3805,7 +4044,7 @@ function renderRecentRow() {
   const row = document.getElementById('row-recent');
   if (!row) return;
 
-  const items = state.recentlyViewed.slice(0, 14);
+  const items = state.recentlyViewed.slice(0, 20);
   if (!items.length) {
     if (sec) sec.style.display = 'none';
     return;
@@ -3858,22 +4097,22 @@ async function loadMoviesPage() {
   loadPageForYou('row-movies-foryou', 'movie');
 
   await Promise.allSettled([
-    tmdb('/movie/popular',   { page: rp }).then(d => renderRow('row-movies-pop',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-pop')),
-    tmdb('/movie/top_rated', { page: rp }).then(d => renderRow('row-movies-top',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-top')),
-    tmdb('/movie/now_playing').then(d =>   renderRow('row-movies-new',     (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-new')),
-    tmdb('/movie/upcoming').then(d =>      renderRow('row-movies-up',      (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-up')),
-    tmdb('/discover/movie', { with_genres:'28',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-action',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-action')),
-    tmdb('/discover/movie', { with_genres:'53',    sort_by:'vote_average.desc', 'vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-thriller', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-thriller')),
-    tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc',   'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-romance',  (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-romance')),
-    tmdb('/discover/movie', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-comedy',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-comedy')),
-    tmdb('/discover/movie', { with_genres:'27',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-horror',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-horror')),
-    tmdb('/discover/movie', { with_genres:'878',   sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-scifi',    (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-scifi')),
-    tmdb('/discover/movie', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-animated', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-animated')),
-    tmdb('/discover/movie', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-crime',    (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-crime')),
-    tmdb('/discover/movie', { with_genres:'99',    sort_by:'vote_average.desc', 'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-docs',     (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-docs')),
-    tmdb('/discover/movie', { primary_release_year: new Date().getFullYear() - 1, sort_by:'popularity.desc' }).then(d=>renderRow('row-movies-2024',   (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2024')),
-    tmdb('/discover/movie', { primary_release_date_gte:'2010-01-01', primary_release_date_lte:'2019-12-31', sort_by:'vote_average.desc','vote_count.gte':300 }).then(d=>renderRow('row-movies-2010s',(d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-2010s')),
-    tmdb('/discover/movie', { without_original_language:'en', sort_by:'vote_average.desc','vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-foreign', (d.results||[]).slice(0,14),'movie')).catch(()=>hideSection('sec-movies-foreign')),
+    tmdb('/movie/popular',   { page: rp }).then(d => renderRow('row-movies-pop',      (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-pop')),
+    tmdb('/movie/top_rated', { page: rp }).then(d => renderRow('row-movies-top',      (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-top')),
+    tmdb('/movie/now_playing').then(d =>   renderRow('row-movies-new',     (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-new')),
+    tmdb('/movie/upcoming').then(d =>      renderRow('row-movies-up',      (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-up')),
+    tmdb('/discover/movie', { with_genres:'28',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-action',   (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-action')),
+    tmdb('/discover/movie', { with_genres:'53',    sort_by:'vote_average.desc', 'vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-thriller', (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-thriller')),
+    tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc',   'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-romance',  (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-romance')),
+    tmdb('/discover/movie', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-comedy',   (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-comedy')),
+    tmdb('/discover/movie', { with_genres:'27',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-horror',   (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-horror')),
+    tmdb('/discover/movie', { with_genres:'878',   sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-scifi',    (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-scifi')),
+    tmdb('/discover/movie', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-animated', (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-animated')),
+    tmdb('/discover/movie', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-movies-crime',    (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-crime')),
+    tmdb('/discover/movie', { with_genres:'99',    sort_by:'vote_average.desc', 'vote_count.gte':100, page: rp }).then(d=>renderRow('row-movies-docs',     (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-docs')),
+    tmdb('/discover/movie', { primary_release_year: new Date().getFullYear() - 1, sort_by:'popularity.desc' }).then(d=>renderRow('row-movies-2024',   (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-2024')),
+    tmdb('/discover/movie', { primary_release_date_gte:'2010-01-01', primary_release_date_lte:'2019-12-31', sort_by:'vote_average.desc','vote_count.gte':300 }).then(d=>renderRow('row-movies-2010s',(d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-2010s')),
+    tmdb('/discover/movie', { without_original_language:'en', sort_by:'vote_average.desc','vote_count.gte':200, page: rp }).then(d=>renderRow('row-movies-foreign', (d.results||[]).slice(0,20),'movie')).catch(()=>hideSection('sec-movies-foreign')),
   ]);
 }
 
@@ -3889,19 +4128,19 @@ async function loadTvPage() {
   loadPageForYou('row-tv-foryou', 'tv');
 
   await Promise.allSettled([
-    tmdb('/tv/popular',     { page: rp }).then(d=>renderRow('row-tv-popular',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-popular')),
-    tmdb('/tv/top_rated',   { page: rp }).then(d=>renderRow('row-tv-top',      (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-top')),
-    tmdb('/tv/airing_today').then(d=>           renderRow('row-tv-air',        (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-air')),
-    tmdb('/discover/tv', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-crime',    (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-crime')),
-    tmdb('/discover/tv', { with_genres:'10765', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-scifi',    (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-scifi')),
-    tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rp }).then(d=>renderRow('row-tv-kdrama',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-kdrama')),
-    tmdb('/discover/tv', { with_genres:'10764', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-reality',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-reality')),
-    tmdb('/discover/tv', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-animated', (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-animated')),
-    tmdb('/discover/tv', { with_type:'3',       sort_by:'vote_average.desc', 'vote_count.gte':50, page: rp }).then(d=>renderRow('row-tv-limited',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-limited')),
-    tmdb('/discover/tv', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-comedy',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-comedy')),
-    tmdb('/discover/tv', { with_genres:'9648',  sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-mystery',  (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-mystery')),
-    tmdb('/discover/tv', { with_genres:'10751', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-family',   (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-family')),
-    tmdb('/discover/tv', { with_genres:'53',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-thriller', (d.results||[]).slice(0,14),'tv')).catch(()=>hideSection('sec-tv-thriller')),
+    tmdb('/tv/popular',     { page: rp }).then(d=>renderRow('row-tv-popular',  (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-popular')),
+    tmdb('/tv/top_rated',   { page: rp }).then(d=>renderRow('row-tv-top',      (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-top')),
+    tmdb('/tv/airing_today').then(d=>           renderRow('row-tv-air',        (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-air')),
+    tmdb('/discover/tv', { with_genres:'80',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-crime',    (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-crime')),
+    tmdb('/discover/tv', { with_genres:'10765', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-scifi',    (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-scifi')),
+    tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rp }).then(d=>renderRow('row-tv-kdrama',   (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-kdrama')),
+    tmdb('/discover/tv', { with_genres:'10764', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-reality',  (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-reality')),
+    tmdb('/discover/tv', { with_genres:'16',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-animated', (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-animated')),
+    tmdb('/discover/tv', { with_type:'3',       sort_by:'vote_average.desc', 'vote_count.gte':50, page: rp }).then(d=>renderRow('row-tv-limited',  (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-limited')),
+    tmdb('/discover/tv', { with_genres:'35',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-comedy',   (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-comedy')),
+    tmdb('/discover/tv', { with_genres:'9648',  sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-mystery',  (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-mystery')),
+    tmdb('/discover/tv', { with_genres:'10751', sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-family',   (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-family')),
+    tmdb('/discover/tv', { with_genres:'53',    sort_by:'popularity.desc',   page: rp }).then(d=>renderRow('row-tv-thriller', (d.results||[]).slice(0,20),'tv')).catch(()=>hideSection('sec-tv-thriller')),
   ]);
 }
 
@@ -4235,6 +4474,7 @@ function applySetting(id, val) {
   if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
   if (id === 'kidsMode') { _clearRowCache(); } // safety change → fresh rows
+  if (id === 'featureTips') _placeTipRows(); // re-place or clear immediately
   if (id === 'uiLanguage' || id === 'metaLanguage') {
     applyUITranslations();
     clearCachePattern?.(''); // metadata language changed — TMDB cache is stale
@@ -5411,10 +5651,15 @@ function initEventDelegation() {
     if (!tab) return;
     document.querySelectorAll('.lib-tab').forEach(t => t.classList.toggle('on', t === tab));
     const tabName = tab.dataset.libTab;
-    ['library', 'providers', 'prefs'].forEach(n => {
+    ['library', 'providers', 'prefs', 'mix'].forEach(n => {
       const el = document.getElementById(`lib-tab-${n}`);
       if (el) el.style.display = tabName === n ? '' : 'none';
     });
+    if (tabName === 'mix') {
+      const host = _ensureMixPage();
+      host?._renderSeeds?.();
+      if (_mixSeeds().length >= 2) _runMix();
+    }
     if (tabName === 'prefs') {
       const likedGrid = document.getElementById('lib-preftab-liked');
       if (likedGrid) {
@@ -5580,14 +5825,11 @@ function initEventDelegation() {
   new MutationObserver(() => _observeRelated())
     .observe(document.getElementById('modal-ep-sidebar') || document.body, { childList: true });
 
-  // Row scroll arrows
+  // Row scroll arrows — card-aligned steps
   document.addEventListener('click', e => {
     const scrollBtn = e.target.closest('[data-scroll-row]');
     if (scrollBtn) {
-      const rowId = scrollBtn.dataset.scrollRow;
-      const dir = +scrollBtn.dataset.scrollDir;
-      const row = document.getElementById(rowId);
-      if (row) row.scrollBy({ left: dir * (row.clientWidth * 0.85), behavior: 'smooth' });
+      scrollRowEl(document.getElementById(scrollBtn.dataset.scrollRow), +scrollBtn.dataset.scrollDir);
     }
   });
 
@@ -7040,6 +7282,7 @@ async function getTmdbWatchProviders() {
 /* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
 export async function openProviderPage(providerId, providerName) {
   clearHoverTrailer();
+  _svMarkFeatureUse('provider'); // tip-row usage signal
 
   // TMDB network IDs for "Originals & Exclusives" rows
   const PROVIDER_NETWORK_IDS = {
@@ -7312,8 +7555,7 @@ export async function openProviderPage(providerId, providerName) {
       // Wire scroll arrows
       body.querySelectorAll('[data-scroll-row]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const rowEl = document.getElementById(btn.dataset.scrollRow);
-          if (rowEl) rowEl.scrollBy({ left: +btn.dataset.scrollDir * rowEl.clientWidth * 0.75, behavior: 'smooth' });
+          scrollRowEl(document.getElementById(btn.dataset.scrollRow), +btn.dataset.scrollDir);
         });
       });
 
@@ -7472,9 +7714,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     ov.addEventListener('click', e => {
       const btn = e.target.closest('[data-scroll-row]');
       if (!btn) return;
-      const dir = +btn.dataset.scrollDir;
-      const row = document.getElementById(btn.dataset.scrollRow);
-      if (row) row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' });
+      scrollRowEl(document.getElementById(btn.dataset.scrollRow), +btn.dataset.scrollDir);
     });
   }
 
@@ -7593,8 +7833,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
       // Wire scroll arrows inside provider overlay
       rowView.querySelectorAll('[data-scroll-row]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const rowEl = document.getElementById(btn.dataset.scrollRow);
-          if (rowEl) rowEl.scrollBy({ left: +btn.dataset.scrollDir * rowEl.clientWidth * 0.75, behavior: 'smooth' });
+          scrollRowEl(document.getElementById(btn.dataset.scrollRow), +btn.dataset.scrollDir);
         });
       });
 

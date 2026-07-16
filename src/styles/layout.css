@@ -856,8 +856,12 @@
 /* ── ARROWS ──────────────────────────────────────────────────────── */
 .row-arrow {
   position: absolute;
-  top: 0;
-  bottom: 2rem;
+  /* Bracket exactly the visible poster band: .card-row pads 1.4rem/1.6rem
+     and pulls back -1.1rem/-0.6rem, so posters sit .3rem from the top and
+     1rem from the bottom of the wrap. Anything else leaves the arrows
+     visibly offset from the artwork. */
+  top: .3rem;
+  bottom: 1rem;
   width: 80px;   /* wider hit area */
   display: flex;
   align-items: center;
@@ -3029,18 +3033,68 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 .ob-avatar-search-top { margin-bottom: .7rem; }
 
 /* ═══ MIX & MATCH (commit 110) ═══════════════════════════════════════ */
-#page-mix { padding: 1.4rem 3.5rem 3rem; }
-@media (max-width: 720px) { #page-mix { padding: 1rem 1rem 4.5rem; } }
+#lib-tab-mix { padding: .5rem 0 2.5rem; }
 .mix-head { margin-bottom: 1.1rem; }
+.mix-title { display: flex; align-items: center; gap: .5rem; font-size: 1.15rem; font-weight: 900; }
+.mix-title .material-icons-round { color: var(--red); font-size: 1.35rem; }
 .mix-sub { color: var(--muted); font-size: .88rem; margin-top: .3rem; max-width: 560px; line-height: 1.55; }
-.mix-home-entry { margin: 1.1rem 3.5rem .4rem; padding: 1rem 1.15rem; border-block: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.mix-home-copy { display: flex; align-items: center; gap: .8rem; min-width: 0; }
-.mix-home-copy > .material-icons-round { color: var(--red); font-size: 1.7rem; }
-.mix-home-copy h2 { font-size: .95rem; font-weight: 900; }
-.mix-home-copy p { color: var(--muted); font-size: .75rem; margin-top: .12rem; }
-.mix-home-open { display: inline-flex; align-items: center; gap: .35rem; color: var(--text); text-decoration: none; font-size: .78rem; font-weight: 900; white-space: nowrap; }
-.mix-home-open .material-icons-round { color: var(--red); font-size: 1rem; }
-@media (max-width: 720px) { .mix-home-entry { margin: .8rem 1rem .2rem; align-items: flex-start; } .mix-home-copy p { display: none; } }
+/* Filter chips */
+.mix-filters { display: flex; gap: .9rem; margin-top: .85rem; flex-wrap: wrap; }
+.mix-filter-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--s1); }
+.mix-filter-group button {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .38rem .68rem; min-height: 34px;
+  background: none; border: none; border-right: 1px solid var(--border);
+  color: var(--muted); font: inherit; font-size: .7rem; font-weight: 800;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.mix-filter-group button:last-child { border-right: none; }
+.mix-filter-group button:hover { color: var(--text); }
+.mix-filter-group button.on { background: var(--red); color: #fff; }
+.mix-filter-group button .material-icons-round { font-size: .85rem; }
+/* Empty-state formula art */
+.mix-empty-art { display: flex; align-items: center; justify-content: center; gap: .7rem; margin-bottom: .6rem; }
+.mix-empty-art .material-icons-round { font-size: 2rem !important; opacity: .55 !important; }
+.mix-empty-art .mix-empty-op { font-size: 1.3rem; font-weight: 900; color: var(--muted); }
+.mix-empty-art .mix-empty-spark { color: var(--red); opacity: .9 !important; }
+/* ── TIP ROWS ─────────────────────────────────────────────────────
+   Slim banners slotted between home rows that point at features the
+   viewer hasn't tried yet. Placed by _placeTipRows() in app.js. */
+.sv-tip-row { margin: .4rem 0 1.1rem; }
+.sv-tip-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .9rem 1.15rem;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: linear-gradient(120deg, var(--s1), var(--s2));
+  position: relative;
+}
+.sv-tip-copy { display: flex; align-items: center; gap: .85rem; min-width: 0; }
+.sv-tip-copy > .material-icons-round { color: var(--red); font-size: 1.65rem; flex: none; }
+.sv-tip-eyebrow { font-size: .58rem; font-weight: 900; letter-spacing: .14em; color: var(--red); text-transform: uppercase; }
+.sv-tip-copy h3 { font-size: .92rem; font-weight: 900; margin-top: .05rem; }
+.sv-tip-copy p { color: var(--muted); font-size: .74rem; margin-top: .15rem; line-height: 1.45; }
+.sv-tip-actions { display: flex; align-items: center; gap: .5rem; flex: none; }
+.sv-tip-cta {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .48rem .85rem; min-height: 36px;
+  border: none; border-radius: 8px; background: var(--red); color: #fff;
+  font: inherit; font-size: .74rem; font-weight: 900; cursor: pointer; white-space: nowrap;
+  transition: transform .15s, box-shadow .15s;
+}
+.sv-tip-cta:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(229,9,20,.35); }
+.sv-tip-cta .material-icons-round { font-size: .95rem; }
+.sv-tip-dismiss {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.sv-tip-dismiss:hover { color: var(--text); border-color: var(--border3); }
+.sv-tip-dismiss .material-icons-round { font-size: .95rem; }
+@media (max-width: 720px) {
+  .sv-tip-card { flex-direction: column; align-items: stretch; }
+  .sv-tip-actions { justify-content: flex-end; }
+}
 
 .mix-bench {
   background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 40%), var(--s1);

@@ -435,10 +435,22 @@ export function renderRelated(items, type) {
 }
 
 /* ── ROW SCROLL ARROWS ───────────────────────────────────────────── */
-export function scrollRow(rowId, dir) {
-  const row = document.getElementById('row-' + rowId);
+/* Scroll by whole cards and land on a card boundary, so a row never
+   parks with half a poster clipped at the edge. */
+export function scrollRowEl(row, dir) {
   if (!row) return;
-  row.scrollBy({ left: dir * (row.clientWidth * 0.85), behavior: 'smooth' });
+  const card = row.querySelector('.card, .card-sk');
+  const cs = getComputedStyle(row);
+  const gap = parseFloat(cs.columnGap || cs.gap) || 10;
+  const step = card ? card.getBoundingClientRect().width + gap : row.clientWidth * 0.85;
+  const perView = Math.max(1, Math.floor((row.clientWidth + gap) / step) - 1);
+  const maxLeft = row.scrollWidth - row.clientWidth;
+  let target = Math.round((row.scrollLeft + dir * perView * step) / step) * step;
+  target = Math.max(0, Math.min(target, maxLeft));
+  row.scrollTo({ left: target, behavior: 'smooth' });
+}
+export function scrollRow(rowId, dir) {
+  scrollRowEl(document.getElementById('row-' + rowId), dir);
 }
 
 /* ── GENRE CHIPS ─────────────────────────────────────────────────── */
