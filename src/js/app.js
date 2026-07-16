@@ -539,6 +539,7 @@ function _ensureMixPage() {
         <button type="button" id="mix-from-likes"><span class="material-icons-round">favorite</span> Use my likes</button>
         <button type="button" id="mix-surprise"><span class="material-icons-round">casino</span> Surprise seed</button>
         <button type="button" id="mix-reroll" disabled><span class="material-icons-round">shuffle</span> Reroll blend</button>
+        <button type="button" id="mix-share" disabled><span class="material-icons-round">share</span> Share mix</button>
       </div>
       <div class="mix-filters" id="mix-filters" aria-label="Filter the blend">
         <div class="mix-filter-group" role="group" aria-label="Type">
@@ -579,6 +580,7 @@ function _ensureMixPage() {
   const seedsEl = page.querySelector('#mix-seeds');
   const goBtn = page.querySelector('#mix-go');
   const rerollBtn = page.querySelector('#mix-reroll');
+  const shareBtn = page.querySelector('#mix-share');
 
   const renderSeeds = () => {
     const seeds = _mixSeeds();
@@ -593,6 +595,7 @@ function _ensureMixPage() {
       (seeds.length < 5 ? `<div class="mix-seed mix-seed-empty" aria-hidden="true"><span class="material-icons-round">add</span></div>` : '');
     goBtn.disabled = seeds.length < 2;
     if (rerollBtn) rerollBtn.disabled = seeds.length < 2;
+    if (shareBtn) shareBtn.disabled = seeds.length < 2;
     goBtn.innerHTML = `<span class="material-icons-round">auto_awesome</span> Mix ${seeds.length >= 2 ? `these ${seeds.length}` : 'it'}`;
   };
   renderSeeds();
@@ -620,6 +623,19 @@ function _ensureMixPage() {
     _runMix();
   });
   rerollBtn?.addEventListener('click', () => { _mixShuffle++; _runMix(); });
+  shareBtn?.addEventListener('click', async () => {
+    const seeds = _mixSeeds();
+    if (seeds.length < 2) return;
+    const encoded = seeds.map(seed => `${seed.type === 'tv' ? 'tv' : 'movie'}:${seed.id}`).join(',');
+    const url = `${location.origin}${location.pathname}?page=mix&seeds=${encoded}`;
+    history.replaceState({ page: 'mix' }, '', `${location.pathname}?page=mix&seeds=${encoded}`);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Shareable mix link copied', 'link');
+    } catch {
+      toast('Mix link is ready in the address bar', 'link');
+    }
+  });
 
   // Surprise seed — one random trending title thrown into the blender
   page.querySelector('#mix-surprise')?.addEventListener('click', async () => {
@@ -700,25 +716,39 @@ async function _runMix() {
   results.innerHTML = `<div class="mix-blending"><div class="spin"></div><p>Blending ${seeds.map(s => `<b>${esc(s.title)}</b>`).join(' + ')}…</p></div>`;
 
   try {
-    // Per seed: recommendations + similar (movie or tv as appropriate)
+    // One detail request per seed supplies recommendations, similar titles,
+    // genres, and keywords. This replaces two requests per seed and gives the
+    // blend stronger "vibe" signals without a request for every candidate.
     const perSeed = await Promise.allSettled(seeds.map(async x => {
       const t = x.type === 'tv' ? 'tv' : 'movie';
-      const [rec, sim] = await Promise.allSettled([
-        tmdb(`/${t}/${x.id}/recommendations`),
-        tmdb(`/${t}/${x.id}/similar`),
-      ]);
+      const detail = await tmdb(`/${t}/${x.id}`, { append_to_response: 'recommendations,similar,keywords' });
       const merge = [];
       const seen = new Set();
-      [...(rec.status === 'fulfilled' ? rec.value.results || [] : []),
-       ...(sim.status === 'fulfilled' ? sim.value.results || [] : [])].forEach(m => {
+      [...(detail.recommendations?.results || []), ...(detail.similar?.results || [])].forEach(m => {
         if (m?.id && !seen.has(m.id)) { seen.add(m.id); merge.push({ ...m, media_type: m.media_type || t }); }
       });
-      return merge;
+      return {
+        items: merge,
+        genres: (detail.genres || []).map(g => g.id),
+        keywords: detail.keywords?.results || detail.keywords?.keywords || [],
+        type: t,
+      };
     }));
     if (my !== _mixToken) return;
 
     const seedIds = new Set(seeds.map(_mixKey));
-    const seedGenres = new Set(seeds.flatMap(x => x.genre_ids || []));
+    const seedGenres = new Set([
+      ...seeds.flatMap(x => x.genre_ids || []),
+      ...perSeed.flatMap(r => r.status === 'fulfilled' ? r.value.genres : []),
+    ]);
+    const keywordCounts = new Map();
+    perSeed.forEach(r => {
+      if (r.status !== 'fulfilled') return;
+      r.value.keywords.forEach(keyword => keyword?.id && keywordCounts.set(keyword.id, (keywordCounts.get(keyword.id) || 0) + 1));
+    });
+    const rankedKeywords = [...keywordCounts.entries()].sort((a, b) => b[1] - a[1]);
+    const sharedKeywords = rankedKeywords.filter(([, count]) => count > 1).slice(0, 3);
+    const discoveryKeywords = (sharedKeywords.length ? sharedKeywords : rankedKeywords.slice(0, 4)).map(([id]) => id);
     const dislikedIds = new Set((state.disliked || []).map(_mixKey));
     const watchedIds = new Set((state.watched || []).map(_mixKey));
 
@@ -727,17 +757,44 @@ async function _runMix() {
     perSeed.forEach(r => {
       if (r.status !== 'fulfilled') return;
       const seenThisSeed = new Set();
-      r.value.forEach(m => {
+      r.value.items.forEach(m => {
         const key = _mixKey(m);
         if (seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
         if (window._svSafeItem && !window._svSafeItem(m)) return;
         if (seenThisSeed.has(key)) return;
         seenThisSeed.add(key);
-        const rec = scoreMap.get(key) || { item: m, seedHits: 0 };
+        const rec = scoreMap.get(key) || { item: m, seedHits: 0, keywordHits: 0 };
         rec.seedHits++;
         scoreMap.set(key, rec);
       });
     });
+
+    // Shared seed keywords use AND semantics; otherwise use a small OR pool.
+    // At most two requests are added, while the per-seed request count was cut
+    // in half above.
+    if (discoveryKeywords.length) {
+      const keywordExpr = discoveryKeywords.join(sharedKeywords.length ? ',' : '|');
+      const types = new Set(seeds.map(seed => seed.type === 'tv' ? 'tv' : 'movie'));
+      const keywordPools = await Promise.allSettled([...types].map(async type => {
+        const data = await tmdb(`/discover/${type}`, {
+          with_keywords: keywordExpr,
+          sort_by: 'popularity.desc',
+          'vote_count.gte': 50,
+        });
+        return (data.results || []).map(item => ({ ...item, media_type: type }));
+      }));
+      keywordPools.forEach(pool => {
+        if (pool.status !== 'fulfilled') return;
+        pool.value.forEach(item => {
+          const key = _mixKey(item);
+          if (seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
+          if (window._svSafeItem && !window._svSafeItem(item)) return;
+          const rec = scoreMap.get(key) || { item, seedHits: 0, keywordHits: 0 };
+          rec.keywordHits = Math.max(rec.keywordHits || 0, sharedKeywords.length || 1);
+          scoreMap.set(key, rec);
+        });
+      });
+    }
 
     let blended = [...scoreMap.values()].map(r => {
       const m = r.item;
@@ -745,7 +802,7 @@ async function _runMix() {
       return {
         item: m,
         hits: r.seedHits,
-        score: r.seedHits * 3 + overlap * 0.8 + (m.vote_average || 0) / 10 + Math.min(1, (m.vote_count || 0) / 3000) + (_mixShuffle ? Math.random() * 1.2 : 0),
+        score: r.seedHits * 3 + (r.keywordHits || 0) * 1.4 + overlap * 0.8 + (m.vote_average || 0) / 10 + Math.min(1, (m.vote_count || 0) / 3000) + (_mixShuffle ? Math.random() * 1.2 : 0),
       };
     }).sort((a, b) => b.score - a.score);
 
@@ -814,7 +871,29 @@ async function _runMix() {
 /* Mix & Match lives inside the Library — the mix "page" only exists so
    old links and ?page=mix deep links keep working; they land on the
    Library with the Mix tab open. */
-function _libShowMixTab() {
+let _mixUrlLoaded = '';
+async function _loadMixSeedsFromUrl(rawOverride = null) {
+  const raw = rawOverride ?? new URLSearchParams(location.search).get('seeds') ?? '';
+  if (!raw || raw === _mixUrlLoaded) return;
+  _mixUrlLoaded = raw;
+  const refs = raw.split(',').slice(0, 5).map(part => {
+    const [type, id] = part.split(':');
+    return { type: type === 'tv' ? 'tv' : 'movie', id: +id };
+  }).filter(ref => ref.id > 0);
+  if (refs.length < 2) return;
+  const details = await Promise.allSettled(refs.map(ref => tmdb(`/${ref.type}/${ref.id}`).then(item => ({
+    id: item.id,
+    type: ref.type,
+    title: item.title || item.name || '',
+    poster_path: item.poster_path || null,
+    genre_ids: (item.genres || []).map(genre => genre.id),
+  }))));
+  const seeds = details.filter(result => result.status === 'fulfilled').map(result => result.value);
+  if (seeds.length >= 2) _mixSaveSeeds(seeds);
+}
+
+async function _libShowMixTab() {
+  await _loadMixSeedsFromUrl();
   document.querySelectorAll('.lib-tab').forEach(t => t.classList.toggle('on', t.dataset.libTab === 'mix'));
   ['library', 'providers', 'prefs', 'mix'].forEach(n => {
     const el = document.getElementById(`lib-tab-${n}`);
@@ -824,7 +903,19 @@ function _libShowMixTab() {
   host?._renderSeeds?.();
   if (_mixSeeds().length >= 2) _runMix();
 }
-registerLoader('mix', () => { setTimeout(() => { goPage('library'); _libShowMixTab(); }, 0); });
+registerLoader('mix', () => {
+  // goPage() normalizes the URL before delayed loaders run, so capture shared
+  // seeds synchronously and restore the shareable route after opening Library.
+  const rawSeeds = new URLSearchParams(location.search).get('seeds') || '';
+  setTimeout(async () => {
+    await _loadMixSeedsFromUrl(rawSeeds);
+    goPage('library');
+    await _libShowMixTab();
+    if (rawSeeds) {
+      history.replaceState({ page: 'mix' }, '', `${location.pathname}?page=mix&seeds=${encodeURIComponent(rawSeeds)}`);
+    }
+  }, 0);
+});
 window._svOpenMix = () => { goPage('library'); _libShowMixTab(); };
 
 /* ── FEATURE TIP ROWS ────────────────────────────────────────────────
@@ -3231,7 +3322,7 @@ function _moveTrendingDown() {
   if (!trendSec) return;
   const home = document.getElementById('page-home');
   if (!home) return;
-  const sections = Array.from(home.querySelectorAll('.section:not(#sec-trending)'));
+  const sections = Array.from(home.querySelectorAll('.section:not(#sec-trending):not(.sv-tip-row)'));
   if (sections.length < 2) return;
   const views = parseInt(sessionStorage.getItem('sv_trend_views') || '0');
   // Position: starts at 1 (second section), moves down 2 per view, max at 8, then reset to 1
@@ -5573,8 +5664,16 @@ function initEventDelegation() {
   });
 
   // Hero buttons
-  document.getElementById('hero-play-btn')?.addEventListener('click', e => { e.stopPropagation(); const m = state.heroItems[state.heroIdx]; if (m) openMedia(m.id, m.media_type === 'tv' ? 'tv' : 'movie', m); });
-  document.getElementById('hero-info-btn')?.addEventListener('click', e => { e.stopPropagation(); const m = state.heroItems[state.heroIdx]; if (m) openMedia(m.id, m.media_type === 'tv' ? 'tv' : 'movie', m); });
+  document.getElementById('hero-play-btn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    const m = state.heroItems[state.heroIdx];
+    if (m) openMedia(m.id, m.media_type === 'tv' ? 'tv' : 'movie', { ...m, _forcePlayer: true });
+  });
+  document.getElementById('hero-info-btn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    const m = state.heroItems[state.heroIdx];
+    if (m) openInfoPage(m.id, m.media_type === 'tv' ? 'tv' : 'movie', m);
+  });
 
   // Hero dots
   document.getElementById('hero-dots')?.addEventListener('click', e => {
@@ -6016,6 +6115,17 @@ function initEventDelegation() {
       // Long-term usage ledger (watch time, plays, per-genre/title/day) —
       // powers future recaps; local-only until this manual export
       usageStats: exportStats(),
+      featureState: (() => {
+        const read = key => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } };
+        return {
+          mixSeeds: read('sv_mix_seeds') || [],
+          mixFilters: read('sv_mix_filters') || {},
+          featureUse: read('sv_feature_use') || {},
+          tipsDismissed: read('sv_tips_dismissed') || {},
+          searchProviderIncludes: read('sv_search_provider_includes') || [],
+          searchProviderExcludes: read('sv_search_provider_excludes') || [],
+        };
+      })(),
       // Diagnostics — safe to share, helps improve search & recommendations
       diagnostics: (() => {
         const ls = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
@@ -6069,10 +6179,18 @@ function initEventDelegation() {
         );
         if (!choice || choice === 'cancel') return;
 
-        // Merge arrays (avoid duplicates by id)
+        // TMDB movie and TV IDs use separate namespaces, so include type when
+        // deduplicating imported personal data.
         const merge = (existing, imported) => {
-          const ids = new Set(existing.map(x => x.id));
-          return [...existing, ...(imported || []).filter(x => !ids.has(x.id))];
+          const key = item => `${item.type || item.media_type || (item._anime ? 'anime' : 'unknown')}:${item.id}`;
+          const ids = new Set(existing.map(key));
+          const additions = (imported || []).filter(item => {
+            const itemKey = key(item);
+            if (ids.has(itemKey)) return false;
+            ids.add(itemKey);
+            return true;
+          });
+          return [...existing, ...additions];
         };
 
         const applyData = () => {
@@ -6088,6 +6206,19 @@ function initEventDelegation() {
           if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
           if (data.continueWatching) { Object.assign(state.continueWatching, data.continueWatching); persist('continueWatching'); }
           if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
+          if (data.featureState) {
+            const featureKeys = {
+              mixSeeds: 'sv_mix_seeds',
+              mixFilters: 'sv_mix_filters',
+              featureUse: 'sv_feature_use',
+              tipsDismissed: 'sv_tips_dismissed',
+              searchProviderIncludes: 'sv_search_provider_includes',
+              searchProviderExcludes: 'sv_search_provider_excludes',
+            };
+            Object.entries(featureKeys).forEach(([field, key]) => {
+              if (data.featureState[field] != null) localStorage.setItem(key, JSON.stringify(data.featureState[field]));
+            });
+          }
         };
 
         if (choice === 'new') {
@@ -7280,7 +7411,9 @@ async function getTmdbWatchProviders() {
 }
 
 /* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
+let _providerPageToken = 0;
 export async function openProviderPage(providerId, providerName) {
+  const requestToken = ++_providerPageToken;
   clearHoverTrailer();
   _svMarkFeatureUse('provider'); // tip-row usage signal
 
@@ -7306,6 +7439,7 @@ export async function openProviderPage(providerId, providerName) {
   const networkId = PROVIDER_NETWORK_IDS[providerId];
   // Ensure TMDB provider list is loaded before computing logo
   const allProviders = await getTmdbWatchProviders();
+  if (requestToken !== _providerPageToken) return;
   const tmdbMatch = allProviders.find(p => p.provider_id === providerId);
   const logoUrl = tmdbMatch?.logo_path
     ? `https://image.tmdb.org/t/p/w92${tmdbMatch.logo_path}`
@@ -7463,7 +7597,9 @@ export async function openProviderPage(providerId, providerName) {
   });
 
   // Build "For You on Provider" using user's preferred genres
-  const prefGenresStr = state.prefGenres?.length ? state.prefGenres.slice(0,2).join('|') : null;
+  const favoriteGenreIds = getFavorites(3).genres.map(genre => genre.genreId);
+  const preferredGenreIds = state.prefGenres?.length ? state.prefGenres : favoriteGenreIds;
+  const prefGenresStr = preferredGenreIds.length ? preferredGenreIds.slice(0, 3).join('|') : null;
   const thisYear = new Date().getFullYear();
   const lastYear = thisYear - 1;
   const newReleaseCutoff = `${lastYear}-01-01`;
@@ -7472,7 +7608,8 @@ export async function openProviderPage(providerId, providerName) {
   const G = { ACTION_M: 28, DRAMA: 18, COMEDY: 35, SCIFI_M: 878, HORROR: 27,
                ACTION_TV: 10759, SCIFI_TV: 10765 };
 
-  // Fetch all provider content in parallel (14 queries)
+  // Movie discover does not support with_networks, so the Originals shelf
+  // uses network data for TV only.
   Promise.allSettled([
     /* 0 */ tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:1 }),
     /* 1 */ tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:1 }),
@@ -7480,7 +7617,7 @@ export async function openProviderPage(providerId, providerName) {
     /* 3 */ tmdb('/discover/tv',    { ...base, sort_by:'vote_average.desc', 'vote_count.gte':50,  page:1 }),
     /* 4 */ tmdb('/discover/movie', { ...base, sort_by:'popularity.desc',   page:2 }),
     /* 5 */ tmdb('/discover/tv',    { ...base, sort_by:'popularity.desc',   page:2 }),
-    /* 6 */ networkId ? tmdb('/discover/movie', { ...base, with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
+    /* 6 */ Promise.resolve({results:[]}),
     /* 7 */ networkId ? tmdb('/discover/tv',    { ...base, with_networks:networkId, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
     /* 8 */ prefGenresStr ? tmdb('/discover/movie', { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
     /* 9 */ prefGenresStr ? tmdb('/discover/tv',    { ...base, with_genres:prefGenresStr, sort_by:'popularity.desc', page:1 }) : Promise.resolve({results:[]}),
@@ -7493,7 +7630,7 @@ export async function openProviderPage(providerId, providerName) {
     /* 16 */ tmdb('/discover/movie', { ...base, with_genres:`${G.COMEDY}`, sort_by:'popularity.desc', page:1 }),
     /* 17 */ tmdb('/discover/tv',    { ...base, with_genres:`${G.COMEDY}`, sort_by:'popularity.desc', page:1 }),
   ]).then(results => {
-    if (state.currentPage !== 'provider') return; // don't update if navigated away
+    if (requestToken !== _providerPageToken || state.currentPage !== 'provider') return;
 
     const get = (i, mt) => results[i].status==='fulfilled'
       ? (results[i].value.results||[]).map(x=>({...x,media_type:mt})) : [];
@@ -7525,7 +7662,26 @@ export async function openProviderPage(providerId, providerName) {
 
     // Deduplicate in render order: each row gets items not yet shown above it
     const _seen = new Set();
-    const dedup = (arr) => arr.filter(x => { if (_seen.has(x.id)) return false; _seen.add(x.id); return true; });
+    const itemKey = item => `${item.media_type || 'movie'}:${item.id}`;
+    const dedup = (arr, minimum = 8) => {
+      const rowSeen = new Set();
+      const unique = arr.filter(item => {
+        const key = itemKey(item);
+        if (rowSeen.has(key)) return false;
+        rowSeen.add(key);
+        if (_seen.has(key)) return false;
+        _seen.add(key);
+        return true;
+      });
+      if (unique.length >= minimum) return unique;
+      for (const item of arr) {
+        const key = itemKey(item);
+        if (unique.some(existing => itemKey(existing) === key)) continue;
+        unique.push(item);
+        if (unique.length >= minimum) break;
+      }
+      return unique;
+    };
 
     const forYouDedup   = dedup(forYou);
     const origDedup     = dedup(originals);
@@ -7572,6 +7728,7 @@ export async function openProviderPage(providerId, providerName) {
       });
     }
   }).catch(e => {
+    if (requestToken !== _providerPageToken) return;
     if (body) body.innerHTML = '<p style="padding:2rem;color:var(--muted)">Failed to load provider content.</p>';
     console.warn('[SV] Provider page error:', e?.message);
   });
@@ -11062,11 +11219,11 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
-        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — shows fewer like this (W)" aria-label="Already watched — shows fewer like this">
-          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
-        </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
           <span class="material-icons-round">thumb_down_off_alt</span>
+        </button>
+        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while">
+          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
       </div>
     </div>`;

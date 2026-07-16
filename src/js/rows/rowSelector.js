@@ -146,6 +146,13 @@ export function selectRowsForToday(options = {}) {
     placed.splice(Math.floor(placed.length / 3), 0, s);
   });
 
+  // Continue Watching is useful context, not a homepage opener. Keep it
+  // available near the top, but never let template fallback place it first.
+  if (placed[0]?.id === 'row-continue') {
+    const replacement = placed.findIndex((row, index) => index > 0 && row.kind !== 'history');
+    if (replacement > 0) [placed[0], placed[replacement]] = [placed[replacement], placed[0]];
+  }
+
   console.info(`[SV Rows] Selected ${placed.length} rows for ${page} (day ${today}, bump ${visitBump})`, placed.map(p => p.id));
   return placed;
 }

@@ -1,4 +1,4 @@
-import { tmdb, aniQuery, normalizeAnime } from './api.js';
+import { tmdb, aniQuery, normalizeAnime, getProviderLogoUrl } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
 import { state, GENRES, addRecentSearch, clearRecentSearches } from './state.js';
 import { initSearchPipeline, prepareQuery, svFlag } from './search/searchPipeline.js';
@@ -19,9 +19,20 @@ let _filters = {
   contentType: 'all',
 };
 
-// Provider filter state
-let _providerFilter = null; // { id, name } | null
+// Provider filter state. Includes use OR semantics; blocked providers are
+// excluded even when a title also appears on an included service.
+const _readProviderSet = key => {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]').map(Number).filter(Boolean)); }
+  catch { return new Set(); }
+};
+let _providerIncludes = _readProviderSet('sv_search_provider_includes');
+let _providerExcludes = _readProviderSet('sv_search_provider_excludes');
 const _providerAvailabilityCache = new Map();
+
+function _saveProviderFilters() {
+  localStorage.setItem('sv_search_provider_includes', JSON.stringify([..._providerIncludes]));
+  localStorage.setItem('sv_search_provider_excludes', JSON.stringify([..._providerExcludes]));
+}
 
 function _mediaType(item) {
   const type = item?._type || item?.media_type;
@@ -32,17 +43,17 @@ function _mediaKey(item) {
   return `${_mediaType(item) || item?._type || 'unknown'}:${item?.id}`;
 }
 
-async function _hasProvider(item, providerId) {
+async function _providerOfferIds(item) {
   const type = _mediaType(item);
-  if (!type || !item?.id) return false;
-  const key = `${type}:${item.id}:${providerId}`;
+  if (!type || !item?.id) return new Set();
+  const key = `${type}:${item.id}`;
   if (_providerAvailabilityCache.has(key)) return _providerAvailabilityCache.get(key);
 
   const check = tmdb(`/${type}/${item.id}/watch/providers`).then(data => {
     const region = data?.results?.US || {};
     const offers = ['flatrate', 'free', 'ads', 'rent', 'buy']
       .flatMap(kind => region[kind] || []);
-    return offers.some(provider => +provider.provider_id === +providerId);
+    return new Set(offers.map(provider => +provider.provider_id).filter(Boolean));
   }).catch(err => {
     _providerAvailabilityCache.delete(key);
     throw err;
@@ -52,7 +63,7 @@ async function _hasProvider(item, providerId) {
 }
 
 async function _filterByProvider(items) {
-  if (!_providerFilter?.id) return items;
+  if (!_providerIncludes.size && !_providerExcludes.size) return items;
   const candidates = items.filter(item => _mediaType(item));
   const matches = new Array(candidates.length).fill(false);
   let completed = 0;
@@ -61,11 +72,14 @@ async function _filterByProvider(items) {
   // Keep concurrency low so a provider-filtered search does not burst.
   for (let start = 0; start < candidates.length; start += 6) {
     const batch = candidates.slice(start, start + 6);
-    const settled = await Promise.allSettled(batch.map(item => _hasProvider(item, _providerFilter.id)));
+    const settled = await Promise.allSettled(batch.map(_providerOfferIds));
     settled.forEach((result, index) => {
       if (result.status === 'fulfilled') {
         completed++;
-        matches[start + index] = result.value;
+        const offers = result.value;
+        const included = !_providerIncludes.size || [..._providerIncludes].some(id => offers.has(id));
+        const blocked = [..._providerExcludes].some(id => offers.has(id));
+        matches[start + index] = included && !blocked;
       } else {
         failed++;
       }
@@ -76,12 +90,7 @@ async function _filterByProvider(items) {
   return candidates.filter((item, index) => matches[index]);
 }
 
-// "Not on my services" filter state
-let _excludeMyServices = false;
-let _myProviders = new Set(JSON.parse(localStorage.getItem('sv_my_providers') || '[]'));
-function _saveMyProviders() { localStorage.setItem('sv_my_providers', JSON.stringify([..._myProviders])); }
-
-const _MY_PROV_LIST = [
+const _PROVIDER_LIST = [
   { id: 8,    name: 'Netflix' },
   { id: 337,  name: 'Disney+' },
   { id: 9,    name: 'Prime Video' },
@@ -91,7 +100,11 @@ const _MY_PROV_LIST = [
   { id: 531,  name: 'Paramount+' },
   { id: 386,  name: 'Peacock' },
   { id: 283,  name: 'Crunchyroll' },
+  { id: 100,  name: 'Tubi' },
+  { id: 73,   name: 'Pluto TV' },
 ];
+const _providerName = id => _PROVIDER_LIST.find(p => p.id === +id)?.name || `Provider ${id}`;
+const _providerLogo = provider => getProviderLogoUrl(provider.name, 32);
 
 // Everything browse state
 let _everythingSort = 'popularity.desc';
@@ -103,7 +116,9 @@ let _everythingObs = null;
 export function getSearchFilters() { return { ..._filters }; }
 
 export function setProviderFilter(prov) {
-  _providerFilter = prov || null;
+  _providerIncludes = new Set(prov?.id ? [+prov.id] : []);
+  _providerExcludes.clear();
+  _saveProviderFilters();
   _sfActive = 'everything';
 }
 
@@ -250,26 +265,24 @@ export function buildSearchFilters(container) {
       </div>
       <!-- Provider filter row -->
       <div class="sf-filter-row sf-provider-row">
-        <span class="sf-filter-label" style="font-size:.75rem;font-weight:700;color:var(--dim);align-self:center">Filter by Provider:</span>
-        <button class="sf-prov-chip${!_providerFilter ? ' on' : ''}" data-prov-id="" data-prov-name="">Any Provider</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 8 ? ' on' : ''}" data-prov-id="8" data-prov-name="Netflix">Netflix</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 337 ? ' on' : ''}" data-prov-id="337" data-prov-name="Disney+">Disney+</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 9 ? ' on' : ''}" data-prov-id="9" data-prov-name="Prime Video">Prime Video</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 1899 ? ' on' : ''}" data-prov-id="1899" data-prov-name="Max">Max</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 15 ? ' on' : ''}" data-prov-id="15" data-prov-name="Hulu">Hulu</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 350 ? ' on' : ''}" data-prov-id="350" data-prov-name="Apple TV+">Apple TV+</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 531 ? ' on' : ''}" data-prov-id="531" data-prov-name="Paramount+">Paramount+</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 386 ? ' on' : ''}" data-prov-id="386" data-prov-name="Peacock">Peacock</button>
-        <button class="sf-prov-chip${_providerFilter?.id === 283 ? ' on' : ''}" data-prov-id="283" data-prov-name="Crunchyroll">Crunchyroll</button>
-      </div>
-      <!-- Not on my services row -->
-      <div class="sf-filter-row sf-exclude-row">
-        <span class="sf-filter-label" style="font-size:.75rem;font-weight:700;color:var(--dim);align-self:center">Not on my services:</span>
-        <button class="sf-exclude-toggle${_excludeMyServices ? ' on' : ''}" id="sf-exclude-btn" title="Show only content not available on your selected subscriptions">
-          <span class="material-icons-round" style="font-size:.9rem">${_excludeMyServices ? 'toggle_on' : 'toggle_off'}</span>
-          ${_excludeMyServices ? 'Active' : 'Off'}
+        <div class="sf-provider-heading">
+          <span class="sf-filter-label">Streaming services</span>
+          <span>Include any selected service. Block always wins.</span>
+        </div>
+        <button class="sf-prov-any${!_providerIncludes.size && !_providerExcludes.size ? ' on' : ''}" data-prov-clear>
+          <span class="material-icons-round">apps</span>Any service
         </button>
-        ${_MY_PROV_LIST.map(p => `<button class="sf-my-prov-chip${_myProviders.has(p.id) ? ' on' : ''}" data-my-prov="${p.id}" title="I subscribe to ${p.name}">${p.name}</button>`).join('')}
+        ${_PROVIDER_LIST.map(p => `
+          <div class="sf-provider-choice${_providerIncludes.has(p.id) ? ' included' : ''}${_providerExcludes.has(p.id) ? ' excluded' : ''}" data-provider-choice="${p.id}">
+            <button class="sf-prov-chip${_providerIncludes.has(p.id) ? ' on' : ''}" data-prov-id="${p.id}" data-prov-name="${p.name}"
+              aria-pressed="${_providerIncludes.has(p.id)}" title="${_providerIncludes.has(p.id) ? 'Remove' : 'Include'} ${p.name}">
+              <img src="${_providerLogo(p)}" alt="" loading="lazy"><span>${p.name}</span>
+            </button>
+            <button class="sf-prov-block${_providerExcludes.has(p.id) ? ' on' : ''}" data-prov-block="${p.id}"
+              aria-pressed="${_providerExcludes.has(p.id)}" aria-label="${_providerExcludes.has(p.id) ? 'Unblock' : 'Block'} ${p.name}" title="${_providerExcludes.has(p.id) ? 'Unblock' : 'Block'} ${p.name}">
+              <span class="material-icons-round">block</span>
+            </button>
+          </div>`).join('')}
       </div>
     </div>`;
 
@@ -320,59 +333,50 @@ export function buildSearchFilters(container) {
 
   document.getElementById('sf-filter-clear')?.addEventListener('click', () => {
     _filters = { genre: null, yearFrom: null, yearTo: null, minRating: null, contentType: 'all', sortBy: 'popularity.desc', language: null, runtime: null, status: null, country: null, popTier: null };
-    _providerFilter = null;
-    _excludeMyServices = false;
+    _providerIncludes.clear();
+    _providerExcludes.clear();
+    _saveProviderFilters();
     container.querySelectorAll('.sf-filter-sel').forEach(sel => { sel.selectedIndex = 0; });
-    container.querySelectorAll('.sf-prov-chip').forEach((c, i) => c.classList.toggle('on', i === 0));
-    const btn = document.getElementById('sf-exclude-btn');
-    if (btn) { btn.classList.remove('on'); btn.innerHTML = `<span class="material-icons-round" style="font-size:.9rem">toggle_off</span>Off`; }
+    container.querySelectorAll('.sf-provider-choice').forEach(c => c.classList.remove('included', 'excluded'));
+    container.querySelectorAll('.sf-prov-chip, .sf-prov-block').forEach(c => { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); });
+    container.querySelector('[data-prov-clear]')?.classList.add('on');
     loadSearchDefault();
   });
 
-  // Provider chips
-  container.querySelectorAll('.sf-prov-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const id = chip.dataset.provId ? +chip.dataset.provId : null;
-      const name = chip.dataset.provName || null;
-      _providerFilter = id ? { id, name } : null;
-      container.querySelectorAll('.sf-prov-chip').forEach(c => c.classList.toggle('on', c === chip));
-      const inp = document.getElementById('search-input');
-      const q = inp?.value.trim();
-      if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
-      else if (_sfActive === 'everything') loadEverything();
-      else browseByFilters();
-    });
-  });
-
-  // "Not on my services" — toggle button
-  document.getElementById('sf-exclude-btn')?.addEventListener('click', () => {
-    _excludeMyServices = !_excludeMyServices;
-    const btn = document.getElementById('sf-exclude-btn');
-    if (btn) {
-      btn.classList.toggle('on', _excludeMyServices);
-      btn.innerHTML = `<span class="material-icons-round" style="font-size:.9rem">${_excludeMyServices ? 'toggle_on' : 'toggle_off'}</span>${_excludeMyServices ? 'Active' : 'Off'}`;
-    }
+  const rerunProviderSearch = () => {
+    _saveProviderFilters();
     const inp = document.getElementById('search-input');
     const q = inp?.value.trim();
     if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
     else if (_sfActive === 'everything') loadEverything();
     else browseByFilters();
+  };
+
+  container.querySelector('[data-prov-clear]')?.addEventListener('click', () => {
+    _providerIncludes.clear();
+    _providerExcludes.clear();
+    buildSearchFilters(container);
+    rerunProviderSearch();
   });
 
-  // "My subscriptions" — multi-select chips
-  container.querySelectorAll('.sf-my-prov-chip').forEach(chip => {
+  // Included providers use OR semantics.
+  container.querySelectorAll('.sf-prov-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      const id = +chip.dataset.myProv;
-      if (_myProviders.has(id)) _myProviders.delete(id); else _myProviders.add(id);
-      chip.classList.toggle('on', _myProviders.has(id));
-      _saveMyProviders();
-      if (_excludeMyServices) {
-        const inp = document.getElementById('search-input');
-        const q = inp?.value.trim();
-        if (q) document.dispatchEvent(new CustomEvent('sv:do-search', { detail: q }));
-        else if (_sfActive === 'everything') loadEverything();
-        else browseByFilters();
-      }
+      const id = +chip.dataset.provId;
+      if (_providerIncludes.has(id)) _providerIncludes.delete(id); else _providerIncludes.add(id);
+      _providerExcludes.delete(id);
+      buildSearchFilters(container);
+      rerunProviderSearch();
+    });
+  });
+
+  container.querySelectorAll('.sf-prov-block').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = +btn.dataset.provBlock;
+      if (_providerExcludes.has(id)) _providerExcludes.delete(id); else _providerExcludes.add(id);
+      _providerIncludes.delete(id);
+      buildSearchFilters(container);
+      rerunProviderSearch();
     });
   });
 }
@@ -388,8 +392,8 @@ async function browseByFilters() {
     if (_filters.genre) params.with_genres = _filters.genre;
     if (_filters.minRating) params['vote_average.gte'] = _filters.minRating;
     if (_filters.language) params.with_original_language = _filters.language;
-    if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
-    if (_excludeMyServices && _myProviders.size > 0) { params.without_watch_providers = [..._myProviders].join('|'); params.watch_region = 'US'; }
+    if (_providerIncludes.size) { params.with_watch_providers = [..._providerIncludes].join('|'); params.watch_region = 'US'; }
+    if (_providerExcludes.size) { params.without_watch_providers = [..._providerExcludes].join('|'); params.watch_region = 'US'; }
     if (_filters.yearFrom && _filters.contentType !== 'tv') params['primary_release_date.gte'] = `${_filters.yearFrom}-01-01`;
     if (_filters.yearTo && _filters.contentType !== 'tv') params['primary_release_date.lte'] = `${_filters.yearTo}-12-31`;
     if (_filters.yearFrom && _filters.contentType === 'tv') params['first_air_date.gte'] = `${_filters.yearFrom}-01-01`;
@@ -768,12 +772,14 @@ export async function loadEverything(reset = true) {
   if (reset) {
     _everythingPage = 1;
     _everythingLoading = false;
-    const provLabel = _providerFilter ? ` on ${_providerFilter.name}` : '';
+    const includeNames = [..._providerIncludes].map(_providerName);
+    const provLabel = includeNames.length ? ` on ${includeNames.join(' or ')}` : '';
+    const blockLabel = _providerExcludes.size ? ` · ${_providerExcludes.size} blocked` : '';
     area.innerHTML = `
       <div class="everything-header">
         <div class="everything-title">
           <span class="material-icons-round">apps</span>
-          Browse Everything${provLabel}
+          Browse Everything${provLabel}${blockLabel}
         </div>
         <div class="everything-sort-row" role="group" aria-label="Sort order">
           ${EVERYTHING_SORTS.map(s => `
@@ -834,8 +840,8 @@ export async function loadEverything(reset = true) {
     page: _everythingPage,
     'vote_count.gte': _everythingSort.startsWith('vote_average') ? 200 : 10,
   };
-  if (_providerFilter?.id) { params.with_watch_providers = _providerFilter.id; params.watch_region = 'US'; }
-  if (_excludeMyServices && _myProviders.size > 0) { params.without_watch_providers = [..._myProviders].join('|'); params.watch_region = 'US'; }
+  if (_providerIncludes.size) { params.with_watch_providers = [..._providerIncludes].join('|'); params.watch_region = 'US'; }
+  if (_providerExcludes.size) { params.without_watch_providers = [..._providerExcludes].join('|'); params.watch_region = 'US'; }
 
   try {
     let items = [];
@@ -1072,7 +1078,11 @@ function _applyTypedFilters(q) {
       cleaned = cleaned.replace(pm[0], ' ').replace(/\s+/g, ' ').trim();
       const chip = document.querySelector(`.sf-prov-chip[data-prov-id="${pid}"]`);
       if (chip) { chip.click(); _flashEl(chip); }
-      else { _providerFilter = { id: pid, name }; }
+      else {
+        _providerIncludes.add(pid);
+        _providerExcludes.delete(pid);
+        _saveProviderFilters();
+      }
       activated = true;
       toast(`Filtering by ${name.charAt(0).toUpperCase() + name.slice(1)}`, 'filter_alt');
     }
@@ -1250,7 +1260,7 @@ export async function doSearch(q) {
 
     // Merge exact and prefix matches from the existing local index into
     // ordinary searches instead of building the index and ignoring it.
-    const canUseLocal = !_providerFilter && !_filters.genre && !_filters.minRating &&
+    const canUseLocal = !_providerIncludes.size && !_providerExcludes.size && !_filters.genre && !_filters.minRating &&
       !_filters.yearFrom && !_filters.yearTo && !_filters.language &&
       ['all', 'movie', 'tv'].includes(_sfActive);
     if (canUseLocal && prep.localResults?.length) {

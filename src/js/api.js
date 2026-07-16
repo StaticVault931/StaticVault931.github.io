@@ -809,33 +809,27 @@ export async function testAllAPIs() {
     results.push({ name: 'Wikidata SPARQL', status: 'error', note: 'Request failed' });
   }
 
-  // Vidsrc-embed feeds — test movies + episodes (both are used heavily)
+  // Vidsrc feeds do not allow direct browser reads. Test through the same
+  // proxy path used by the optional feed helpers so the panel reports the
+  // app's real behavior instead of guaranteed CORS failures.
   const [vidsrcMovies, vidsrcEps] = await Promise.allSettled([
-    fetch(`${VIDSRC_BASE}/movies/latest/page-1.json`),
-    fetch(`${VIDSRC_BASE}/episodes/latest/page-1.json`),
+    _vidsrcFetch(`${VIDSRC_BASE}/movies/latest/page-1.json`),
+    _vidsrcFetch(`${VIDSRC_BASE}/episodes/latest/page-1.json`),
   ]);
   results.push({
     name: 'Vidsrc — Movies feed',
-    status: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value.ok ? 'ok' : 'error',
-    note: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value.ok ? 'Latest movies feed — working' : 'Failed',
+    status: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value?.length ? 'ok' : 'error',
+    note: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value?.length ? 'Latest movies feed — working' : 'Proxy/feed unavailable',
   });
   results.push({
     name: 'Vidsrc — Episodes feed',
-    status: vidsrcEps.status === 'fulfilled' && vidsrcEps.value.ok ? 'ok' : 'error',
-    note: vidsrcEps.status === 'fulfilled' && vidsrcEps.value.ok ? 'New episodes feed — working' : 'Failed',
+    status: vidsrcEps.status === 'fulfilled' && vidsrcEps.value?.length ? 'ok' : 'error',
+    note: vidsrcEps.status === 'fulfilled' && vidsrcEps.value?.length ? 'New episodes feed — working' : 'Proxy/feed unavailable',
   });
 
-  // TasteDive
-  if (!TASTEDIVE_KEY) {
-    results.push({ name: 'TasteDive', status: 'missing', note: 'No key set' });
-  } else {
-    try {
-      const r = await fetch(`https://tastedive.com/api/similar?q=Inception&type=movies&limit=1&k=${TASTEDIVE_KEY}`);
-      results.push({ name: 'TasteDive', status: r.ok ? 'ok' : 'error', note: r.ok ? '"More Like This" recs — working' : 'Key invalid' });
-    } catch {
-      results.push({ name: 'TasteDive', status: 'error', note: 'Request failed' });
-    }
-  }
+  // TasteDive's public endpoint is not browser-compatible. Do not generate a
+  // guaranteed CORS error from the diagnostics panel.
+  results.push({ name: 'TasteDive', status: 'missing', note: 'Requires a server-side proxy; not called from the browser' });
 
   return results;
 }
