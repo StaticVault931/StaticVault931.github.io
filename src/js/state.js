@@ -29,9 +29,7 @@ export const GENRES = [
   { id: 10764, name: 'Reality TV',  icon: 'videocam' },
   { id: 10749, name: 'Romance',     icon: 'favorite' },
   { id: 878,   name: 'Sci-Fi',      icon: 'rocket_launch' },
-  { id: 10766, name: 'Soap',        icon: 'live_tv' },
   { id: 53,    name: 'Thriller',    icon: 'visibility' },
-  { id: 10752, name: 'War',         icon: 'military_tech' },
 ];
 
 export const AGE_LEVELS = {
@@ -143,9 +141,11 @@ export function cleanState() {
   });
   if (cwChanged) persist('continueWatching');
 
-  // The genre picker replaced Western and War & Politics in v118. Keep old
-  // profiles meaningful instead of leaving invisible selected preferences.
-  const genreMap = new Map([[37, 36], [10768, 10752]]);
+  // The genre picker dropped Western/War & Politics (v118) and then War/
+  // Soap (v119). Keep old profiles meaningful instead of leaving invisible
+  // selected preferences: history-adjacent picks land on History, soaps on
+  // Drama.
+  const genreMap = new Map([[37, 36], [10768, 36], [10752, 36], [10766, 18]]);
   ['prefGenres', 'prefGenreDislikes'].forEach(key => {
     const before = JSON.stringify(state[key] || []);
     state[key] = [...new Set((state[key] || []).map(id => genreMap.get(+id) || +id).filter(Boolean))];

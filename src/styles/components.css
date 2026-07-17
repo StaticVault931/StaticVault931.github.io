@@ -848,17 +848,23 @@
   background: #000;
 }
 .player-area {
+  /* Everything inside is absolutely positioned, so this box is the ONLY
+     thing giving the player height. It must flex-grow; a stray flex:none
+     here collapses the iframe to 0px (the "player doesn't show" bug). */
   flex: 1;
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: none;
   min-height: 0;
 }
 .player-wrap {
   flex: 1;
   position: relative;
   min-height: 0;
+  /* Hard floor: even if an ancestor stops stretching, the player keeps a
+     real 16:9 stage instead of vanishing */
+  aspect-ratio: 16 / 9;
+  max-height: 100%;
   background: #000;
 }
 .player-wrap iframe {
@@ -3555,3 +3561,141 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
    right edge, vertically centered, never mid-sentence */
 .ob-kids-row { flex-wrap: nowrap; }
 .ob-kids-row .ob-kids-check { margin-left: auto; align-self: center; flex: none; }
+
+/* ═══ COMMIT 119 — Super Search motion + spotlight ═══════════════════ */
+.super-search-overlay.open .super-search-panel { animation: ssPanelIn .22s var(--ease); }
+@keyframes ssPanelIn { from { opacity: 0; transform: translateY(-16px) scale(.97); } }
+/* Teleport spotlight: everything dims for a beat while the found item
+   pops above the veil with a pulsing ring */
+body.super-search-dim::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 8990;
+  background: rgba(0,0,0,.6);
+  pointer-events: none;
+  animation: ssDim 1.2s var(--ease) both;
+}
+@keyframes ssDim { from { opacity: 0; } 25% { opacity: 1; } 75% { opacity: 1; } to { opacity: 0; } }
+.super-search-target { position: relative; z-index: 8995; }
+@media (prefers-reduced-motion: reduce) {
+  .super-search-overlay.open .super-search-panel { animation: none; }
+  body.super-search-dim::after { display: none; }
+}
+
+/* ═══ COMMIT 119 — Taste calibration: full-screen compass stage ══════ */
+#taste-calibration-shell.cal-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9600;
+  margin: 0;
+  border-top: 0;
+  padding: .8rem clamp(.8rem, 3vw, 2.2rem) 1.2rem;
+  background: #060606;
+  overflow-y: auto;
+}
+body.cal-open { overflow: hidden; }
+.taste-cal-exit {
+  position: fixed;
+  top: 1rem;
+  right: 1.1rem;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  background: rgba(20,20,20,.8);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(8px);
+  transition: background .18s, transform .18s;
+}
+.taste-cal-exit:hover { background: var(--red); transform: rotate(90deg); }
+
+/* The stage: poster centered, one live control per compass direction */
+.cal-fullscreen .taste-cal-card.taste-cal-stage {
+  min-height: calc(100dvh - 4.5rem);
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: .4rem;
+}
+.taste-cal-stage .taste-cal-mid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(1rem, 4vw, 3rem);
+  width: 100%;
+}
+.taste-cal-poster {
+  width: clamp(160px, 22vh, 240px);
+  aspect-ratio: 2/3;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.12);
+  background: var(--s2);
+  display: grid;
+  place-items: center;
+  touch-action: none; /* swipe zone */
+  cursor: grab;
+}
+.taste-cal-poster img { width: 100%; height: 100%; object-fit: cover; }
+.taste-cal-dir {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .15rem;
+  padding: .55rem .9rem;
+  min-width: 96px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 12px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  cursor: pointer;
+  transition: transform .16s var(--ease), border-color .16s, background .16s;
+}
+.taste-cal-dir:hover { border-color: var(--red); background: rgba(229,9,20,.18); }
+.taste-cal-dir-up:hover { transform: translateY(-4px); }
+.taste-cal-dir-down:hover { transform: translateY(4px); }
+.taste-cal-dir-left:hover { transform: translateX(-4px); }
+.taste-cal-dir-right:hover { transform: translateX(4px); }
+.taste-cal-dir-face { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
+.taste-cal-dir-face .material-icons-round { font-size: 1.05rem; color: var(--red); }
+.taste-cal-dir > .material-icons-round { font-size: 1.2rem; opacity: .6; }
+.taste-cal-dir kbd { margin-top: .1rem; }
+.taste-cal-dir-up .taste-cal-dir-face .material-icons-round { color: #f87171; }
+.taste-cal-stage .taste-cal-copy { max-width: 640px; margin-top: .4rem; }
+.taste-cal-stage .taste-cal-copy h3 { font-size: clamp(1.3rem, 3vw, 2rem); }
+.taste-cal-stage .taste-cal-copy p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-inline: auto;
+}
+
+/* Direction-coded entrances: the next card arrives FROM where the rated
+   one left — Love up, Like right, Dislike left, Skip down */
+.taste-cal-card.taste-cal-love    { animation: calInUp .32s var(--ease); }
+.taste-cal-card.taste-cal-like    { animation: calInRight .32s var(--ease); }
+.taste-cal-card.taste-cal-dislike { animation: calInLeft .32s var(--ease); }
+.taste-cal-card.taste-cal-skip    { animation: calInDown .32s var(--ease); }
+@keyframes calInUp    { from { opacity: 0; transform: translateY(34px); } }
+@keyframes calInRight { from { opacity: 0; transform: translateX(-34px); } }
+@keyframes calInLeft  { from { opacity: 0; transform: translateX(34px); } }
+@keyframes calInDown  { from { opacity: 0; transform: translateY(-34px); } }
+
+/* On the stage the compass IS the control surface; the old bottom action
+   row remains for narrow screens where the side zones would crowd */
+@media (min-width: 721px) {
+  .cal-fullscreen .taste-cal-actions { display: none; }
+}
+@media (max-width: 720px) {
+  .taste-cal-dir { display: none; }
+  .cal-fullscreen .taste-cal-card.taste-cal-stage { min-height: calc(100dvh - 3.5rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .taste-cal-card { animation: none !important; }
+}

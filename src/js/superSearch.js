@@ -25,7 +25,15 @@ function buildIndex() {
     const card = el.closest('.card');
     const target = card || el;
     if (seen.has(target)) return;
-    const text = (card?.dataset.title || target.textContent || '').replace(/\s+/g, ' ').trim();
+    // Icon fonts render as glyphs but read as ligature names in
+    // textContent ("nights_stay…") — strip them from the label
+    let text = card?.dataset.title;
+    if (!text) {
+      const clone = target.cloneNode(true);
+      clone.querySelectorAll('.material-icons-round, .material-icons').forEach(icon => icon.remove());
+      text = clone.textContent || '';
+    }
+    text = text.replace(/\s+/g, ' ').trim();
     if (text.length < 2) return;
     seen.add(target);
     entries.push({
@@ -99,9 +107,16 @@ function activate(index) {
   const entry = ensureOverlay()._results?.[index];
   if (!entry) return;
   closeSuperSearch();
-  entry.target.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Teleport: center the target both vertically AND inside its scroll row,
+  // then spotlight it — the page dims for a beat so the eye lands on it
+  entry.target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center', inline: 'center' });
   entry.target.classList.add('super-search-target');
-  setTimeout(() => entry.target.classList.remove('super-search-target'), 1400);
+  if (!reduced) {
+    document.body.classList.add('super-search-dim');
+    setTimeout(() => document.body.classList.remove('super-search-dim'), 1200);
+  }
+  setTimeout(() => entry.target.classList.remove('super-search-target'), 1600);
   if (entry.target.matches('.card')) entry.target.focus({ preventScroll: true });
 }
 

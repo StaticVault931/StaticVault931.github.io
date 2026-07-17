@@ -141,10 +141,37 @@ function renderCard(direction = '') {
   const title = item.title || item.name || 'Untitled';
   const year = String(item.release_date || item.first_air_date || '').slice(0, 4);
   const overview = (item.overview || 'Open the title for more information.').trim();
+  // Stage layout: the title sits center screen; each compass direction is
+  // a live control that doubles as the legend for its key/arrow/swipe.
   host.innerHTML = `
-    <article class="taste-cal-card ${direction ? `taste-cal-${direction}` : ''}" style="--taste-bg:url('${imgUrl(item.backdrop_path, 'w1280')}')">
+    <article class="taste-cal-card taste-cal-stage ${direction ? `taste-cal-${direction}` : ''}" style="--taste-bg:url('${imgUrl(item.backdrop_path, 'w1280')}')">
       <button type="button" class="taste-cal-info" data-cal-action="info" aria-label="Open details for ${esc(title)}">
         <span class="material-icons-round">info</span><span>Details</span>
+      </button>
+      <button type="button" class="taste-cal-dir taste-cal-dir-up" data-cal-action="love" aria-label="Love (W or up arrow)">
+        <span class="material-icons-round">keyboard_arrow_up</span>
+        <span class="taste-cal-dir-face"><span class="material-icons-round">favorite</span><strong>Love</strong></span>
+        <kbd>W / ↑</kbd>
+      </button>
+      <div class="taste-cal-mid">
+        <button type="button" class="taste-cal-dir taste-cal-dir-left" data-cal-action="dislike" aria-label="Dislike (A or left arrow)">
+          <span class="material-icons-round">keyboard_arrow_left</span>
+          <span class="taste-cal-dir-face"><span class="material-icons-round">thumb_down</span><strong>Dislike</strong></span>
+          <kbd>A / ←</kbd>
+        </button>
+        <div class="taste-cal-poster" data-cal-swipe>
+          ${item.poster_path ? `<img src="${imgUrl(item.poster_path, 'w500')}" alt="${esc(title)} poster">` : `<span class="material-icons-round">movie</span>`}
+        </div>
+        <button type="button" class="taste-cal-dir taste-cal-dir-right" data-cal-action="like" aria-label="Like (D or right arrow)">
+          <span class="material-icons-round">keyboard_arrow_right</span>
+          <span class="taste-cal-dir-face"><span class="material-icons-round">thumb_up</span><strong>Like</strong></span>
+          <kbd>D / →</kbd>
+        </button>
+      </div>
+      <button type="button" class="taste-cal-dir taste-cal-dir-down" data-cal-action="skip" aria-label="Skip (S or down arrow)">
+        <span class="taste-cal-dir-face"><span class="material-icons-round">skip_next</span><strong>Skip</strong></span>
+        <span class="material-icons-round">keyboard_arrow_down</span>
+        <kbd>S / ↓</kbd>
       </button>
       <div class="taste-cal-copy">
         <div class="taste-cal-kicker">${typeOf(item) === 'tv' ? 'TV show' : 'Movie'}${year ? ` | ${year}` : ''}${item.vote_average ? ` | ${item.vote_average.toFixed(1)} rating` : ''}</div>
@@ -160,12 +187,45 @@ function renderCard(direction = '') {
     </article>`;
 }
 
+let _shellAnchor = null;
 export function openTasteCalibration() {
   const shell = document.getElementById('taste-calibration-shell');
   if (!shell) return;
   shell.hidden = false;
-  shell.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  // Calibration is a full-screen focus mode, not a strip inside the
+  // Library — the shell lifts into a fixed stage until closed. It must
+  // ALSO leave its home tab: a display:none ancestor hides fixed elements.
+  if (shell.parentElement !== document.body) {
+    _shellAnchor = document.createComment('taste-cal-anchor');
+    shell.parentElement.insertBefore(_shellAnchor, shell);
+    document.body.appendChild(shell);
+  }
+  shell.classList.add('cal-fullscreen');
+  document.body.classList.add('cal-open');
+  if (!shell.querySelector('.taste-cal-exit')) {
+    const exit = document.createElement('button');
+    exit.type = 'button';
+    exit.className = 'taste-cal-exit';
+    exit.setAttribute('aria-label', 'Close taste calibration');
+    exit.innerHTML = '<span class="material-icons-round">close</span>';
+    exit.addEventListener('click', closeTasteCalibration);
+    shell.prepend(exit);
+  }
   if (!_pool.length) loadPool(); else renderCard();
+}
+
+export function closeTasteCalibration() {
+  const shell = document.getElementById('taste-calibration-shell');
+  if (!shell) return;
+  shell.classList.remove('cal-fullscreen');
+  document.body.classList.remove('cal-open');
+  shell.hidden = true;
+  // Return the shell to its home spot inside the Library tab
+  if (_shellAnchor?.parentElement) {
+    _shellAnchor.parentElement.insertBefore(shell, _shellAnchor);
+    _shellAnchor.remove();
+    _shellAnchor = null;
+  }
 }
 
 export function initTasteCalibration({ openInfo }) {
@@ -181,10 +241,34 @@ export function initTasteCalibration({ openInfo }) {
   document.addEventListener('keydown', event => {
     const shell = document.getElementById('taste-calibration-shell');
     if (!shell || shell.hidden || event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
+    if (event.key === 'Escape' && shell.classList.contains('cal-fullscreen')) {
+      event.preventDefault();
+      closeTasteCalibration();
+      return;
+    }
     const map = { w: 'love', ArrowUp: 'love', d: 'like', ArrowRight: 'like', a: 'dislike', ArrowLeft: 'dislike', s: 'skip', ArrowDown: 'skip' };
     const action = map[event.key] || map[event.key.toLowerCase?.()];
     if (!action) return;
     event.preventDefault();
+    react(action);
+  });
+
+  // Touch swipe on the poster — supplementary; buttons and keys stay primary
+  let _swipe = null;
+  document.addEventListener('pointerdown', event => {
+    const zone = event.target.closest('[data-cal-swipe]');
+    if (!zone) return;
+    _swipe = { x: event.clientX, y: event.clientY };
+  });
+  document.addEventListener('pointerup', event => {
+    if (!_swipe) return;
+    const dx = event.clientX - _swipe.x;
+    const dy = event.clientY - _swipe.y;
+    _swipe = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 60) return;
+    const action = Math.abs(dx) > Math.abs(dy)
+      ? (dx > 0 ? 'like' : 'dislike')
+      : (dy < 0 ? 'love' : 'skip');
     react(action);
   });
 }

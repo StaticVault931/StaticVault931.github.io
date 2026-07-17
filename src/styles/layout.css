@@ -1639,7 +1639,11 @@
 }
 .pref-tag-remove:hover { opacity: 1; }
 .pref-tag-remove .material-icons-round { font-size: .72rem; }
-.pref-genres-wrap { display: flex; flex-wrap: wrap; gap: .5rem; }
+/* Even grid: 18 genres land as perfect 3-across rows (2 on narrow), so
+   the card never ends on a ragged line */
+.pref-genres-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; align-content: start; }
+.pref-genres-wrap .genre-chip { justify-content: center; }
+@media (max-width: 520px) { .pref-genres-wrap { grid-template-columns: repeat(2, 1fr); } }
 /* Bigger genre chips in CYF */
 #pref-genres .genre-chip {
   padding: .52rem 1rem !important;

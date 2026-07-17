@@ -232,7 +232,7 @@ const SV_SETTINGS = [
   { id: 'dimImages',         label: 'Dim Images',             desc: 'Slightly darken posters and backgrounds to reduce glare',     default: false, icon: 'brightness_medium', group: 'Accessibility', keywords: 'dim dark glare brightness images photosensitive' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
-  { id: 'superSearch',       label: 'Super Search',           desc: 'Use Ctrl+F or Cmd+F to find titles, descriptions, and controls on the current screen', default: false, icon: 'pageview', group: 'Content', keywords: 'control ctrl command cmd f find current page screen local search' },
+  { id: 'superSearch',       label: 'Super Search',           desc: 'Use Ctrl+F or Cmd+F to find titles, descriptions, and controls on the current screen', default: true, icon: 'pageview', group: 'Content', keywords: 'control ctrl command cmd f find current page screen local search' },
   { id: 'featureTips',       label: 'Feature Tips',           desc: 'Occasional tip rows on Home that point out features you haven\'t tried yet', default: true, icon: 'tips_and_updates', group: 'Content', keywords: 'tips hints suggestions discover features banner' },
   { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
   // Language (UI text only — content audio is whatever providers have)
@@ -2502,13 +2502,17 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // If the fetch can't reach 10 unique titles, hide the row instead.
       const toRender = [...deduped];
       const have = new Set(toRender.map(m => m.id));
-      const backfill = pool => pool.forEach(m => {
-        if (m?.id && !have.has(m.id) && !_homeItemSeen(m) && toRender.length < _ROW_MAX) { have.add(m.id); toRender.push(m); }
+      const backfill = (pool, allowSeen = false) => pool.forEach(m => {
+        if (m?.id && !have.has(m.id) && (allowSeen || !_homeItemSeen(m)) && toRender.length < _ROW_MAX) { have.add(m.id); toRender.push(m); }
       });
       if (toRender.length < 10) backfill(impressionFiltered);
       if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)));
-      if (toRender.length < 10) {
-        console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<10) — hiding section`);
+      // LAST RESORT: cross-row duplicates beat a missing row. The global
+      // claim was starving late rows — 20+ selected rows were dying at
+      // "<10 unique" because popular feeds overlap so heavily.
+      if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)), true);
+      if (toRender.length < 6) {
+        console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<6) — hiding section`);
         recordRowStat('hiddenThin', rowId);
         if (sec) sec.style.display = 'none';
         else { const r = document.getElementById(rowId); if (r) r.innerHTML = ''; }
@@ -2989,6 +2993,10 @@ function _getRowSelection() {
   // Preferred-language country rows get a strong boost
   const LANG_COUNTRY = { ja: 'row-trend-jp', ko: 'row-trend-kr', hi: 'row-trend-in', fr: 'row-trend-fr', de: 'row-trend-de', pt: 'row-trend-br', es: 'row-trend-es', it: 'row-trend-it' };
   (state.prefLangs || []).forEach(l => { if (LANG_COUNTRY[l]) extras.push({ id: LANG_COUNTRY[l], kind: 'country', priority: 60, tags: ['trending'] }); });
+  // Extra discovery rows (commit 119) — low-overlap sources defined in
+  // _loadHomeRowsFresh; sections are created on demand when selected
+  ['row-mind-benders', 'row-feel-good', 'row-true-stories', 'row-docs-picks', 'row-quick-watch']
+    .forEach(id => extras.push({ id, kind: 'std', priority: 58 }));
 
   _rowSelection = selectRowsForToday({
     page: 'home',
@@ -3366,6 +3374,11 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     ...extra,
   });
   const rng = state._randomPage || 1;
+  // Per-row page spread: every row used to fetch the SAME page of largely
+  // overlapping feeds, so the global title claim starved late rows down to
+  // 0-8 unique items and they hid. A deterministic per-row offset makes
+  // each row draw from different depths of the catalog.
+  const rp = id => 1 + ((rng - 1 + [...id].reduce((a, c) => a + c.charCodeAt(0), 0)) % 5);
   const animeQ = `query{Page(page:${rng},perPage:16){media(type:ANIME,sort:[TRENDING_DESC],isAdult:false){id title{romaji english}coverImage{large}averageScore popularity startDate{year}}}}`;
 
   if (showSkeletons) _resetHomeSeen();
@@ -3433,8 +3446,8 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       return { id:'row-new', sec:'sec-new', type:'movie',
         fn: () => tmdb(showUpcoming ? '/movie/upcoming' : '/movie/now_playing', { page: showUpcoming ? 1 : rng }).then(d => d.results || []) };
     })(),
-    { id:'row-toprated',  sec:'sec-toprated',  type:'movie', fn:() => tmdb('/movie/top_rated',  { page: rng }).then(d => d.results || []) },
-    { id:'row-tv-pop',    sec:'sec-tv-pop',    type:'tv',    fn:() => tmdb('/tv/popular',        { page: rng }).then(d => d.results || []) },
+    { id:'row-toprated',  sec:'sec-toprated',  type:'movie', fn:() => tmdb('/movie/top_rated',  { page: rp('row-toprated') }).then(d => d.results || []) },
+    { id:'row-tv-pop',    sec:'sec-tv-pop',    type:'tv',    fn:() => tmdb('/tv/popular',        { page: rp('row-tv-pop') }).then(d => d.results || []) },
     { id:'row-airing',    sec:'sec-airing',    type:'tv',    fn:() => tmdb('/tv/airing_today').then(d => d.results || []) },
     { id:'row-action',    sec:'sec-action',    type:'movie', fn:() => tmdb('/discover/movie', gOpts(28)).then(d => d.results || []) },
     { id:'row-comedy',    sec:'sec-comedy',    type:'movie', fn:() => tmdb('/discover/movie', gOpts(35)).then(d => d.results || []) },
@@ -3443,26 +3456,26 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     { id:'row-scifi',     sec:'sec-scifi',     type:'movie', fn:() => tmdb('/discover/movie', gOpts(878)).then(d => d.results || []) },
     { id:'row-animated',  sec:'sec-animated',  type:'movie', fn:() => tmdb('/discover/movie', gOpts(16)).then(d => d.results || []) },
     { id:'row-home-anime',sec:'sec-home-anime',type:'anime', fn:() => aniQuery(animeQ).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
-    { id:'row-romance',   sec:'sec-romance',   type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
-    { id:'row-kdrama',    sec:'sec-kdrama',    type:'tv',    fn:() => tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
-    { id:'row-thriller-tv',sec:'sec-thriller-tv',type:'tv', fn:() => tmdb('/discover/tv', { with_genres:'9648', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
-    { id:'row-2020s',     sec:'sec-2020s',     type:'movie', fn:() => tmdb('/discover/movie', { primary_release_date_gte:'2020-01-01', sort_by:'vote_average.desc','vote_count.gte':300, page: rng }).then(d => d.results || []) },
+    { id:'row-romance',   sec:'sec-romance',   type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10749', sort_by:'popularity.desc','vote_count.gte':100, page: rp('row-romance') }).then(d => d.results || []) },
+    { id:'row-kdrama',    sec:'sec-kdrama',    type:'tv',    fn:() => tmdb('/discover/tv', { with_original_language:'ko', sort_by:'popularity.desc', page: rp('row-kdrama') }).then(d => d.results || []) },
+    { id:'row-thriller-tv',sec:'sec-thriller-tv',type:'tv', fn:() => tmdb('/discover/tv', { with_genres:'9648', sort_by:'popularity.desc', page: rp('row-thriller-tv') }).then(d => d.results || []) },
+    { id:'row-2020s',     sec:'sec-2020s',     type:'movie', fn:() => tmdb('/discover/movie', { primary_release_date_gte:'2020-01-01', sort_by:'vote_average.desc','vote_count.gte':300, page: rp('row-2020s') }).then(d => d.results || []) },
     { id:'row-classics',  sec:'sec-classics',  type:'movie', fn:() => tmdb('/discover/movie', { primary_release_date_lte:'1995-12-31', sort_by:'vote_average.desc','vote_count.gte':500 }).then(d => d.results || []) },
-    { id:'row-family',    sec:'sec-family',    type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10751', sort_by:'popularity.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
-    { id:'row-crime-tv',  sec:'sec-crime-tv',  type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'80', sort_by:'vote_average.desc','vote_count.gte':100, page: rng }).then(d => d.results || []) },
-    { id:'row-comedy-tv', sec:'sec-comedy-tv', type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'35', sort_by:'popularity.desc', page: rng }).then(d => d.results || []) },
+    { id:'row-family',    sec:'sec-family',    type:'movie', fn:() => tmdb('/discover/movie', { with_genres:'10751', sort_by:'popularity.desc','vote_count.gte':100, page: rp('row-family') }).then(d => d.results || []) },
+    { id:'row-crime-tv',  sec:'sec-crime-tv',  type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'80', sort_by:'vote_average.desc','vote_count.gte':100, page: rp('row-crime-tv') }).then(d => d.results || []) },
+    { id:'row-comedy-tv', sec:'sec-comedy-tv', type:'tv',    fn:() => tmdb('/discover/tv', { with_genres:'35', sort_by:'popularity.desc', page: rp('row-comedy-tv') }).then(d => d.results || []) },
     { id:'row-anime-home2',sec:'sec-anime-home2',type:'anime',fn:() => aniQuery(`query($g:String){Page(perPage:14){media(type:ANIME,sort:[POPULARITY_DESC],isAdult:false,genre:$g){id title{romaji english}coverImage{large}bannerImage averageScore popularity episodes status startDate{year}description(asHtml:false)}}}`, { g: ['Romance','Sports','Isekai','Fantasy','Comedy'][rng % 5] }).then(d => (d?.data?.Page?.media || []).map(normalizeAnime)) },
     // Country / Region trending rows — one picked randomly per session
-    { id:'row-trend-jp', sec:'sec-trend-jp', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ja', region:'JP', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-kr', sec:'sec-trend-kr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ko', region:'KR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-gb', sec:'sec-trend-gb', type:null, fn:() => tmdb('/discover/movie', { region:'GB', sort_by:'popularity.desc', 'vote_count.gte':100, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-in', sec:'sec-trend-in', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'hi', region:'IN', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-fr', sec:'sec-trend-fr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'fr', region:'FR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-de', sec:'sec-trend-de', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'de', region:'DE', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-br', sec:'sec-trend-br', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'pt', region:'BR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-es', sec:'sec-trend-es', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'ES', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-mx', sec:'sec-trend-mx', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'MX', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
-    { id:'row-trend-it', sec:'sec-trend-it', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'it', region:'IT', sort_by:'popularity.desc', 'vote_count.gte':50, page: rng }).then(d => d.results||[]) },
+    { id:'row-trend-jp', sec:'sec-trend-jp', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ja', region:'JP', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-jp') }).then(d => d.results||[]) },
+    { id:'row-trend-kr', sec:'sec-trend-kr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'ko', region:'KR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-kr') }).then(d => d.results||[]) },
+    { id:'row-trend-gb', sec:'sec-trend-gb', type:null, fn:() => tmdb('/discover/movie', { region:'GB', sort_by:'popularity.desc', 'vote_count.gte':100, page: rp('row-trend-gb') }).then(d => d.results||[]) },
+    { id:'row-trend-in', sec:'sec-trend-in', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'hi', region:'IN', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-in') }).then(d => d.results||[]) },
+    { id:'row-trend-fr', sec:'sec-trend-fr', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'fr', region:'FR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-fr') }).then(d => d.results||[]) },
+    { id:'row-trend-de', sec:'sec-trend-de', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'de', region:'DE', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-de') }).then(d => d.results||[]) },
+    { id:'row-trend-br', sec:'sec-trend-br', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'pt', region:'BR', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-br') }).then(d => d.results||[]) },
+    { id:'row-trend-es', sec:'sec-trend-es', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'ES', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-es') }).then(d => d.results||[]) },
+    { id:'row-trend-mx', sec:'sec-trend-mx', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'es', region:'MX', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-mx') }).then(d => d.results||[]) },
+    { id:'row-trend-it', sec:'sec-trend-it', type:null, fn:() => tmdb('/discover/movie', { with_original_language:'it', region:'IT', sort_by:'popularity.desc', 'vote_count.gte':50, page: rp('row-trend-it') }).then(d => d.results||[]) },
     // Top lists
     { id:'row-imdb250',    sec:'sec-imdb250',    type:'movie', fn:() => tmdb('/movie/top_rated', { 'vote_count.gte':1000, page:1 }).then(d => d.results||[]) },
     { id:'row-best-tv-ever',sec:'sec-best-tv-ever',type:'tv', fn:() => tmdb('/tv/top_rated',    { 'vote_count.gte':500,  page:1 }).then(d => d.results||[]) },
@@ -3529,6 +3542,46 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Each row observes itself — visible ones load first, others load as you scroll
   effectiveRowDefs.forEach(r => _scheduleRowLoad(r.id, r.sec, r.fn, r.type));
+
+  // ── EXTRA DISCOVERY ROWS (commit 119) ─────────────────────────────
+  // Deliberately low-overlap sources (keywords, runtime, acclaim floors)
+  // so they survive the global dedupe with unique titles. Sections are
+  // created on demand; the selector decides whether each shows today.
+  // Skipped in Kid-Guided Mode (they are not certification-capped).
+  if (!getSetting('kidsMode')) {
+    const EXTRA_DISCOVERY_ROWS = [
+      { id: 'row-mind-benders', sec: 'sec-mind-benders', title: 'Mind-Benders', icon: 'psychology', type: 'movie',
+        fn: () => tmdb('/discover/movie', { with_genres: '878|9648', sort_by: 'vote_average.desc', 'vote_count.gte': 800, page: rp('row-mind-benders') }).then(d => d.results || []) },
+      { id: 'row-feel-good', sec: 'sec-feel-good', title: 'Feel-Good Watches', icon: 'sentiment_satisfied', type: 'movie',
+        fn: () => tmdb('/discover/movie', { with_genres: '35', without_genres: '27|53|80', sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: rp('row-feel-good') }).then(d => d.results || []) },
+      { id: 'row-true-stories', sec: 'sec-true-stories', title: 'Based on True Stories', icon: 'auto_stories', type: 'movie',
+        fn: () => tmdb('/discover/movie', { with_keywords: '9672', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rp('row-true-stories') }).then(d => d.results || []) },
+      { id: 'row-docs-picks', sec: 'sec-docs-picks', title: 'Documentaries Worth Your Time', icon: 'camera_roll', type: 'movie',
+        fn: () => tmdb('/discover/movie', { with_genres: '99', sort_by: 'vote_average.desc', 'vote_count.gte': 150, page: rp('row-docs-picks') }).then(d => d.results || []) },
+      { id: 'row-quick-watch', sec: 'sec-quick-watch', title: 'Under 100 Minutes', icon: 'timer', type: 'movie',
+        fn: () => tmdb('/discover/movie', { 'with_runtime.lte': 100, 'with_runtime.gte': 60, sort_by: 'vote_average.desc', 'vote_count.gte': 400, page: rp('row-quick-watch') }).then(d => d.results || []) },
+    ];
+    EXTRA_DISCOVERY_ROWS.forEach(r => {
+      if (!_rowSelected(r.id)) return;
+      let sec = document.getElementById(r.sec);
+      if (!sec) {
+        sec = document.createElement('div');
+        sec.className = 'section';
+        sec.id = r.sec;
+        sec.innerHTML = `
+          <div class="sec-header">
+            <h2 class="sec-title"><span class="material-icons-round sec-icon">${r.icon}</span>${r.title}</h2>
+          </div>
+          <div class="row-wrap">
+            <div class="row-arrow row-arrow-l hidden"><button data-scroll-row="${r.id}" data-scroll-dir="-1" aria-label="Scroll left"><span class="material-icons-round">chevron_left</span></button></div>
+            <div class="card-row" id="${r.id}"></div>
+            <div class="row-arrow row-arrow-r"><button data-scroll-row="${r.id}" data-scroll-dir="1" aria-label="Scroll right"><span class="material-icons-round">chevron_right</span></button></div>
+          </div>`;
+        document.getElementById('page-home')?.appendChild(sec);
+      }
+      _scheduleRowLoad(r.id, r.sec, r.fn, r.type);
+    });
+  }
 
   // Seasonal rows — the calendar windows cover the whole year
   _loadHolidayRows();
@@ -11238,14 +11291,14 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
           <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
         </button>
+        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while">
+          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
+        </button>
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
           <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
           <span class="material-icons-round">thumb_down_off_alt</span>
-        </button>
-        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while">
-          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
       </div>
     </div>`;
@@ -11860,7 +11913,9 @@ function initKeyboard() {
       window.scrollBy({ top: window.innerHeight * 0.6, behavior: 'smooth' });
     } else if (e.key === 'w' || e.key === 'W') {
       window.scrollBy({ top: -window.innerHeight * 0.6, behavior: 'smooth' });
-    } else if (e.key === 'f' || e.key === 'F') {
+    } else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {
+      // Bare F = the search page. Ctrl/Cmd+F belongs to Super Search (or
+      // the browser's find when that setting is off) — never both.
       goPage('search');
       setTimeout(() => document.getElementById('search-input')?.focus(), 100);
     } else if (e.key === 'r' || e.key === 'R') {
