@@ -177,6 +177,7 @@
 .card-like-btn .material-icons-round,
 .card-wl-btn .material-icons-round { font-size: .88rem; }
 .card-like-btn:hover, .card-like-btn.liked { background: rgba(229,9,20,.3); color: var(--red); border-color: rgba(229,9,20,.5); }
+.card-like-btn.loved, .trailer-icon-btn.loved { background: var(--red); color: #fff; border-color: var(--red); }
 .card-wl-btn:hover, .card-wl-btn.saved  { background: rgba(245,197,24,.2); color: var(--gold); border-color: rgba(245,197,24,.4); }
 
 /* Type pill */
@@ -756,6 +757,7 @@
 #info-action-watch.ma.primary .material-icons-round { font-size: 1.2rem; }
 .ma.saved    { background: rgba(245,197,24,.15); border-color: rgba(245,197,24,.3); color: var(--gold); }
 .ma.liked    { background: rgba(229,9,20,.15);   border-color: rgba(229,9,20,.3);   color: #f87171; }
+.ma.loved    { background: var(--red); border-color: var(--red); color: #fff; }
 .ma.watched  { background: rgba(34,197,94,.12);  border-color: rgba(34,197,94,.3);  color: #4ade80; }
 .ma .material-icons-round { font-size: .9rem; }
 
@@ -3447,11 +3449,11 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 .super-search-overlay {
   position: fixed; inset: 0; z-index: 10050; display: none;
   align-items: flex-start; justify-content: center; padding: min(12vh, 7rem) 1rem 1rem;
-  background: rgba(0,0,0,.72); backdrop-filter: blur(10px);
+  background: rgba(0,0,0,.18);
 }
 .super-search-overlay.open { display: flex; }
 .super-search-panel {
-  width: min(720px, 100%); max-height: min(72vh, 720px); overflow: hidden;
+  width: min(620px, 100%); max-height: min(58vh, 560px); overflow: hidden;
   border: 1px solid var(--border3); border-radius: 8px; background: var(--s1);
   box-shadow: 0 28px 80px rgba(0,0,0,.65); display: flex; flex-direction: column;
 }
@@ -3567,17 +3569,8 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 @keyframes ssPanelIn { from { opacity: 0; transform: translateY(-16px) scale(.97); } }
 /* Teleport spotlight: everything dims for a beat while the found item
    pops above the veil with a pulsing ring */
-body.super-search-dim::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 8990;
-  background: rgba(0,0,0,.6);
-  pointer-events: none;
-  animation: ssDim 1.2s var(--ease) both;
-}
-@keyframes ssDim { from { opacity: 0; } 25% { opacity: 1; } 75% { opacity: 1; } to { opacity: 0; } }
-.super-search-target { position: relative; z-index: 8995; }
+body.super-search-dim::after { display: none; }
+.super-search-target { position: relative; }
 @media (prefers-reduced-motion: reduce) {
   .super-search-overlay.open .super-search-panel { animation: none; }
   body.super-search-dim::after { display: none; }
@@ -3598,7 +3591,7 @@ body.cal-open { overflow: hidden; }
 .taste-cal-exit {
   position: fixed;
   top: 1rem;
-  right: 1.1rem;
+  left: 1.1rem;
   z-index: 5;
   width: 44px;
   height: 44px;
@@ -3612,6 +3605,23 @@ body.cal-open { overflow: hidden; }
   backdrop-filter: blur(8px);
   transition: background .18s, transform .18s;
 }
+
+.year-recap-preview { position: fixed; inset: 0; z-index: 11000; display: grid; place-items: center; padding: 1rem; background: rgba(0,0,0,.78); }
+.year-recap-panel { position: relative; width: min(760px,100%); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: clamp(1.2rem,4vw,2.5rem); border: 1px solid var(--border3); border-radius: 8px; background: var(--s1); }
+.year-recap-close { position: absolute; top: .8rem; right: .8rem; width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--border2); border-radius: 50%; background: var(--s2); color: var(--text); cursor: pointer; }
+.year-recap-kicker { color: var(--red); font-size: .7rem; font-weight: 900; text-transform: uppercase; }
+.year-recap-panel h2 { margin-top: .45rem; font-size: clamp(1.7rem,4vw,2.6rem); }
+.year-recap-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin: 1.4rem 0; border-block: 1px solid var(--border2); }
+.year-recap-grid > div { padding: 1rem; border-right: 1px solid var(--border2); }
+.year-recap-grid > div:last-child { border-right: 0; }
+.year-recap-grid strong, .year-recap-grid span { display: block; }
+.year-recap-grid strong { font-size: 1.5rem; }
+.year-recap-grid span, .year-recap-foot { color: var(--muted); font-size: .7rem; }
+.year-recap-notes { display: grid; gap: .6rem; }
+.year-recap-notes p { display: flex; align-items: center; gap: .55rem; padding: .7rem; background: var(--s2); border-radius: 6px; font-size: .78rem; }
+.year-recap-notes .material-icons-round { color: var(--red); }
+.year-recap-foot { margin-top: 1rem; line-height: 1.5; }
+@media (max-width: 620px) { .year-recap-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .year-recap-grid > div:nth-child(2) { border-right: 0; } }
 .taste-cal-exit:hover { background: var(--red); transform: rotate(90deg); }
 
 /* The stage: poster centered, one live control per compass direction */

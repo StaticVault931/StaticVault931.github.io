@@ -21,7 +21,7 @@
    Everything is local-only; included in Export All Data; cleared with the
    profile. Writes are batched (800ms) to avoid localStorage thrash.      */
 
-const V = 2;
+const V = 3;
 const MAX_TITLES = 500;
 const MAX_DAYS = 400;
 
@@ -37,7 +37,7 @@ let _saveT = null;
 function _blank() {
   return {
     v: V, firstUse: Date.now(),
-    life: { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0, genres: {}, types: {}, titles: {}, hours: {}, days: {} },
+    life: _aggregate(),
     daily: {}, yearly: {},
   };
 }
@@ -50,7 +50,9 @@ function _aggregate() {
     langs: {},        // { iso639: watchMs }
     providers: {},    // { providerId: plays }
     actors: {},       // { personId: { ms, name } } capped at 200
-    signals: { likeGenres: {}, likeLangs: {}, saveGenres: {} },
+    signals: { likeGenres: {}, loveGenres: {}, likeLangs: {}, loveLangs: {}, saveGenres: {}, skipGenres: {} },
+    calibration: { shown: 0, love: 0, like: 0, dislike: 0, skip: 0, info: 0 },
+    clips: { views: 0, watchMs: 0, knownDurationMs: 0, completed: 0, quickSkips: 0, likes: 0, loves: 0, dislikes: 0 },
   };
 }
 
@@ -60,6 +62,8 @@ function _normalize(st) {
     const base = _aggregate();
     const value = { ...base, ...(raw || {}) };
     value.signals = { ...base.signals, ...(raw?.signals || {}) };
+    value.calibration = { ...base.calibration, ...(raw?.calibration || {}) };
+    value.clips = { ...base.clips, ...(raw?.clips || {}) };
     return value;
   };
   const previousVersion = Number(st.v) || 1;
@@ -119,7 +123,7 @@ function _bumpTitle(agg, item, ms = 0, play = false) {
 function _day(st) {
   const d = new Date().toISOString().slice(0, 10);
   if (!st.daily[d]) {
-    st.daily[d] = { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0 };
+    st.daily[d] = { watchMs: 0, plays: 0, searches: 0, clipViews: 0, pageViews: 0, clipWatchMs: 0, calibrationActions: 0 };
     // prune oldest days beyond the window
     const keys = Object.keys(st.daily).sort();
     while (keys.length > MAX_DAYS) delete st.daily[keys.shift()];
@@ -217,6 +221,41 @@ export function recordSearchStat() { _recordCounter('searches'); }
 export function recordClipView()   { _recordCounter('clipViews'); }
 export function recordPageView()   { _recordCounter('pageViews'); }
 
+export function recordCalibrationAction(action, item = {}) {
+  if (!['shown', 'love', 'like', 'dislike', 'skip', 'info'].includes(action)) return;
+  const st = _load();
+  for (const agg of [st.life, _year(st)]) {
+    agg.calibration ||= _aggregate().calibration;
+    agg.calibration[action] = (agg.calibration[action] || 0) + 1;
+  }
+  if (action !== 'shown') _day(st).calibrationActions = (_day(st).calibrationActions || 0) + 1;
+  if (action !== 'shown') _bumpTitle(st.life, item);
+  _touch(st);
+  _save();
+}
+
+export function recordClipSession({ watchMs = 0, durationMs = 0, action = '' } = {}) {
+  watchMs = Math.max(0, Math.min(+watchMs || 0, 30 * 60000));
+  durationMs = Math.max(0, Math.min(+durationMs || 0, 30 * 60000));
+  if (watchMs < 500 && !action) return;
+  const st = _load();
+  for (const agg of [st.life, _year(st)]) {
+    agg.clips ||= _aggregate().clips;
+    if (watchMs >= 3000) agg.clips.views++;
+    agg.clips.watchMs += watchMs;
+    if (durationMs) agg.clips.knownDurationMs += durationMs;
+    if (durationMs && watchMs / durationMs >= 0.8) agg.clips.completed++;
+    if (watchMs > 0 && watchMs < 1500) agg.clips.quickSkips++;
+    if (action === 'like') agg.clips.likes++;
+    if (action === 'love') agg.clips.loves++;
+    if (action === 'dislike') agg.clips.dislikes++;
+  }
+  const day = _day(st);
+  day.clipWatchMs = (day.clipWatchMs || 0) + watchMs;
+  _touch(st);
+  _save();
+}
+
 /* ── Readers ───────────────────────────────────────────────────────── */
 
 export function getStats() { return _load(); }
@@ -236,7 +275,6 @@ export function profileUsageSummary(profileId) {
 export function yearSummary(year = new Date().getFullYear()) {
   const st = _load();
   const days = Object.entries(st.daily).filter(([d]) => d.startsWith(String(year)));
-  const total = k => days.reduce((a, [, v]) => a + (v[k] || 0), 0);
   const yearly = st.yearly?.[String(year)] || _aggregate();
   const topTitles = Object.entries(yearly.titles)
     .sort((a, b) => b[1].ms - a[1].ms).slice(0, 10)
@@ -246,12 +284,19 @@ export function yearSummary(year = new Date().getFullYear()) {
     .map(([g, ms]) => ({ genreId: +g, hours: +(ms / 3600000).toFixed(1) }));
   return {
     year,
-    watchHours: +(total('watchMs') / 3600000).toFixed(1),
-    plays: total('plays'),
-    searches: total('searches'),
-    clipViews: total('clipViews'),
+    watchHours: +(yearly.watchMs / 3600000).toFixed(1),
+    plays: yearly.plays,
+    searches: yearly.searches,
+    clipViews: yearly.clipViews,
     activeDays: days.filter(([, v]) => v.watchMs > 0 || v.plays > 0).length,
     topTitles, topGenres,
+    calibration: { ...yearly.calibration },
+    clips: {
+      ...yearly.clips,
+      watchMinutes: +(yearly.clips.watchMs / 60000).toFixed(1),
+      averageSeconds: yearly.clips.views ? +(yearly.clips.watchMs / yearly.clips.views / 1000).toFixed(1) : 0,
+      completionRate: yearly.clips.knownDurationMs ? Math.min(100, Math.round(yearly.clips.watchMs / yearly.clips.knownDurationMs * 100)) : 0,
+    },
     topTypes: Object.entries(yearly.types).sort((a, b) => b[1] - a[1])
       .map(([type, ms]) => ({ type, hours: +(ms / 3600000).toFixed(1) })),
     peakHour: Object.entries(yearly.hours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
@@ -271,6 +316,13 @@ export function lifetimeSummary() {
     searches: L.searches,
     clipViews: L.clipViews,
     pageViews: L.pageViews,
+    calibration: { ...L.calibration },
+    clips: {
+      ...L.clips,
+      watchMinutes: +(L.clips.watchMs / 60000).toFixed(1),
+      averageSeconds: L.clips.views ? +(L.clips.watchMs / L.clips.views / 1000).toFixed(1) : 0,
+      completionRate: L.clips.knownDurationMs ? Math.min(100, Math.round(L.clips.watchMs / L.clips.knownDurationMs * 100)) : 0,
+    },
     activeDays: Object.values(st.daily).filter(v => v.watchMs || v.plays || v.searches || v.clipViews || v.pageViews).length,
   };
 }
@@ -279,13 +331,19 @@ export function lifetimeSummary() {
    "favorite" beyond raw watch time */
 export function recordTasteSignal(kind, item = {}) {
   const st = _load();
-  const sig = st.life.signals || (st.life.signals = { likeGenres: {}, likeLangs: {}, saveGenres: {} });
   const bump = (map, key) => { if (key !== undefined && key !== null && key !== '') map[key] = (map[key] || 0) + 1; };
-  if (kind === 'like') {
-    (item.genre_ids || []).forEach(g => bump(sig.likeGenres, g));
-    bump(sig.likeLangs, item.lang);
-  } else if (kind === 'save') {
-    (item.genre_ids || []).forEach(g => bump(sig.saveGenres, g));
+  for (const agg of [st.life, _year(st)]) {
+    const sig = agg.signals || (agg.signals = _aggregate().signals);
+    if (kind === 'like' || kind === 'love') {
+      const genreMap = kind === 'love' ? sig.loveGenres : sig.likeGenres;
+      const langMap = kind === 'love' ? sig.loveLangs : sig.likeLangs;
+      (item.genre_ids || []).forEach(g => bump(genreMap, g));
+      bump(langMap, item.lang || item.original_language);
+    } else if (kind === 'save') {
+      (item.genre_ids || []).forEach(g => bump(sig.saveGenres, g));
+    } else if (kind === 'skip') {
+      (item.genre_ids || []).forEach(g => bump(sig.skipGenres, g));
+    }
   }
   _touch(st);
   _save();
@@ -303,7 +361,9 @@ export function getFavorites(limit = 5) {
   const genreScore = {};
   Object.entries(L.genres || {}).forEach(([g, ms]) => { genreScore[g] = (genreScore[g] || 0) + ms / 3600000; });
   Object.entries(sig.likeGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) + n * 0.75; });
+  Object.entries(sig.loveGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) + n * 1.5; });
   Object.entries(sig.saveGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) + n * 0.4; });
+  Object.entries(sig.skipGenres || {}).forEach(([g, n]) => { genreScore[g] = (genreScore[g] || 0) - Math.min(2, n * 0.12); });
   return {
     genres: Object.entries(genreScore).sort((a, b) => b[1] - a[1]).slice(0, limit)
       .map(([g, score]) => ({ genreId: +g, score: +score.toFixed(2) })),

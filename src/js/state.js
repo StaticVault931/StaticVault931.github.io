@@ -58,6 +58,7 @@ export const state = {
   // Persisted user data
   watchlist:        load('sv_watchlist', []),
   liked:            load('sv_liked', []),
+  loved:            load('sv_loved', []),
   disliked:         load('sv_disliked', []),
   watched:          load('sv_watched', []),        // [{id,type,title,poster_path}]
   impressions:      load('sv_impressions', {}),    // {id: {count, lastSeen}}
@@ -74,6 +75,7 @@ export const state = {
   prefTagLikes:    load('sv_pref_tag_likes', []),    // [{id,name}] — liked TMDB keywords
   prefTagDislikes: load('sv_pref_tag_dislikes', []), // [{id,name}] — disliked TMDB keywords
   prefLangs:       load('sv_pref_langs', []),        // [iso639] — preferred audio/content languages ('en','fr',…)
+  tasteSkips:      load('sv_taste_skips', {}),
   lastProvider: load('sv_last_provider', 'vidsrc'),
 
   // Per-account settings
@@ -93,6 +95,7 @@ export const state = {
 const PERSIST_MAP = {
   watchlist:        'sv_watchlist',
   liked:            'sv_liked',
+  loved:            'sv_loved',
   disliked:         'sv_disliked',
   watched:          'sv_watched',
   impressions:      'sv_impressions',
@@ -107,6 +110,7 @@ const PERSIST_MAP = {
   prefTagLikes:       'sv_pref_tag_likes',
   prefTagDislikes:    'sv_pref_tag_dislikes',
   prefLangs:          'sv_pref_langs',
+  tasteSkips:         'sv_taste_skips',
   lastProvider:       'sv_last_provider',
   disabledShortcuts:    'sv_disabled_shortcuts',
 };
@@ -127,7 +131,7 @@ export function cleanMediaArray(arr) {
 
 // Run cleanup on loaded state to remove any corrupt entries
 export function cleanState() {
-  const lists = ['watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed', 'prefLikes', 'prefDislikes'];
+  const lists = ['watchlist', 'liked', 'loved', 'disliked', 'watched', 'recentlyViewed', 'prefLikes', 'prefDislikes'];
   lists.forEach(key => {
     const before = state[key]?.length || 0;
     state[key] = cleanMediaArray(state[key]);
@@ -140,6 +144,18 @@ export function cleanState() {
     if (!entry || !isValidItem(entry)) { delete state.continueWatching[k]; cwChanged = true; }
   });
   if (cwChanged) persist('continueWatching');
+
+  // Love used to exist only as a prefLikes score. Preserve those signals.
+  const lovedKeys = new Set(state.loved.map(mediaKey));
+  let lovedChanged = false;
+  state.prefLikes.filter(item => Number(item.score) >= 2).forEach(item => {
+    const key = mediaKey(item);
+    if (lovedKeys.has(key)) return;
+    state.loved.push({ ...item, type: mediaType(item) });
+    lovedKeys.add(key);
+    lovedChanged = true;
+  });
+  if (lovedChanged) persist('loved');
 
   // The genre picker dropped Western/War & Politics (v118) and then War/
   // Soap (v119). Keep old profiles meaningful instead of leaving invisible
@@ -201,17 +217,101 @@ export function getContinue(id, type = null) {
 
 /* ── WATCHLIST / LIKED ───────────────────────────────────────────── */
 export function isLiked(id, type) { return state.liked.some(x => sameMedia(x, id, type)); }
+export function isLoved(id, type) { return state.loved.some(x => sameMedia(x, id, type)); }
 export function isInWatchlist(id, type) { return state.watchlist.some(x => sameMedia(x, id, type)); }
 export function isDisliked(id, type) { return state.disliked.some(x => sameMedia(x, id, type)); }
 
 export function toggleLike(item) {
   if (!isValidItem(item)) return false; // reject corrupt items
   const idx = state.liked.findIndex(x => mediaKey(x) === mediaKey(item));
-  if (idx >= 0) { state.liked.splice(idx, 1); persist('liked'); return false; }
+  if (idx >= 0) {
+    state.liked.splice(idx, 1);
+    state.loved = state.loved.filter(x => mediaKey(x) !== mediaKey(item));
+    persist('liked');
+    persist('loved');
+    return false;
+  }
   state.liked.push(item);
   persist('liked');
   recordTasteSignal('like', item); // behavioral favorites ledger
   return true;
+}
+
+export function getReaction(id, type) {
+  if (isLoved(id, type)) return 'love';
+  if (isLiked(id, type)) return 'like';
+  return 'none';
+}
+
+export function setReaction(item, reaction = 'none') {
+  if (!isValidItem(item)) return 'none';
+  const key = mediaKey(item);
+  const compact = { ...item, id: +item.id, type: mediaType(item), media_type: mediaType(item), title: item.title || item.name || '' };
+  const without = list => (list || []).filter(entry => mediaKey(entry) !== key);
+  state.liked = without(state.liked);
+  state.loved = without(state.loved);
+  state.disliked = without(state.disliked);
+  state.prefLikes = without(state.prefLikes);
+  state.prefDislikes = without(state.prefDislikes);
+  if (reaction !== 'none' && state.tasteSkips[key]) {
+    delete state.tasteSkips[key];
+    persist('tasteSkips');
+  }
+  if (reaction === 'like' || reaction === 'love') {
+    state.liked.unshift(compact);
+    if (reaction === 'love') state.loved.unshift(compact);
+    state.prefLikes.unshift({ ...compact, score: reaction === 'love' ? 2 : 1 });
+    recordTasteSignal(reaction, compact);
+  }
+  ['liked', 'loved', 'disliked', 'prefLikes', 'prefDislikes'].forEach(persist);
+  return reaction;
+}
+
+export function cycleReaction(item) {
+  const current = getReaction(item?.id, mediaType(item));
+  return setReaction(item, current === 'none' ? 'like' : current === 'like' ? 'love' : 'none');
+}
+
+export function recordTasteSkip(item) {
+  if (!isValidItem(item)) return;
+  const key = mediaKey(item);
+  const previous = state.tasteSkips[key] || {};
+  state.tasteSkips[key] = {
+    item: { id: +item.id, type: mediaType(item), title: item.title || item.name || '', genre_ids: item.genre_ids || [], original_language: item.original_language || item.lang || '' },
+    count: Math.min(20, (previous.count || 0) + 1),
+    lastAt: Date.now(),
+  };
+  const keys = Object.keys(state.tasteSkips);
+  if (keys.length > 300) {
+    keys.sort((a, b) => (state.tasteSkips[b]?.lastAt || 0) - (state.tasteSkips[a]?.lastAt || 0));
+    keys.slice(300).forEach(oldKey => delete state.tasteSkips[oldKey]);
+  }
+  persist('tasteSkips');
+  recordTasteSignal('skip', item);
+}
+
+export function getTasteScore(item) {
+  if (!item) return 0;
+  const genres = new Set((item.genre_ids || []).map(Number));
+  const key = mediaKey(item);
+  let score = 0;
+  (state.prefGenres || []).forEach(g => { if (genres.has(+g)) score += 0.9; });
+  (state.prefGenreDislikes || []).forEach(g => { if (genres.has(+g)) score -= 1.8; });
+  const signalGenres = (list, weight) => list.forEach(source => {
+    const overlap = (source.genre_ids || []).filter(g => genres.has(+g)).length;
+    score += Math.min(2, overlap) * weight;
+  });
+  signalGenres(state.loved || [], 0.45);
+  signalGenres((state.liked || []).filter(x => !isLoved(x.id, mediaType(x))), 0.18);
+  const now = Date.now();
+  Object.entries(state.tasteSkips || {}).forEach(([skipKey, rec]) => {
+    const ageDays = (now - (rec?.lastAt || 0)) / 86400000;
+    if (ageDays > 120) return;
+    const decay = Math.max(0, 1 - ageDays / 120);
+    if (skipKey === key) score -= 3 * decay;
+    else if ((rec?.item?.genre_ids || []).some(g => genres.has(+g))) score -= Math.min(0.45, (rec.count || 1) * 0.08) * decay;
+  });
+  return score;
 }
 
 export function toggleWatchlist(item) {
@@ -226,7 +326,14 @@ export function toggleWatchlist(item) {
 
 export function addDislike(item) {
   if (!isValidItem(item)) return; // reject corrupt items
-  if (!state.disliked.some(x => mediaKey(x) === mediaKey(item))) {
+  const key = mediaKey(item);
+  const without = list => (list || []).filter(entry => mediaKey(entry) !== key);
+  state.liked = without(state.liked);
+  state.loved = without(state.loved);
+  state.prefLikes = without(state.prefLikes);
+  delete state.tasteSkips[key];
+  ['liked', 'loved', 'prefLikes', 'tasteSkips'].forEach(persist);
+  if (!state.disliked.some(x => mediaKey(x) === key)) {
     state.disliked.push(item);
     persist('disliked');
   }
@@ -245,16 +352,30 @@ export function toggleWatched(item) {
 }
 
 /* ── IMPRESSIONS ─────────────────────────────────────────────────── */
-export function recordImpression(id) {
-  state.impressions[id] = (state.impressions[id] || 0) + 1;
-  // Persist in batches (every 5 impressions) to avoid thrashing localStorage
-  if (state.impressions[id] % 5 === 0) persist('impressions');
+let _impressionSaveTimer = null;
+export function recordImpression(id, type = 'movie') {
+  const key = `${type}:${+id}`;
+  const previous = state.impressions[key] ?? state.impressions[id] ?? 0;
+  const count = typeof previous === 'number' ? previous + 1 : (previous.count || 0) + 1;
+  state.impressions[key] = { count, lastSeen: Date.now() };
+  delete state.impressions[id];
+  clearTimeout(_impressionSaveTimer);
+  _impressionSaveTimer = setTimeout(() => persist('impressions'), 1000);
 }
 
-export function getImpressionPenalty(id) {
-  const count = state.impressions[id] || 0;
+export function getImpressionPenalty(item, type = 'movie') {
+  const id = typeof item === 'object' ? item.id : item;
+  const itemType = typeof item === 'object' ? mediaType(item) : type;
+  const record = state.impressions[`${itemType}:${+id}`] ?? state.impressions[id] ?? 0;
+  const count = typeof record === 'number' ? record : record.count || 0;
   // After 20 unseen impressions, penalize. Linear penalty up to -5 at 100 impressions.
   return Math.min(5, Math.max(0, (count - 20) / 16));
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (_impressionSaveTimer) persist('impressions');
+  });
 }
 
 /* ── TAG PREFERENCES ─────────────────────────────────────────────── */

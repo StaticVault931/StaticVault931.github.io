@@ -11,16 +11,17 @@ const MAX_PROFILES = 10;
 
 // Keys that belong to a profile (saved/loaded on switch)
 const PROFILE_STATE_KEYS = [
-  'watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed',
+  'watchlist', 'liked', 'loved', 'disliked', 'watched', 'recentlyViewed',
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
   'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'prefLangs',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
-  'disabledShortcuts', // per-profile shortcut overrides
+  'disabledShortcuts', 'tasteSkips', // per-profile shortcut overrides
 ];
 
 const PERSIST_MAP_KEYS = {
   watchlist:        'sv_watchlist',
   liked:            'sv_liked',
+  loved:            'sv_loved',
   disliked:         'sv_disliked',
   watched:          'sv_watched',
   recentlyViewed:   'sv_recent',
@@ -36,6 +37,7 @@ const PERSIST_MAP_KEYS = {
   lastProvider:     'sv_last_provider',
   impressions:      'sv_impressions',
   recentSearches:   'sv_recent_searches',
+  tasteSkips:       'sv_taste_skips',
 };
 
 /* ── PROFILE STORAGE ──────────────────────────────────────────────── */
@@ -79,6 +81,8 @@ export function deleteProfile(id) {
   saveProfiles(profiles);
   // Clean up profile data
   try { localStorage.removeItem(`sv_pd_${id}`); } catch {}
+  try { localStorage.removeItem(`sv_stats_v1_${id}`); } catch {}
+  try { localStorage.removeItem(`sv_clips_seen_v1_${id}`); } catch {}
 }
 
 /* ── SAVE / LOAD PROFILE DATA ─────────────────────────────────────── */
@@ -124,12 +128,12 @@ export function switchProfile(toId) {
     } else {
       // Default values for fresh profile
       const defaults = {
-        watchlist: [], liked: [], disliked: [], watched: [],
+        watchlist: [], liked: [], loved: [], disliked: [], watched: [],
         recentlyViewed: [], continueWatching: {},
         prefLikes: [], prefDislikes: [], prefGenres: [],
         prefGenreDislikes: [], prefTagLikes: [], prefTagDislikes: [], prefLangs: [],
         ageRating: 'PG-13', lastProvider: 'vidsrc',
-        impressions: {}, recentSearches: [],
+        impressions: {}, recentSearches: [], tasteSkips: {},
       };
       state[k] = defaults[k] ?? state[k];
     }

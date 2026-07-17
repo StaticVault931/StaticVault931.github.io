@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
@@ -22,7 +22,7 @@ import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfi
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
-import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites } from './stats.js';
+import { recordPlay, recordWatchTime, recordClipView, recordClipSession, recordPageView, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites, yearSummary } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 import { initSuperSearch, closeSuperSearch } from './superSearch.js';
@@ -2021,7 +2021,7 @@ async function maybeShowOnboarding() {
       state.ageRating = pickedAge;
       persist('ageRating');
       likedTitles.forEach(item => {
-        if (!isLiked(item.id)) toggleLike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null });
+        setReaction({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null, genre_ids: item.genre_ids || [], original_language: item.original_language || '' }, 'love');
       });
       dislikedTitles.forEach(item => {
         addDislike({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null });
@@ -5780,7 +5780,7 @@ function initEventDelegation() {
     if (!btn || !state.currentMedia) return;
     const action = btn.dataset.action;
     const { id, type, title, details } = state.currentMedia;
-    const meta = { id, type, title, poster_path: details?.poster_path || null, coverImage_large: details?.coverImage_large || null };
+    const meta = { id, type, title, poster_path: details?.poster_path || null, coverImage_large: details?.coverImage_large || null, genre_ids: details?.genres?.map(g => g.id) || [], original_language: details?.original_language || '' };
 
     if (action === 'modal-play') playNow();
     else if (action === 'modal-trailer') {
@@ -6130,7 +6130,7 @@ function initEventDelegation() {
       });
       if (state[key].length !== before) persist(key);
     };
-    ['liked', 'watchlist', 'disliked', 'watched', 'prefLikes', 'prefDislikes'].forEach(removeCorrupt);
+    ['liked', 'loved', 'watchlist', 'disliked', 'watched', 'prefLikes', 'prefDislikes'].forEach(removeCorrupt);
 
     // Step 2: Re-fetch missing metadata for items with incomplete data
     const repairList = async (list, key) => {
@@ -6155,6 +6155,7 @@ function initEventDelegation() {
     await repairList(state.prefDislikes, 'prefDislikes');
     await repairList(state.watchlist, 'watchlist');
     await repairList(state.liked, 'liked');
+    await repairList(state.loved, 'loved');
 
     renderLibrary();
     renderPrefLists();
@@ -6164,10 +6165,11 @@ function initEventDelegation() {
   // Export data
   document.getElementById('btn-export-data')?.addEventListener('click', () => {
     const exportData = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       watchlist:        state.watchlist,
       liked:            state.liked,
+      loved:            state.loved,
       disliked:         state.disliked,
       watched:          state.watched,
       recentlyViewed:   state.recentlyViewed.slice(0, 100),
@@ -6180,6 +6182,7 @@ function initEventDelegation() {
       prefTagDislikes:  state.prefTagDislikes,
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
+      tasteSkips:       state.tasteSkips,
       // Row system diagnostics — engagement, cooldowns, daily stats,
       // selection history. All local-only; leaves the device only in this
       // manual export.
@@ -6268,6 +6271,7 @@ function initEventDelegation() {
         const applyData = () => {
           if (data.watchlist)        { state.watchlist = merge(state.watchlist, data.watchlist); persist('watchlist'); }
           if (data.liked)            { state.liked = merge(state.liked, data.liked); persist('liked'); }
+          if (data.loved)            { state.loved = merge(state.loved, data.loved); persist('loved'); }
           if (data.disliked)         { state.disliked = merge(state.disliked, data.disliked); persist('disliked'); }
           if (data.watched)          { state.watched = merge(state.watched, data.watched); persist('watched'); }
           if (data.prefLikes)        { state.prefLikes = merge(state.prefLikes, data.prefLikes); persist('prefLikes'); }
@@ -6278,6 +6282,7 @@ function initEventDelegation() {
           if (data.prefTagDislikes)  { state.prefTagDislikes = merge(state.prefTagDislikes, data.prefTagDislikes); persist('prefTagDislikes'); }
           if (data.continueWatching) { Object.assign(state.continueWatching, data.continueWatching); persist('continueWatching'); }
           if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
+          if (data.tasteSkips)       { Object.assign(state.tasteSkips, data.tasteSkips); persist('tasteSkips'); }
           if (data.featureState) {
             const featureKeys = {
               mixSeeds: 'sv_mix_seeds',
@@ -6404,7 +6409,7 @@ function initEventDelegation() {
       const card = entry.target;
       const id = card.dataset.id;
       if (id && !isNaN(+id)) {
-        recordImpression(+id);
+        recordImpression(+id, card.dataset.type || 'movie');
       }
       impressionObs.unobserve(card); // only count once per session
     });
@@ -6426,7 +6431,8 @@ function initEventDelegation() {
 /* ── LIKE/WATCHLIST HELPERS ──────────────────────────────────────── */
 function handleLike(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
-  const added = toggleLike(item);
+  const reaction = cycleReaction(item);
+  const added = reaction === 'like' || reaction === 'love';
   if (added) {
     // Auto-add to "Titles I Love" in CYF — ONLY with valid, complete data
     const numId = +item.id;
@@ -6445,9 +6451,13 @@ function handleLike(id, type, btn, metaOverride) {
   // Note: removing a like does NOT auto-remove from prefLikes — must be done manually
   refreshCardBadges(id);
   if (btn) {
-    btn.classList.toggle('liked', isLiked(id));
-    btn.querySelector('.material-icons-round').textContent = isLiked(id) ? 'favorite' : 'favorite_border';
+    btn.classList.toggle('liked', isLiked(id, type));
+    btn.classList.toggle('loved', isLoved(id, type));
+    btn.querySelector('.material-icons-round').textContent = isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt';
+    btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
   }
+  toast(reaction === 'love' ? 'Loved. This strongly shapes recommendations.' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline');
+  return reaction;
 }
 
 function handleWatched(id, type, btn, card) {
@@ -6494,7 +6504,9 @@ function buildItemMeta(id, type) {
     return { id, type, title, poster_path: details?.poster_path || null };
   }
   const card = document.querySelector(`[data-id="${id}"][data-type="${type}"]`);
-  return { id, type, title: card?.dataset.title || '', poster_path: card?.dataset.poster || null };
+  return { id, type, title: card?.dataset.title || '', poster_path: card?.dataset.poster || null,
+    genre_ids: (card?.dataset.genres || '').split(',').filter(Boolean).map(Number),
+    original_language: card?.dataset.lang || '' };
 }
 
 function refreshCardBadges(id) {
@@ -6503,8 +6515,9 @@ function refreshCardBadges(id) {
     const wlBtn = card.querySelector('[data-action="watchlist"]');
     if (likeBtn) {
       likeBtn.classList.toggle('liked', isLiked(id));
+      likeBtn.classList.toggle('loved', isLoved(id));
       const ic = likeBtn.querySelector('.material-icons-round');
-      if (ic) ic.textContent = isLiked(id) ? 'favorite' : 'favorite_border';
+      if (ic) ic.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
     }
     if (wlBtn) {
       wlBtn.classList.toggle('saved', isInWatchlist(id));
@@ -7160,7 +7173,7 @@ export async function openInfoPage(id, type, hint = {}) {
     // Side: actions
     const actionsEl = document.getElementById('info-actions');
     if (actionsEl) {
-      const likedNow = isLiked(id), wlNow = isInWatchlist(id), watchedNow = isWatched(id);
+      const likedNow = isLiked(id), lovedNow = isLoved(id), wlNow = isInWatchlist(id), watchedNow = isWatched(id);
       actionsEl.innerHTML = `
         <button class="ma primary" id="info-action-watch" style="width:100%;justify-content:center;font-size:.95rem;padding:.75rem 1.4rem;font-weight:900;letter-spacing:.04em">
           <span class="material-icons-round" style="font-size:1.3rem">play_circle_filled</span>Watch Now
@@ -7169,8 +7182,8 @@ export async function openInfoPage(id, type, hint = {}) {
           <button class="ma${wlNow ? ' saved' : ''}" id="info-wl-btn" style="flex:1;justify-content:center">
             <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
           </button>
-          <button class="ma${likedNow ? ' liked' : ''}" id="info-like-btn" style="flex:1;justify-content:center">
-            <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
+          <button class="ma${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" id="info-like-btn" style="flex:1;justify-content:center">
+            <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>${lovedNow ? 'Loved' : likedNow ? 'Liked' : 'Like'}
           </button>
           <button class="ma${watchedNow ? ' watched' : ''}" id="info-watched-btn" title="${watchedNow ? 'Mark as unwatched' : 'Mark as watched'}" style="flex:1;justify-content:center">
             <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
@@ -7188,9 +7201,9 @@ export async function openInfoPage(id, type, hint = {}) {
         if (btn) { btn.className = `ma${isInWatchlist(id) ? ' saved' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_add'}</span>${isInWatchlist(id) ? 'Saved' : 'Save'}`; }
       });
       document.getElementById('info-like-btn')?.addEventListener('click', () => {
-        handleLike(id, type, null, { id, type, title, poster_path: details.poster_path });
+        handleLike(id, type, null, { id, type, title, poster_path: details.poster_path, genre_ids: details.genres?.map(g => g.id) || [], original_language: details.original_language || '' });
         const btn = document.getElementById('info-like-btn');
-        if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isLiked(id) ? 'favorite' : 'favorite_border'}</span>${isLiked(id) ? 'Liked' : 'Like'}`; }
+        if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}${isLoved(id) ? ' loved' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>${isLoved(id) ? 'Loved' : isLiked(id) ? 'Liked' : 'Like'}`; }
       });
       document.getElementById('info-watched-btn')?.addEventListener('click', () => {
         toggleWatched({ id, type, title, poster_path: details.poster_path });
@@ -8992,7 +9005,9 @@ function initProfilesUI() {
     state.prefGenreDislikes = []; persist('prefGenreDislikes');
     state.prefLangs = []; persist('prefLangs');
     state.prefLikes = []; persist('prefLikes');
+    state.loved = []; persist('loved');
     state.prefDislikes = []; persist('prefDislikes');
+    state.tasteSkips = {}; persist('tasteSkips');
     _clearRowCache();
     _openOnboardingFor(_editingProfileId || getActiveProfileId());
   });
@@ -9502,6 +9517,51 @@ function buildTestProviderRow(p) {
   </div>`;
 }
 
+function showYearRecapPreview() {
+  document.getElementById('year-recap-preview')?.remove();
+  const previousFocus = document.activeElement;
+  const summary = yearSummary();
+  const cal = summary.calibration || {};
+  const clips = summary.clips || {};
+  const rated = (cal.love || 0) + (cal.like || 0) + (cal.dislike || 0) + (cal.skip || 0);
+  const positive = (cal.love || 0) + (cal.like || 0);
+  const topGenre = summary.topGenres?.[0]
+    ? GENRES.find(genre => genre.id === summary.topGenres[0].genreId)?.name || 'Something wonderfully specific'
+    : 'Still being discovered';
+  const overlay = document.createElement('div');
+  overlay.id = 'year-recap-preview';
+  overlay.className = 'year-recap-preview';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'year-recap-title');
+  overlay.innerHTML = `
+    <section class="year-recap-panel">
+      <button type="button" class="year-recap-close" aria-label="Close recap"><span class="material-icons-round">close</span></button>
+      <p class="year-recap-kicker">${summary.year} preview | local data only</p>
+      <h2 id="year-recap-title">Your Year in the Life</h2>
+      <div class="year-recap-grid">
+        <div><strong>${summary.watchHours}h</strong><span>watched</span></div>
+        <div><strong>${summary.plays}</strong><span>plays</span></div>
+        <div><strong>${summary.clipViews}</strong><span>clips explored</span></div>
+        <div><strong>${summary.activeDays}</strong><span>active days</span></div>
+      </div>
+      <div class="year-recap-notes">
+        <p><span class="material-icons-round">category</span><b>${esc(topGenre)}</b> led your genre map.</p>
+        <p><span class="material-icons-round">tune</span>You rated <b>${rated}</b> calibration titles and kept <b>${rated ? Math.round(positive / rated * 100) : 0}%</b> on the positive side.</p>
+        <p><span class="material-icons-round">movie_filter</span>Your average played clip held attention for <b>${clips.averageSeconds || 0}s</b>.</p>
+      </div>
+      <p class="year-recap-foot">Preview numbers reflect activity recorded on this profile. Older activity may predate detailed tracking.</p>
+    </section>`;
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); previousFocus?.focus?.(); };
+  overlay.addEventListener('click', event => { if (event.target === overlay || event.target.closest('.year-recap-close')) close(); });
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') close();
+    if (event.key === 'Tab') { event.preventDefault(); overlay.querySelector('.year-recap-close')?.focus(); }
+  });
+  overlay.querySelector('.year-recap-close')?.focus();
+}
+
 function populateTestPanel() {
   // Create panel once; CSS shows it when test-mode is active on prefs/library
   let panel = document.getElementById('dev-test-panel');
@@ -9537,6 +9597,13 @@ function populateTestPanel() {
       <div class="dev-section" id="dev-stats-preview">
         <div class="dev-sec-title">Profile Stats Preview</div>
         <div id="dev-stats-preview-body" style="font-size:.72rem;line-height:1.7"></div>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Year in the Life Lab</div>
+        <div class="dev-btn-row">
+          <button class="dev-btn" id="dev-btn-year-recap"><span class="material-icons-round" style="font-size:.9rem;vertical-align:-2px">celebration</span> Open recap preview</button>
+        </div>
       </div>
 
       <div class="dev-section">
@@ -9679,6 +9746,7 @@ function populateTestPanel() {
       }
       toast('Cache cleared', 'delete_sweep');
     });
+    document.getElementById('dev-btn-year-recap')?.addEventListener('click', showYearRecapPreview);
 
     document.getElementById('dev-test-all-btn')?.addEventListener('click', () => {
       PROVIDERS.forEach(p => window._testProv(p.id));
@@ -9750,6 +9818,7 @@ function populateTestPanel() {
         el.innerHTML = `
           Watch time: <b>${life.watchHours}h</b> | Plays: <b>${life.plays}</b> | Active days: <b>${life.activeDays}</b><br>
           Searches: <b>${life.searches}</b> | Clips viewed: <b>${life.clipViews}</b> | Page views: <b>${life.pageViews}</b><br>
+          Taste tuner: <b>${Object.values(life.calibration || {}).reduce((sum, value) => sum + value, 0)}</b> events | Avg clip attention: <b>${life.clips?.averageSeconds || 0}s</b><br>
           Favorite titles: <b>${titleList}</b><br>
           Favorite actors: <b>${actorList}</b>`;
       };
@@ -10425,7 +10494,7 @@ function initHoverTrailer() {
     const type = _hoverCurrentCard.dataset.type;
     handleLike(id, type, null, buildItemMeta(id, type));
     const icon = document.querySelector('#nc-like .material-icons-round');
-    if (icon) icon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+    if (icon) icon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   });
   // Mute toggle — user gesture, so browsers always honor the unmute
   document.getElementById('nc-mute')?.addEventListener('click', e => {
@@ -10524,7 +10593,7 @@ async function showNetflixCard(card) {
       backdrop.style.background = `linear-gradient(135deg, var(--s3) 0%, var(--s2) 100%)`;
     }
   }
-  if (likeIcon) likeIcon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+  if (likeIcon) likeIcon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   if (wlIcon) wlIcon.textContent = isInWatchlist(id) ? 'check' : 'add';
   if (genresEl) genresEl.innerHTML = '<span class="nc-genre-chip nc-loading">Loading…</span>';
   if (metaEl) {
@@ -10721,10 +10790,10 @@ function _saveClipsDwellPrefs() {
   try { sessionStorage.setItem('sv_clips_dwell', JSON.stringify([..._clipsDwellPrefs])); } catch {}
 }
 
-const _CLIPS_SEEN_KEY = 'sv_clips_seen_v1';
+const _clipsSeenKey = () => `sv_clips_seen_v1_${getActiveProfileId() || 'default'}`;
 function _getClipsSeen() {
   try {
-    const seen = JSON.parse(localStorage.getItem(_CLIPS_SEEN_KEY) || '{}');
+    const seen = JSON.parse(localStorage.getItem(_clipsSeenKey()) || '{}');
     const cutoff = Date.now() - 30 * 86400000;
     Object.keys(seen).forEach(key => { if (seen[key] < cutoff) delete seen[key]; });
     return seen;
@@ -10735,7 +10804,7 @@ function _markClipSeen(slide) {
   try {
     const seen = _getClipsSeen();
     seen[`${slide.dataset.type}:${slide.dataset.id}`] = Date.now();
-    localStorage.setItem(_CLIPS_SEEN_KEY, JSON.stringify(seen));
+    localStorage.setItem(_clipsSeenKey(), JSON.stringify(seen));
   } catch {}
 }
 function _startClipPlayClock(slide) {
@@ -10760,6 +10829,7 @@ function _scoreClipItem(item) {
   const dislikedIds = new Set((state.disliked || []).map(x => x.id));
   const genreIds = item.genre_ids || [];
   let score = 0;
+  score += getTasteScore(item) * 1.25;
   genreIds.forEach(g => {
     if (prefGenres.has(String(g))) score += 2.5;
     score += (_clipsDwellPrefs.get(g) || 0) * 1.5; // amplify dwell signal
@@ -10769,7 +10839,8 @@ function _scoreClipItem(item) {
   // Mild boost: continue watching (already invested)
   if (state.continueWatching?.[item.id]) score += 2;
   // Liked items should still show (maybe they want to re-discover)
-  if ((state.liked || []).some(l => l.id === item.id)) score += 1;
+  if ((state.loved || []).some(l => l.id === item.id)) score += 3;
+  else if ((state.liked || []).some(l => l.id === item.id)) score += 1;
   // Penalty: disliked items
   if (dislikedIds.has(item.id)) score -= 8;
   // Penalty: recently viewed (already know about it)
@@ -10854,7 +10925,7 @@ function _maybeShowClipsTutorial(feed) {
         chip.classList.toggle('on', next);
         toast(next ? 'Anime clips hidden from your feed' : 'Anime clips back in the mix', 'auto_awesome');
       } else if (pref === 'reset') {
-        try { localStorage.removeItem(_CLIPS_SEEN_KEY); } catch {}
+        try { localStorage.removeItem(_clipsSeenKey()); } catch {}
         toast('Clip history cleared — everything is fresh again', 'restart_alt');
       }
     });
@@ -11090,11 +11161,16 @@ async function initTrailersFeed() {
       } else {
         const start = _dwellStart.get(id);
         if (start) {
-          const dwell = _stopClipPlayClock(slide) / 1000;
+          const totalMs = _stopClipPlayClock(slide);
+          const recordedMs = +(slide.dataset.statsRecordedMs || 0);
+          const sessionMs = Math.max(0, totalMs - recordedMs);
+          slide.dataset.statsRecordedMs = String(totalMs);
+          const dwell = totalMs / 1000;
           _dwellStart.delete(id);
           if (dwell > 3) recordClipView(); // stats: a real clip view
           // Learn: >8s = positive signal, <1.5s = negative signal
           const durationMs = +(slide.dataset.trailerDurationMs || 0);
+          recordClipSession({ watchMs: sessionMs, durationMs });
           const watchedFraction = durationMs ? Math.min(1, (dwell * 1000) / durationMs) : 0;
           const delta = slide.dataset.dwellScored ? 0 :
             (dwell >= 8 || (dwell >= 5 && watchedFraction >= 0.25)) ? 1 : dwell < 1.5 ? -1 : 0;
@@ -11294,8 +11370,8 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while">
           <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
-        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}" data-action="like" title="Like (L)" aria-label="Like">
-          <span class="material-icons-round">${isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
+        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}${isLoved(id) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id) ? 'Loved. Activate to clear' : isLiked(id) ? 'Liked. Activate to love' : 'Like'}">
+          <span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
           <span class="material-icons-round">thumb_down_off_alt</span>
@@ -11353,11 +11429,15 @@ function _buildTrailerSlide(item) {
         _ytCmd(f, unmute ? 'unMute' : 'mute');
       });
     } else if (action === 'like') {
-      const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
-      toggleLike(likeItem);
+      const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '', genre_ids: item.genre_ids || [], original_language: item.original_language || '' };
+      const reaction = cycleReaction(likeItem);
+      recordClipSession({ action: reaction });
       const icon = btn.querySelector('.material-icons-round');
-      if (icon) icon.textContent = isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+      if (icon) icon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
       btn.classList.toggle('on', isLiked(id));
+      btn.classList.toggle('loved', isLoved(id));
+      btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
+      toast(reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline');
     } else if (action === 'wl') {
       const wlItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       toggleWatchlist(wlItem);
@@ -11381,6 +11461,7 @@ function _buildTrailerSlide(item) {
         _clipsNavSlide(1);
       }
     } else if (action === 'dislike') {
+      recordClipSession({ action: 'dislike' });
       // Down-weight genres and remove slide
       const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
       genreIds.forEach(g => {

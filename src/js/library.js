@@ -70,12 +70,15 @@ function renderTasteProfile() {
   const genreNames = favorites.genres.map(entry => GENRES.find(genre => genre.id === entry.genreId)?.name).filter(Boolean);
   const actors = favorites.actors.map(actor => actor.name).filter(Boolean);
   const signals = state.prefLikes.length + state.prefDislikes.length + state.prefGenres.length + state.prefGenreDislikes.length;
-  const liked = new Map([...state.prefLikes, ...state.liked].map(item => [mediaKey(item), item]));
   const insightRows = [
     genreNames.length ? ['category', 'Genres shaping your feed', genreNames.join(', ')] : null,
     actors.length ? ['groups', 'Actors you return to', actors.join(', ')] : null,
     favorites.langs.length ? ['language', 'Languages you watch', favorites.langs.map(item => item.lang.toUpperCase()).join(', ')] : null,
     favorites.types.length ? ['movie_filter', 'Your viewing mix', favorites.types.map(item => `${item.type}: ${item.hours}h`).join(' | ')] : null,
+    summary.calibration && Object.values(summary.calibration).some(Boolean)
+      ? ['tune', 'Taste tuner results', `${summary.calibration.love || 0} loved, ${summary.calibration.like || 0} liked, ${summary.calibration.skip || 0} skipped`]
+      : null,
+    summary.clips?.views ? ['timer', 'Trailer attention', `${summary.clips.averageSeconds || 0}s average play, ${summary.clips.completionRate || 0}% completion`] : null,
   ].filter(Boolean);
   host.innerHTML = `
     <section class="taste-overview">
@@ -85,7 +88,7 @@ function renderTasteProfile() {
       </div>
       <div class="taste-metrics">
         <div><strong>${signals}</strong><span>explicit signals</span></div>
-        <div><strong>${liked.size}</strong><span>liked titles</span></div>
+        <div><strong>${state.loved?.length || 0}</strong><span>loved titles</span></div>
         <div><strong>${summary.watchHours}h</strong><span>watch time</span></div>
         <div><strong>${summary.searches}</strong><span>searches</span></div>
       </div>
@@ -330,8 +333,8 @@ export function clearSection(key, label) {
 }
 
 export function clearAllData() {
-  const keys = ['watchlist', 'liked', 'disliked', 'recentlyViewed', 'continueWatching',
-    'prefLikes', 'prefDislikes', 'prefGenres', 'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes'];
+  const keys = ['watchlist', 'liked', 'loved', 'disliked', 'recentlyViewed', 'continueWatching',
+    'prefLikes', 'prefDislikes', 'prefGenres', 'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'tasteSkips'];
   keys.forEach(k => {
     state[k] = Array.isArray(state[k]) ? [] : {};
     persist(k);

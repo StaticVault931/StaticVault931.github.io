@@ -1,12 +1,44 @@
 import { tmdb, imgUrl, getContentRating } from './api.js';
-import { state, persist, mediaKey, toggleLike, addDislike, AGE_LEVELS } from './state.js';
+import { state, persist, mediaKey, setReaction, addDislike, recordTasteSkip, AGE_LEVELS } from './state.js';
 import { esc, toast } from './ui.js';
+import { recordCalibrationAction } from './stats.js';
 
 let _openInfo = () => {};
 let _pool = [];
 let _index = 0;
 let _loading = false;
 let _sessionSkipped = new Set();
+const _shownKeys = new Set();
+
+// Deliberately broad starters teach more than another popularity page. The
+// first session spans tone, format, era, language, animation, and intensity;
+// later sessions become adaptive from the profile's real signals.
+const CALIBRATION_STARTERS = [
+  ['movie', 862], ['movie', 120], ['movie', 27205], ['movie', 419430],
+  ['movie', 496243], ['movie', 313369], ['movie', 546554], ['movie', 129],
+  ['tv', 1396], ['tv', 2316], ['tv', 82728], ['tv', 76331],
+  ['tv', 94605], ['tv', 67070], ['tv', 66732], ['tv', 1429],
+];
+const KIDS_STARTERS = [
+  ['movie', 862], ['movie', 129], ['movie', 346648], ['movie', 508442],
+  ['movie', 10193], ['movie', 354912], ['tv', 82728], ['tv', 60572],
+  ['tv', 33765], ['tv', 387], ['tv', 502], ['tv', 15260], ['tv', 246],
+];
+
+async function loadCurated(maxLevel, known) {
+  const source = maxLevel <= 3 ? KIDS_STARTERS : CALIBRATION_STARTERS;
+  const results = await Promise.allSettled(source.map(async ([type, id]) => {
+    const item = await tmdb(`/${type}/${id}`, { append_to_response: type === 'tv' ? 'content_ratings' : 'release_dates' });
+    const normalized = { ...item, type, media_type: type };
+    const rating = getContentRating(item, type);
+    const level = AGE_LEVELS[rating];
+    if (maxLevel < 5 && (level == null || level > maxLevel)) return null;
+    if (known.has(mediaKey(normalized)) || _sessionSkipped.has(mediaKey(normalized))) return null;
+    if (window._svSafeItem && !window._svSafeItem(normalized)) return null;
+    return normalized;
+  }));
+  return results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+}
 
 function typeOf(item) {
   return item.media_type === 'tv' ? 'tv' : 'movie';
@@ -28,15 +60,17 @@ async function loadPool(force = false) {
     const page = 1 + Math.floor(Math.random() * 8);
     const genres = state.prefGenres.slice(0, 3).join('|');
     const maxLevel = AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG;
+    const known = signaledKeys();
+    const interactionCount = state.prefLikes.length + state.prefDislikes.length + Object.keys(state.tasteSkips || {}).length;
     const maxMovieCert = maxLevel <= 2 ? 'G' : maxLevel === 3 ? 'PG' : maxLevel === 4 ? 'PG-13' : maxLevel === 5 ? 'R' : null;
-    const [movies, shows, trending] = await Promise.allSettled([
+    const [movies, shows, trending, curated] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'popularity.desc', page, 'vote_count.gte': 250,
         ...(maxMovieCert ? { certification_country: 'US', 'certification.lte': maxMovieCert } : {}),
         ...(genres ? { with_genres: genres } : {}) }),
       tmdb('/discover/tv', { sort_by: 'popularity.desc', page, 'vote_count.gte': 100, ...(genres ? { with_genres: genres } : {}) }),
       maxLevel >= 5 ? tmdb('/trending/all/week') : Promise.resolve({ results: [] }),
+      interactionCount < 12 ? loadCurated(maxLevel, known) : Promise.resolve([]),
     ]);
-    const known = signaledKeys();
     const candidates = [];
     const add = (result, fallbackType) => {
       if (result.status !== 'fulfilled') return;
@@ -52,6 +86,7 @@ async function loadPool(force = false) {
     add(movies, 'movie');
     add(shows, 'tv');
     add(trending, 'movie');
+    const curatedItems = curated.status === 'fulfilled' ? curated.value : [];
     candidates.sort(() => Math.random() - 0.5);
 
     // Movie discover supports certification filters. TV discover does not,
@@ -72,7 +107,9 @@ async function loadPool(force = false) {
       }
       safeCandidates = checked;
     }
-    _pool = force ? safeCandidates : [..._pool.slice(_index), ...safeCandidates];
+    const ordered = [...curatedItems, ...safeCandidates].filter((item, index, all) =>
+      all.findIndex(other => mediaKey(other) === mediaKey(item)) === index);
+    _pool = force ? ordered : [..._pool.slice(_index), ...ordered];
     _index = 0;
   } catch (error) {
     console.warn('[SV Taste] calibration load failed', error?.message || error);
@@ -88,11 +125,6 @@ function current() {
 
 function storePreference(item, action) {
   const key = mediaKey(item);
-  const remove = list => list.filter(entry => mediaKey(entry) !== key);
-  state.prefLikes = remove(state.prefLikes);
-  state.prefDislikes = remove(state.prefDislikes);
-  state.disliked = remove(state.disliked);
-
   const compact = {
     id: item.id,
     type: typeOf(item),
@@ -105,18 +137,18 @@ function storePreference(item, action) {
     score: action === 'love' ? 2 : 1,
   };
   if (action === 'love' || action === 'like') {
-    state.prefLikes.unshift(compact);
-    if (!state.liked.some(entry => mediaKey(entry) === key)) toggleLike(compact);
+    setReaction(compact, action);
   } else if (action === 'dislike') {
-    state.liked = remove(state.liked);
-    persist('liked');
+    setReaction(compact, 'none');
     state.prefDislikes.unshift(compact);
     addDislike(compact);
   } else {
     _sessionSkipped.add(key);
+    recordTasteSkip(compact);
   }
   persist('prefLikes');
   persist('prefDislikes');
+  recordCalibrationAction(action, compact);
 }
 
 function react(action) {
@@ -141,6 +173,11 @@ function renderCard(direction = '') {
   const title = item.title || item.name || 'Untitled';
   const year = String(item.release_date || item.first_air_date || '').slice(0, 4);
   const overview = (item.overview || 'Open the title for more information.').trim();
+  const itemKey = mediaKey(item);
+  if (!_shownKeys.has(itemKey)) {
+    _shownKeys.add(itemKey);
+    recordCalibrationAction('shown', item);
+  }
   // Stage layout: the title sits center screen; each compass direction is
   // a live control that doubles as the legend for its key/arrow/swipe.
   host.innerHTML = `
@@ -235,7 +272,15 @@ export function initTasteCalibration({ openInfo }) {
     const action = event.target.closest('[data-cal-action]')?.dataset.calAction;
     if (!action) return;
     if (action === 'refresh') { _pool = []; _index = 0; loadPool(true); return; }
-    if (action === 'info') { const item = current(); if (item) _openInfo(item.id, typeOf(item)); return; }
+    if (action === 'info') {
+      const item = current();
+      if (item) {
+        recordCalibrationAction('info', item);
+        closeTasteCalibration();
+        _openInfo(item.id, typeOf(item));
+      }
+      return;
+    }
     react(action);
   });
   document.addEventListener('keydown', event => {
@@ -244,6 +289,16 @@ export function initTasteCalibration({ openInfo }) {
     if (event.key === 'Escape' && shell.classList.contains('cal-fullscreen')) {
       event.preventDefault();
       closeTasteCalibration();
+      return;
+    }
+    if (event.key === ' ' || event.code === 'Space') {
+      const item = current();
+      if (item) {
+        event.preventDefault();
+        recordCalibrationAction('info', item);
+        closeTasteCalibration();
+        _openInfo(item.id, typeOf(item));
+      }
       return;
     }
     const map = { w: 'love', ArrowUp: 'love', d: 'like', ArrowRight: 'like', a: 'dislike', ArrowLeft: 'dislike', s: 'skip', ArrowDown: 'skip' };

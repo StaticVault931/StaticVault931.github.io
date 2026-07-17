@@ -5,6 +5,10 @@ let _previousFocus = null;
 let _entries = [];
 let _active = 0;
 
+const normalize = value => String(value || '')
+  .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 function visible(el) {
   if (!el || el.closest('[hidden], [aria-hidden="true"]')) return false;
   const style = getComputedStyle(el);
@@ -20,7 +24,7 @@ function buildIndex() {
   if (!root) return [];
   const seen = new Set();
   const entries = [];
-  root.querySelectorAll('.card, h1, h2, h3, .sec-title, p, [data-super-search]').forEach(el => {
+  root.querySelectorAll('.card, h1, h2, h3, .sec-title, p, button, label, [role="tab"], .setting-row, [data-super-search]').forEach(el => {
     if (!visible(el) || el.closest('#super-search-overlay, nav, footer, .card-ov')) return;
     const card = el.closest('.card');
     const target = card || el;
@@ -33,14 +37,15 @@ function buildIndex() {
       clone.querySelectorAll('.material-icons-round, .material-icons').forEach(icon => icon.remove());
       text = clone.textContent || '';
     }
-    text = text.replace(/\s+/g, ' ').trim();
+    text = text.replace(/\s+/g, ' ').trim().slice(0, 180);
     if (text.length < 2) return;
     seen.add(target);
     entries.push({
       target,
       text,
-      search: `${text} ${card?.dataset.year || ''} ${card?.dataset.type || ''}`.toLowerCase(),
-      kind: card ? (card.dataset.type === 'tv' ? 'TV show' : card.dataset.type === 'anime' ? 'Anime' : 'Movie') : 'On this page',
+      search: normalize(`${text} ${card?.dataset.year || ''} ${card?.dataset.type || ''} ${target.getAttribute('aria-label') || ''}`),
+      kind: card ? (card.dataset.type === 'tv' ? 'TV show' : card.dataset.type === 'anime' ? 'Anime' : 'Movie')
+        : target.matches('button,[role="tab"]') ? 'Control' : 'On this page',
     });
   });
   return entries;
@@ -81,9 +86,20 @@ function ensureOverlay() {
 }
 
 function matches(query) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const normalizedQuery = normalize(query);
+  const words = normalizedQuery.split(/\s+/).filter(Boolean);
   if (!words.length) return _entries.slice(0, 12);
-  return _entries.filter(entry => words.every(word => entry.search.includes(word))).slice(0, 40);
+  return _entries
+    .filter(entry => words.every(word => entry.search.includes(word)))
+    .map(entry => {
+      let score = words.reduce((total, word) => total + (entry.search.startsWith(word) ? 8 : entry.search.includes(` ${word}`) ? 4 : 1), 0);
+      if (entry.search === normalizedQuery) score += 20;
+      if (entry.kind !== 'On this page') score += 2;
+      return { entry, score };
+    })
+    .sort((a, b) => b.score - a.score || a.entry.text.length - b.entry.text.length)
+    .slice(0, 30)
+    .map(result => result.entry);
 }
 
 function render() {
@@ -110,14 +126,10 @@ function activate(index) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Teleport: center the target both vertically AND inside its scroll row,
   // then spotlight it — the page dims for a beat so the eye lands on it
-  entry.target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center', inline: 'center' });
+  entry.target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
   entry.target.classList.add('super-search-target');
-  if (!reduced) {
-    document.body.classList.add('super-search-dim');
-    setTimeout(() => document.body.classList.remove('super-search-dim'), 1200);
-  }
-  setTimeout(() => entry.target.classList.remove('super-search-target'), 1600);
-  if (entry.target.matches('.card')) entry.target.focus({ preventScroll: true });
+  setTimeout(() => entry.target.classList.remove('super-search-target'), 1100);
+  if (entry.target.matches('a,button,input,select,textarea,[tabindex]')) entry.target.focus({ preventScroll: true });
 }
 
 export function openSuperSearch() {

@@ -1,4 +1,4 @@
-import { state, isLiked, isInWatchlist, isWatched, getContinue } from './state.js';
+import { state, isLiked, isLoved, getReaction, isInWatchlist, isWatched, getContinue } from './state.js';
 import { imgUrl } from './api.js';
 
 /* ── ESCAPE ──────────────────────────────────────────────────────── */
@@ -67,6 +67,7 @@ export function makeCard(m, type, opts = {}) {
   const imgSrc = backdrop || poster;
 
   const likedNow = isLiked(id, type);
+  const lovedNow = isLoved(id, type);
   const wlNow = isInWatchlist(id, type);
   const watchedNow = isWatched(id, type);
   const contData = showProgress ? getContinue(id, type) : null;
@@ -81,7 +82,8 @@ export function makeCard(m, type, opts = {}) {
   const badges = [];
   if (contData) badges.push(`<span class="card-badge badge-continue">Continue</span>`);
   if (wlNow) badges.push(`<span class="card-badge badge-wl">Saved</span>`);
-  if (likedNow) badges.push(`<span class="card-badge badge-liked">Liked</span>`);
+  if (lovedNow) badges.push(`<span class="card-badge badge-liked">Loved</span>`);
+  else if (likedNow) badges.push(`<span class="card-badge badge-liked">Liked</span>`);
   if (watchedNow) badges.push(`<span class="card-badge badge-watched">Watched</span>`);
 
   // Progress bar
@@ -108,6 +110,7 @@ export function makeCard(m, type, opts = {}) {
     data-poster="${esc(poster || '')}"
     data-backdrop="${esc(m.backdrop_path || '')}"
     data-lang="${esc(m.original_language || '')}"
+    data-genres="${esc((m.genre_ids || []).join(','))}"
     aria-label="${esc(title)} (${typeLabel})">
     <div class="card-poster">
       ${imgSrc
@@ -138,8 +141,8 @@ export function makeCard(m, type, opts = {}) {
           <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
             <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
           </button>
-          <button class="card-like-btn${likedNow ? ' liked' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${likedNow ? 'Unlike' : 'Like'}">
-            <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>
+          <button class="card-like-btn${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${getReaction(id, type) === 'love' ? 'Loved. Activate to clear' : getReaction(id, type) === 'like' ? 'Liked. Activate to love' : 'Like'}" title="Like, then Love">
+            <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>
           </button>
           <button class="card-wl-btn${wlNow ? ' saved' : ''}" data-action="watchlist" data-id="${id}" data-type="${type}" aria-label="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}">
             <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>
@@ -359,7 +362,8 @@ export function renderModalInfo(details, type) {
 /* ── MODAL ACTIONS ───────────────────────────────────────────────── */
 export function renderModalActions(media) {
   const { id, type, details } = media;
-  const likedNow = isLiked(id);
+  const likedNow = isLiked(id, type);
+  const lovedNow = isLoved(id, type);
   const wlNow = isInWatchlist(id);
   const el = document.getElementById('modal-actions');
   if (!el) return;
@@ -383,8 +387,8 @@ export function renderModalActions(media) {
     <button class="ma${wlNow ? ' saved' : ''}" data-action="modal-watchlist" aria-label="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}">
       <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
     </button>
-    <button class="ma${likedNow ? ' liked' : ''}" data-action="modal-like" aria-label="${likedNow ? 'Unlike' : 'Like'}">
-      <span class="material-icons-round">${likedNow ? 'favorite' : 'favorite_border'}</span>${likedNow ? 'Liked' : 'Like'}
+    <button class="ma${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" data-action="modal-like" aria-label="${lovedNow ? 'Loved. Activate to clear' : likedNow ? 'Liked. Activate to love' : 'Like'}">
+      <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>${lovedNow ? 'Loved' : likedNow ? 'Liked' : 'Like'}
     </button>
     <button class="ma" data-action="modal-dislike" aria-label="Dislike">
       <span class="material-icons-round">thumb_down_off_alt</span>Dislike

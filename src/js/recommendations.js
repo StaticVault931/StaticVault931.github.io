@@ -1,4 +1,4 @@
-import { state, AGE_LEVELS, getImpressionPenalty } from './state.js';
+import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from './ui.js';
 
@@ -45,8 +45,8 @@ export async function loadForYou() {
   rowEl.innerHTML = skelCards(8);
 
   try {
-    const dislikedIds = new Set(state.disliked.map(x => x.id));
-    const likedIds = new Set([...state.liked, ...state.prefLikes].map(x => x.id));
+    const dislikedIds = new Set(state.disliked.map(mediaKey));
+    const likedIds = new Set([...state.liked, ...state.prefLikes].map(mediaKey));
 
     const genreIds = state.prefGenres.length
       ? state.prefGenres.slice(0, 4).join('|')
@@ -54,10 +54,11 @@ export async function loadForYou() {
 
     // Fetch liked-item recommendations + genre discover + trending in parallel
     const candidates = [
+      ...state.loved.filter(x => x.id && x.type !== 'anime').slice(0, 2),
       ...state.prefLikes.filter(x => x.id && x.type !== 'anime').slice(0, 2),
       ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 2),
     ];
-    const dedupedCandidates = candidates.filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 3);
+    const dedupedCandidates = candidates.filter((x, i, a) => a.findIndex(y => mediaKey(y) === mediaKey(x)) === i).slice(0, 3);
 
     const recRequests = dedupedCandidates.map(item =>
       tmdb(`/${item.type || 'movie'}/${item.id}/recommendations`).catch(() => ({ results: [] }))
@@ -93,47 +94,53 @@ export async function loadForYou() {
     const tagShows = tagTvRes.status === 'fulfilled'
       ? (tagTvRes.value.results || []).map(x => ({ ...x, media_type: 'tv', _tagMatch: true }))
       : [];
-    const recItems = recResults.flatMap(r => r.status === 'fulfilled' ? r.value.results || [] : []);
+    const recItems = recResults.flatMap((r, index) => r.status === 'fulfilled'
+      ? (r.value.results || []).map(item => ({ ...item, media_type: dedupedCandidates[index]?.type || dedupedCandidates[index]?.media_type || 'movie' }))
+      : []);
     const dislikedTagIdSet = new Set((state.prefTagDislikes || []).map(t => t.id));
 
     // IDs currently shown in Trending row — exclude to avoid repeats
     const trendingRowIds = new Set(
-      Array.from(document.querySelectorAll('#row-trending [data-id]')).map(el => +el.dataset.id)
+      Array.from(document.querySelectorAll('#row-trending [data-id]')).map(el => `${el.dataset.type || 'movie'}:${+el.dataset.id}`)
     );
-    const recentIds = new Set(state.recentlyViewed.map(x => x.id));
+    const recentIds = new Set(state.recentlyViewed.map(mediaKey));
 
     // Score: recommendation hit = 3pts, genre match = 1pt each
     const recIdCounts = {};
-    recItems.forEach(m => { recIdCounts[m.id] = (recIdCounts[m.id] || 0) + 3; });
+    recItems.forEach(m => { const key = mediaKey(m); recIdCounts[key] = (recIdCounts[key] || 0) + 3; });
 
-    const watchedIds = new Set(state.watched.map(x => x.id));
+    const watchedIds = new Set(state.watched.map(mediaKey));
     const seen = new Set();
     const tolerance = state._repeatTolerance || 'medium';
     const pool = [...tagMovies, ...tagShows, ...recItems, ...discover, ...discoverTv].filter(m => {
-      if (!m.id || seen.has(m.id)) return false;
-      seen.add(m.id);
+      const candidateKey = mediaKey(m);
+      if (!m.id || seen.has(candidateKey)) return false;
+      seen.add(candidateKey);
       if (!passesAgeFilter(m)) return false;
       // Central safety: age rating, kid mode, and disliked genres (app.js)
       if (window._svSafeItem && !window._svSafeItem(m)) return false;
-      if (dislikedIds.has(m.id) || likedIds.has(m.id) || trendingRowIds.has(m.id) || recentIds.has(m.id) || watchedIds.has(m.id)) return false;
+      const key = mediaKey(m);
+      if (dislikedIds.has(key) || likedIds.has(key) || trendingRowIds.has(key) || recentIds.has(key) || watchedIds.has(key)) return false;
       // Apply impression filter to For You row too
-      const imp = state.impressions?.[m.id];
-      if (imp?.count) {
-        const hoursSince = (Date.now() - imp.lastSeen) / 3600000;
-        if (tolerance === 'maximum' && imp.count >= 2 && hoursSince < 96) return false;
-        if (tolerance === 'medium' && imp.count >= 4 && hoursSince < 24) return false;
+      const imp = state.impressions?.[mediaKey(m)] ?? state.impressions?.[m.id];
+      const impCount = typeof imp === 'number' ? imp : imp?.count || 0;
+      if (impCount) {
+        const hoursSince = (Date.now() - (imp?.lastSeen || 0)) / 3600000;
+        if (tolerance === 'maximum' && impCount >= 2 && hoursSince < 96) return false;
+        if (tolerance === 'medium' && impCount >= 4 && hoursSince < 24) return false;
       }
       return true;
     });
 
     pool.sort((a, b) => {
       const score = m => {
-        let s = recIdCounts[m.id] || 0;
+        let s = recIdCounts[mediaKey(m)] || 0;
+        s += getTasteScore(m) * 1.4;
         if (state.prefGenres.length)
           s += (m.genre_ids || []).filter(g => state.prefGenres.includes(g)).length;
         s += ((m.vote_average || 0) / 20);
         if (m._tagMatch) s += 4; // big boost for items from liked-tag discover
-        s -= getImpressionPenalty(m.id); // subtract penalty for over-shown content
+        s -= getImpressionPenalty(m); // subtract penalty for over-shown content
         return s;
       };
       return score(b) - score(a);
@@ -160,7 +167,7 @@ export async function loadForYou() {
       const fallbackItems = (fallback.results || [])
         .filter(m => m?.id &&
           (!window._svSafeItem || window._svSafeItem(m)) &&
-          !dislikedIds.has(m.id) && !watchedIds.has(m.id))
+          !dislikedIds.has(mediaKey(m)) && !watchedIds.has(mediaKey(m)))
         .slice(0, 18);
       if (fallbackItems.length) {
         renderRow('row-foryou', _claim(fallbackItems, 18), null);
@@ -178,7 +185,7 @@ export async function loadForYou() {
         const extraItems = (extra.results || [])
           .filter(m => m?.id && !items.some(x => x.id === m.id) &&
             (!window._svSafeItem || window._svSafeItem(m)) &&
-            !dislikedIds.has(m.id) && !watchedIds.has(m.id))
+            !dislikedIds.has(mediaKey(m)) && !watchedIds.has(mediaKey(m)))
           .slice(0, 18 - items.length);
         items.push(..._claim(extraItems, 18 - items.length));
       } catch {}
@@ -197,6 +204,7 @@ export async function loadBecauseYouLiked() {
   if (_daySeed % 3 === 2) return;
   // Collect candidates: prefLikes first, then top liked items
   const candidates = [
+    ...state.loved.filter(x => x.id && x.type !== 'anime'),
     ...state.prefLikes.filter(x => x.id && x.type !== 'anime'),
     ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 5),
   ];
