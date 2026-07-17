@@ -1018,23 +1018,14 @@
 
   <!-- Settings / Prefs tab -->
   <div id="lib-tab-prefs" style="display:none">
-    <div class="lib-section">
-      <div class="lib-section-header">
-        <div class="lib-section-title"><span class="material-icons-round">favorite</span>Liked Titles</div>
+    <div id="lib-taste-summary"></div>
+    <section class="taste-calibration-shell" id="taste-calibration-shell" hidden>
+      <div class="taste-calibration-head">
+        <div><span class="material-icons-round">tune</span><div><h3>Tune Your Taste</h3><p>Rate a varied set. Every choice updates this profile's recommendations.</p></div></div>
+        <div class="taste-cal-keys" aria-label="Keyboard controls">W Love | D Like | A Dislike | S Skip</div>
       </div>
-      <p style="color:var(--muted);font-size:.83rem;margin-bottom:.85rem">Titles you've liked shape your For You row.</p>
-      <div class="lib-grid" id="lib-preftab-liked"></div>
-    </div>
-    <div class="lib-section">
-      <div class="lib-section-header">
-        <div class="lib-section-title"><span class="material-icons-round">tune</span>Feed Settings</div>
-      </div>
-      <p style="color:var(--muted);font-size:.83rem;margin-bottom:1rem">Fine-tune genres, ratings, and title preferences.</p>
-      <button class="pref-apply-btn" data-page="prefs" style="display:inline-flex;align-items:center;gap:.5rem;">
-        <span class="material-icons-round">settings</span>Open Feed Settings
-      </button>
-    </div>
-    <div style="height:2rem"></div>
+      <div id="taste-calibration-deck"></div>
+    </section>
   </div>
 
   <div style="height:3rem"></div>

@@ -13,23 +13,24 @@ export function load(k, def = null) {
 /* ── CONSTANTS ───────────────────────────────────────────────────── */
 export const GENRES = [
   { id: 28,    name: 'Action',      icon: 'sports_martial_arts' },
-  { id: 35,    name: 'Comedy',      icon: 'sentiment_very_satisfied' },
-  { id: 18,    name: 'Drama',       icon: 'theater_comedy' },
-  { id: 27,    name: 'Horror',      icon: 'whatshot' },
-  { id: 878,   name: 'Sci-Fi',      icon: 'rocket_launch' },
-  { id: 10749, name: 'Romance',     icon: 'favorite' },
-  { id: 16,    name: 'Animation',   icon: 'animation' },
-  { id: 80,    name: 'Crime',       icon: 'policy' },
-  { id: 53,    name: 'Thriller',    icon: 'visibility' },
   { id: 12,    name: 'Adventure',   icon: 'explore' },
-  { id: 14,    name: 'Fantasy',     icon: 'auto_awesome' },
+  { id: 16,    name: 'Animation',   icon: 'animation' },
+  { id: 35,    name: 'Comedy',      icon: 'sentiment_very_satisfied' },
+  { id: 80,    name: 'Crime',       icon: 'policy' },
   { id: 99,    name: 'Documentary', icon: 'camera_roll' },
+  { id: 18,    name: 'Drama',       icon: 'theater_comedy' },
   { id: 10751, name: 'Family',      icon: 'family_restroom' },
+  { id: 14,    name: 'Fantasy',     icon: 'auto_awesome' },
+  { id: 36,    name: 'History',     icon: 'history_edu' },
+  { id: 27,    name: 'Horror',      icon: 'whatshot' },
   { id: 10762, name: 'Kids',        icon: 'child_care' },
   { id: 10402, name: 'Music',       icon: 'music_note' },
   { id: 9648,  name: 'Mystery',     icon: 'search' },
   { id: 10764, name: 'Reality TV',  icon: 'videocam' },
-  { id: 36,    name: 'History',     icon: 'history_edu' },
+  { id: 10749, name: 'Romance',     icon: 'favorite' },
+  { id: 878,   name: 'Sci-Fi',      icon: 'rocket_launch' },
+  { id: 10766, name: 'Soap',        icon: 'live_tv' },
+  { id: 53,    name: 'Thriller',    icon: 'visibility' },
   { id: 10752, name: 'War',         icon: 'military_tech' },
 ];
 
@@ -128,7 +129,7 @@ export function cleanMediaArray(arr) {
 
 // Run cleanup on loaded state to remove any corrupt entries
 export function cleanState() {
-  const lists = ['watchlist', 'liked', 'disliked', 'watched', 'prefLikes', 'prefDislikes'];
+  const lists = ['watchlist', 'liked', 'disliked', 'watched', 'recentlyViewed', 'prefLikes', 'prefDislikes'];
   lists.forEach(key => {
     const before = state[key]?.length || 0;
     state[key] = cleanMediaArray(state[key]);
@@ -141,6 +142,29 @@ export function cleanState() {
     if (!entry || !isValidItem(entry)) { delete state.continueWatching[k]; cwChanged = true; }
   });
   if (cwChanged) persist('continueWatching');
+
+  // The genre picker replaced Western and War & Politics in v118. Keep old
+  // profiles meaningful instead of leaving invisible selected preferences.
+  const genreMap = new Map([[37, 36], [10768, 10752]]);
+  ['prefGenres', 'prefGenreDislikes'].forEach(key => {
+    const before = JSON.stringify(state[key] || []);
+    state[key] = [...new Set((state[key] || []).map(id => genreMap.get(+id) || +id).filter(Boolean))];
+    if (JSON.stringify(state[key]) !== before) persist(key);
+  });
+}
+
+export function mediaType(item, fallback = 'movie') {
+  const type = item?.type || item?.media_type || (item?._anime ? 'anime' : '');
+  return type === 'tv' || type === 'anime' || type === 'movie' ? type : fallback;
+}
+
+export function mediaKey(item, fallback = 'movie') {
+  return `${mediaType(item, fallback)}:${Number(item?.id) || 0}`;
+}
+
+function sameMedia(item, id, type) {
+  if (+item?.id !== +id) return false;
+  return !type || mediaType(item) === type;
 }
 
 export function persist(key) {
@@ -149,16 +173,20 @@ export function persist(key) {
 
 /* ── RECENTLY VIEWED ─────────────────────────────────────────────── */
 export function addRecentlyViewed(item) {
-  state.recentlyViewed = state.recentlyViewed.filter(x => x.id !== item.id);
-  state.recentlyViewed.unshift({ ...item, viewedAt: Date.now() });
+  if (!isValidItem(item)) return;
+  const key = mediaKey(item);
+  state.recentlyViewed = state.recentlyViewed.filter(x => mediaKey(x) !== key);
+  state.recentlyViewed.unshift({ ...item, type: mediaType(item), viewedAt: Date.now() });
   if (state.recentlyViewed.length > 60) state.recentlyViewed = state.recentlyViewed.slice(0, 60);
   persist('recentlyViewed');
 }
 
 /* ── CONTINUE WATCHING ───────────────────────────────────────────── */
 export function saveContinue(id, data) {
-  state.continueWatching[String(id)] = {
-    ...state.continueWatching[String(id)],
+  const type = mediaType(data);
+  const key = `${type}:${+id}`;
+  state.continueWatching[key] = {
+    ...state.continueWatching[key],
     ...data,
     id: +id,          // ← always store numeric id so Object.values() includes it
     updatedAt: Date.now(),
@@ -166,18 +194,19 @@ export function saveContinue(id, data) {
   persist('continueWatching');
 }
 
-export function getContinue(id) {
-  return state.continueWatching[String(id)] || null;
+export function getContinue(id, type = null) {
+  if (type) return state.continueWatching[`${type}:${+id}`] || state.continueWatching[String(id)] || null;
+  return Object.values(state.continueWatching).find(item => +item?.id === +id) || state.continueWatching[String(id)] || null;
 }
 
 /* ── WATCHLIST / LIKED ───────────────────────────────────────────── */
-export function isLiked(id) { return state.liked.some(x => x.id == id); }
-export function isInWatchlist(id) { return state.watchlist.some(x => x.id == id); }
-export function isDisliked(id) { return state.disliked.some(x => x.id == id); }
+export function isLiked(id, type) { return state.liked.some(x => sameMedia(x, id, type)); }
+export function isInWatchlist(id, type) { return state.watchlist.some(x => sameMedia(x, id, type)); }
+export function isDisliked(id, type) { return state.disliked.some(x => sameMedia(x, id, type)); }
 
 export function toggleLike(item) {
   if (!isValidItem(item)) return false; // reject corrupt items
-  const idx = state.liked.findIndex(x => x.id == item.id);
+  const idx = state.liked.findIndex(x => mediaKey(x) === mediaKey(item));
   if (idx >= 0) { state.liked.splice(idx, 1); persist('liked'); return false; }
   state.liked.push(item);
   persist('liked');
@@ -187,7 +216,7 @@ export function toggleLike(item) {
 
 export function toggleWatchlist(item) {
   if (!isValidItem(item)) return false; // reject corrupt items
-  const idx = state.watchlist.findIndex(x => x.id == item.id);
+  const idx = state.watchlist.findIndex(x => mediaKey(x) === mediaKey(item));
   if (idx >= 0) { state.watchlist.splice(idx, 1); persist('watchlist'); return false; }
   state.watchlist.push(item);
   persist('watchlist');
@@ -197,7 +226,7 @@ export function toggleWatchlist(item) {
 
 export function addDislike(item) {
   if (!isValidItem(item)) return; // reject corrupt items
-  if (!state.disliked.some(x => x.id == item.id)) {
+  if (!state.disliked.some(x => mediaKey(x) === mediaKey(item))) {
     state.disliked.push(item);
     persist('disliked');
   }
@@ -205,10 +234,10 @@ export function addDislike(item) {
 
 /* ── RECENT SEARCHES ─────────────────────────────────────────────── */
 /* ── WATCHED ─────────────────────────────────────────────────────── */
-export function isWatched(id) { return state.watched.some(x => x.id == id); }
+export function isWatched(id, type) { return state.watched.some(x => sameMedia(x, id, type)); }
 
 export function toggleWatched(item) {
-  const idx = state.watched.findIndex(x => x.id == item.id);
+  const idx = state.watched.findIndex(x => mediaKey(x) === mediaKey(item));
   if (idx >= 0) { state.watched.splice(idx, 1); persist('watched'); return false; }
   state.watched.push(item);
   persist('watched');

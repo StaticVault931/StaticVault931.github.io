@@ -1,8 +1,6 @@
-import { state, persist, isLiked, isInWatchlist } from './state.js';
-import { makeCard, skelCards, emptyState, toast } from './ui.js';
-import { tmdb } from './api.js';
-import { goPage } from './router.js';
-import { getStats, getFavorites } from './stats.js';
+import { state, persist, mediaKey } from './state.js';
+import { makeCard, skelCards, emptyState, toast, esc } from './ui.js';
+import { getStats, getFavorites, lifetimeSummary } from './stats.js';
 import { GENRES } from './state.js';
 
 /* ── RENDER LIBRARY PAGE ─────────────────────────────────────────── */
@@ -60,7 +58,45 @@ export function renderLibrary() {
   renderWatchlistSection();
   renderLikedSection();
   renderRecentSection();
+  renderTasteProfile();
   ensureLibJumpFab();
+}
+
+function renderTasteProfile() {
+  const host = document.getElementById('lib-taste-summary');
+  if (!host) return;
+  const favorites = getFavorites(5);
+  const summary = lifetimeSummary();
+  const genreNames = favorites.genres.map(entry => GENRES.find(genre => genre.id === entry.genreId)?.name).filter(Boolean);
+  const actors = favorites.actors.map(actor => actor.name).filter(Boolean);
+  const signals = state.prefLikes.length + state.prefDislikes.length + state.prefGenres.length + state.prefGenreDislikes.length;
+  const liked = new Map([...state.prefLikes, ...state.liked].map(item => [mediaKey(item), item]));
+  const insightRows = [
+    genreNames.length ? ['category', 'Genres shaping your feed', genreNames.join(', ')] : null,
+    actors.length ? ['groups', 'Actors you return to', actors.join(', ')] : null,
+    favorites.langs.length ? ['language', 'Languages you watch', favorites.langs.map(item => item.lang.toUpperCase()).join(', ')] : null,
+    favorites.types.length ? ['movie_filter', 'Your viewing mix', favorites.types.map(item => `${item.type}: ${item.hours}h`).join(' | ')] : null,
+  ].filter(Boolean);
+  host.innerHTML = `
+    <section class="taste-overview">
+      <div class="taste-overview-head">
+        <div><span class="material-icons-round">auto_awesome</span><div><h3>Your Taste Profile</h3><p>A local summary of the signals used to shape this profile's rows.</p></div></div>
+        <button type="button" class="pref-apply-btn" data-open-calibration><span class="material-icons-round">swipe</span>Tune with titles</button>
+      </div>
+      <div class="taste-metrics">
+        <div><strong>${signals}</strong><span>explicit signals</span></div>
+        <div><strong>${liked.size}</strong><span>liked titles</span></div>
+        <div><strong>${summary.watchHours}h</strong><span>watch time</span></div>
+        <div><strong>${summary.searches}</strong><span>searches</span></div>
+      </div>
+      <div class="taste-insights">${insightRows.length ? insightRows.map(([icon, label, value]) => `
+        <div class="taste-insight"><span class="material-icons-round">${icon}</span><div><strong>${esc(label)}</strong><span>${esc(value)}</span></div></div>`).join('') : `
+        <div class="taste-insight taste-insight-empty"><span class="material-icons-round">explore</span><div><strong>Still learning your taste</strong><span>Like titles, watch something, or use the tuner to build useful recommendations.</span></div></div>`}</div>
+      <div class="taste-actions">
+        <button type="button" class="data-btn" data-page="prefs"><span class="material-icons-round">settings</span>Detailed feed settings</button>
+        <button type="button" class="data-btn" data-open-calibration><span class="material-icons-round">style</span>Rate more titles</button>
+      </div>
+    </section>`;
 }
 
 /* Floating jump button — the library gets LONG; one tap to the bottom
@@ -161,7 +197,10 @@ function renderRecentSection() {
   const grid = document.getElementById('lib-recent-grid');
   if (!grid) return;
 
-  const items = state.recentlyViewed.slice(0, 60);
+  const items = [...state.recentlyViewed]
+    .sort((a, b) => (b.viewedAt || 0) - (a.viewedAt || 0))
+    .filter((item, index, all) => all.findIndex(other => mediaKey(other) === mediaKey(item)) === index)
+    .slice(0, 60);
   if (!items.length) {
     if (sec) sec.style.display = 'none';
     return;
@@ -169,7 +208,17 @@ function renderRecentSection() {
   if (sec) sec.style.display = '';
 
   grid.classList.add('lib-grid-compact');
-  grid.innerHTML = items.map(m => makeCard(m, m.type || 'movie', { compact: true, showProgress: false })).join('');
+  const relative = timestamp => {
+    if (!timestamp) return 'Viewed earlier';
+    const minutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60000));
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return days < 30 ? `${days}d ago` : new Date(timestamp).toLocaleDateString();
+  };
+  grid.innerHTML = items.map(m => makeCard(m, m.type || m.media_type || 'movie', { compact: true, showProgress: false })
+    .replace('<div class="card-poster">', `<div class="card-poster"><span class="recent-time-badge">${esc(relative(m.viewedAt))}</span>`)).join('');
 }
 
 /* ── SEE ALL PAGE ────────────────────────────────────────────────── */

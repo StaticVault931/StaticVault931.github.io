@@ -66,10 +66,10 @@ export function makeCard(m, type, opts = {}) {
   const poster = imgUrl(m.poster_path || m.coverImage_large, 'w342');
   const imgSrc = backdrop || poster;
 
-  const likedNow = isLiked(id);
-  const wlNow = isInWatchlist(id);
-  const watchedNow = isWatched(id);
-  const contData = showProgress ? getContinue(id) : null;
+  const likedNow = isLiked(id, type);
+  const wlNow = isInWatchlist(id, type);
+  const watchedNow = isWatched(id, type);
+  const contData = showProgress ? getContinue(id, type) : null;
 
   const typeLabel = type === 'anime' ? 'Anime' : type === 'tv' ? 'TV' : 'Film';
   const typeClass = type === 'anime' ? 'tp-a' : type === 'tv' ? 'tp-t' : 'tp-m';

@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isInWatchlist, isDisliked, isWatched, toggleLike, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
@@ -25,6 +25,8 @@ import { titleScore } from './search/fuzzy.js';
 import { recordPlay, recordWatchTime, recordClipView, recordPageView, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
+import { initSuperSearch, closeSuperSearch } from './superSearch.js';
+import { initTasteCalibration } from './tasteCalibration.js';
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
 const THEMES = ['dark', 'midnight', 'warm', 'ocean', 'mist', 'light'];
@@ -230,6 +232,7 @@ const SV_SETTINGS = [
   { id: 'dimImages',         label: 'Dim Images',             desc: 'Slightly darken posters and backgrounds to reduce glare',     default: false, icon: 'brightness_medium', group: 'Accessibility', keywords: 'dim dark glare brightness images photosensitive' },
   // Content
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
+  { id: 'superSearch',       label: 'Super Search',           desc: 'Use Ctrl+F or Cmd+F to find titles, descriptions, and controls on the current screen', default: false, icon: 'pageview', group: 'Content', keywords: 'control ctrl command cmd f find current page screen local search' },
   { id: 'featureTips',       label: 'Feature Tips',           desc: 'Occasional tip rows on Home that point out features you haven\'t tried yet', default: true, icon: 'tips_and_updates', group: 'Content', keywords: 'tips hints suggestions discover features banner' },
   { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
   // Language (UI text only — content audio is whatever providers have)
@@ -1125,6 +1128,8 @@ let _cardLogoMutObs   = null;
   applyLoadingScreenState();
   initEventDelegation();
   initKeyboard();
+  initSuperSearch({ isEnabled: () => !!getSetting('superSearch') });
+  initTasteCalibration({ openInfo: (id, type) => openInfoPage(id, type) });
   initHeader();
   initHoverTrailer();
   initA11y();
@@ -2489,7 +2494,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
       const deduped = RAW_ROWS
         ? impressionFiltered.filter(m => m.id)
-        : impressionFiltered.filter(m => m.id && !_homeItemSeen(m) && !shownData[m.id]);
+        : impressionFiltered.filter(m => m.id && !_homeItemSeen(m) && !shownData[mediaKey(m)]);
 
       // Rows must feel full — 10 items minimum. Backfill from the wider
       // pool when needed, but NEVER with titles another row already shows
@@ -2524,7 +2529,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // Record impressions only when cards actually become visible (≥10%)
       recordImpressions(final, rowId);
       // Mark items as shown for cross-session dedup
-      final.forEach(m => _markShown(m.id));
+      final.forEach(m => _markShown(m));
       scheduledisambiguateTitles();
     })
     .catch(err => {
@@ -2598,10 +2603,10 @@ function _getShownIds() {
   } catch { return {}; }
 }
 
-function _markShown(id) {
+function _markShown(item) {
   try {
     const data = _getShownIds();
-    data[id] = Date.now();
+    data[mediaKey(item)] = Date.now();
     if (Object.keys(data).length > 500) {
       const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 300);
       localStorage.setItem('sv_shown_ids', JSON.stringify(Object.fromEntries(sorted)));
@@ -3094,13 +3099,13 @@ function _titleKey(m) {
 }
 function _claimHomeItem(m) {
   if (!m?.id) return;
-  _homeSeenIds.add(m.id);
+  _homeSeenIds.add(`${m.media_type || m.type || (m._anime ? 'anime' : 'movie')}:${m.id}`);
   const k = _titleKey(m);
   if (k) _homeSeenTitles.add(k);
 }
 function _homeItemSeen(m) {
   if (!m?.id) return false;
-  if (_homeSeenIds.has(m.id)) return true;
+  if (_homeSeenIds.has(`${m.media_type || m.type || (m._anime ? 'anime' : 'movie')}:${m.id}`)) return true;
   const k = _titleKey(m);
   return k ? _homeSeenTitles.has(k) : false;
 }
@@ -5373,7 +5378,7 @@ async function buildTvEpisodes(tmdbId, useId, details) {
   if (sel) sel.addEventListener('change', () => fetchEpisodes(tmdbId, useId, +sel.value, undefined, false));
 
   // Restore last watched season (auto-play on initial open)
-  const cont = getContinue(tmdbId);
+  const cont = getContinue(tmdbId, 'tv');
   const startSeason = cont?.season || 1;
   if (sel) sel.value = String(startSeason);
   await fetchEpisodes(tmdbId, useId, startSeason, cont?.episode, true);
@@ -5419,7 +5424,7 @@ function buildAnimeEpisodes(details) {
   if (!colRight) return;
 
   const total = details.number_of_episodes || 1;
-  const cont = getContinue(details.id);
+  const cont = getContinue(details.id, 'anime');
   const lastEp = cont?.episode || 1;
 
   colRight.innerHTML = `
@@ -5780,13 +5785,7 @@ function initEventDelegation() {
       if (_mixSeeds().length >= 2) _runMix();
     }
     if (tabName === 'prefs') {
-      const likedGrid = document.getElementById('lib-preftab-liked');
-      if (likedGrid) {
-        const items = [...state.liked, ...state.prefLikes].slice(0, 12);
-        likedGrid.innerHTML = items.length
-          ? items.map(m => makeCard(m, m.type || 'movie')).join('')
-          : `<p class="muted-note">Like some titles to see them here.</p>`;
-      }
+      renderLibrary();
     }
   });
 
@@ -9000,14 +8999,16 @@ function renderProfilesGrid() {
   const profiles = getProfiles();
   const activeId = getActiveProfileId();
   grid.innerHTML = profiles.map(p => `
-    <div class="profile-card${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" tabindex="0" role="button">
-      <div class="profile-avatar-circle" style="background:${p.color && p.color !== 'transparent' ? p.color : 'transparent'}">
-        ${p.avatar ? `<img src="${esc(p.avatar)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;${_avatarCropStyle(p.avatarCrop)}">` : `<span class="material-icons-round">person</span>`}
-      </div>
-      <div class="profile-card-name">${esc(p.name)}</div>
-      ${profileUsageSummary(p.id) ? `<div class="profile-card-usage">${esc(profileUsageSummary(p.id))}</div>` : ''}
-      ${p.id === activeId ? `<div class="profile-card-active-badge">Active</div>` : ''}
-      <button class="profile-card-edit-btn" data-pid="${p.id}" title="Edit">
+    <div class="profile-card-group">
+      <button type="button" class="profile-card profile-card-main${p.id === activeId ? ' active' : ''}" data-pid="${p.id}" aria-label="${p.id === activeId ? 'Current profile: ' : 'Switch to profile '}${esc(p.name)}">
+        <span class="profile-avatar-circle" style="background:${p.color && p.color !== 'transparent' ? p.color : 'transparent'}">
+          ${p.avatar ? `<img src="${esc(p.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;${_avatarCropStyle(p.avatarCrop)}">` : `<span class="material-icons-round">person</span>`}
+        </span>
+        <span class="profile-card-name">${esc(p.name)}</span>
+        ${profileUsageSummary(p.id) ? `<span class="profile-card-usage">${esc(profileUsageSummary(p.id))}</span>` : ''}
+        ${p.id === activeId ? `<span class="profile-card-active-badge">Active</span>` : ''}
+      </button>
+      <button type="button" class="profile-card-edit-btn" data-pid="${p.id}" aria-label="Edit ${esc(p.name)}" title="Edit ${esc(p.name)}">
         <span class="material-icons-round">edit</span>
       </button>
     </div>`).join('') + `
@@ -9020,14 +9021,8 @@ function renderProfilesGrid() {
   // re-created on every render, so it is wired here, not at init
   grid.querySelector('#profiles-grid-add')?.addEventListener('click', () => openProfileEditor(null));
 
-  grid.querySelectorAll('.profile-card:not(.profile-card-add)').forEach(card => {
-    card.addEventListener('keydown', e => {
-      if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
-      e.preventDefault();
-      card.click();
-    });
+  grid.querySelectorAll('.profile-card-main').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('.profile-card-edit-btn')) return;
       const pid = card.dataset.pid;
       if (pid === getActiveProfileId()) { closeProfilesOverlay(); return; }
       switchProfile(pid);
@@ -9051,12 +9046,11 @@ function renderProfilesGrid() {
       if (state.currentPage === 'prefs') loadPrefsPage();
       toast(e.shiftKey ? 'Profile switched!' : 'Switched!', 'person');
     });
-    card.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        closeProfilesOverlay();
-        openProfileEditor(btn.dataset.pid);
-      });
+  });
+  grid.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeProfilesOverlay();
+      openProfileEditor(btn.dataset.pid);
     });
   });
 }
@@ -11723,16 +11717,6 @@ function initKeyboard() {
     if (row) _lastHoveredRow = row;
   }, { passive: true });
 
-  // Intercept Ctrl+F / Cmd+F to open app search instead of browser find
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-      e.preventDefault(); // stop browser find
-      goPage('search');
-      setTimeout(() => document.getElementById('search-input')?.focus(), 100);
-      return;
-    }
-  });
-
   // Get disabled shortcuts from profile settings
   function _isShortcutEnabled(key) {
     const disabled = state.disabledShortcuts || {};
@@ -11744,6 +11728,7 @@ function initKeyboard() {
 
     // Escape closes the topmost open overlay — always enabled
     if (e.key === 'Escape') {
+      if (closeSuperSearch()) return;
       if (document.getElementById('info-overlay')?.classList.contains('open')) { closeInfoPage(); return; }
       if (document.getElementById('person-overlay')?.classList.contains('open')) { closePersonPage(); return; }
       if (document.getElementById('company-overlay')?.classList.contains('open')) {

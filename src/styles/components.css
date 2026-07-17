@@ -3428,6 +3428,101 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 .profile-card-add:hover .profile-add-circle { color: var(--red); }
 .profile-card-add .profile-card-name { color: var(--muted); font-weight: 700; }
 .profile-card-add:hover .profile-card-name { color: var(--text); }
+
+/* Profile selection and edit are sibling controls, so keyboard and screen
+   reader users never encounter a button nested inside another control. */
+.profile-card-group { position: relative; flex: 0 0 148px; min-width: 0; }
+.profile-card-group .profile-card { width: 100%; height: 100%; }
+.profile-card-group .profile-card-edit-btn { top: .45rem; right: .45rem; z-index: 3; }
+.profile-card-group:hover .profile-card-edit-btn,
+.profile-card-group:focus-within .profile-card-edit-btn { opacity: 1; }
+
+/* Super Search */
+.super-search-overlay {
+  position: fixed; inset: 0; z-index: 10050; display: none;
+  align-items: flex-start; justify-content: center; padding: min(12vh, 7rem) 1rem 1rem;
+  background: rgba(0,0,0,.72); backdrop-filter: blur(10px);
+}
+.super-search-overlay.open { display: flex; }
+.super-search-panel {
+  width: min(720px, 100%); max-height: min(72vh, 720px); overflow: hidden;
+  border: 1px solid var(--border3); border-radius: 8px; background: var(--s1);
+  box-shadow: 0 28px 80px rgba(0,0,0,.65); display: flex; flex-direction: column;
+}
+.super-search-head { display: flex; align-items: center; gap: .75rem; padding: .9rem 1rem .65rem; }
+.super-search-head > .material-icons-round { color: var(--red); font-size: 1.7rem; }
+#super-search-title { font-size: 1rem; font-weight: 900; }
+.super-search-head small { display: block; color: var(--muted); font-size: .7rem; margin-top: .1rem; }
+.super-search-close { margin-left: auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.super-search-input-wrap { margin: 0 1rem; min-height: 52px; display: flex; align-items: center; gap: .65rem; padding: 0 .85rem; border: 1px solid var(--border3); border-radius: 7px; background: var(--s2); }
+.super-search-input-wrap:focus-within { border-color: var(--red); box-shadow: 0 0 0 3px rgba(229,9,20,.15); }
+.super-search-input-wrap input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: .95rem; }
+.super-search-input-wrap kbd, .taste-cal-actions kbd { border: 1px solid var(--border3); border-bottom-width: 2px; border-radius: 4px; padding: .12rem .35rem; color: var(--dim); background: var(--s3); font-size: .62rem; }
+.super-search-status { padding: .65rem 1rem .4rem; color: var(--dim); font-size: .68rem; }
+.super-search-results { overflow-y: auto; padding: 0 .5rem .6rem; }
+.super-search-result { width: 100%; display: grid; grid-template-columns: 28px minmax(0,1fr) 24px; align-items: center; gap: .6rem; padding: .7rem .65rem; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.super-search-result:hover, .super-search-result.active { background: var(--s3); }
+.super-search-result > .material-icons-round:first-child { color: var(--red); }
+.super-search-result > .material-icons-round:last-child { color: var(--dim); font-size: 1rem; }
+.super-search-result strong, .super-search-result small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.super-search-result strong { font-size: .82rem; }
+.super-search-result small { color: var(--muted); font-size: .65rem; margin-top: .12rem; }
+.super-search-target { animation: superSearchPulse 1.4s ease; }
+@keyframes superSearchPulse { 30% { outline: 4px solid var(--red); outline-offset: 4px; } }
+
+/* Library taste profile and calibration deck */
+.taste-overview { margin: 1rem 0 2rem; }
+.taste-overview-head, .taste-calibration-head, .taste-overview-head > div, .taste-calibration-head > div { display: flex; align-items: center; gap: .7rem; }
+.taste-overview-head, .taste-calibration-head { justify-content: space-between; }
+.taste-overview-head > div > .material-icons-round, .taste-calibration-head > div > .material-icons-round { color: var(--red); font-size: 1.8rem; }
+.taste-overview h3, .taste-calibration-head h3 { font-size: 1.05rem; }
+.taste-overview p, .taste-calibration-head p { color: var(--muted); font-size: .75rem; margin-top: .15rem; }
+.taste-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-block: 1px solid var(--border); margin: 1rem 0; }
+.taste-metrics > div { padding: .9rem; border-right: 1px solid var(--border); }
+.taste-metrics > div:last-child { border-right: 0; }
+.taste-metrics strong, .taste-metrics span { display: block; }
+.taste-metrics strong { font-size: 1.25rem; }
+.taste-metrics span { color: var(--muted); font-size: .65rem; margin-top: .12rem; }
+.taste-insights { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .6rem; }
+.taste-insight { display: flex; gap: .7rem; align-items: flex-start; padding: .8rem; border: 1px solid var(--border); border-radius: 7px; }
+.taste-insight > .material-icons-round { color: var(--red); font-size: 1.2rem; }
+.taste-insight strong, .taste-insight span { display: block; }
+.taste-insight strong { font-size: .75rem; }
+.taste-insight span { color: var(--muted); font-size: .68rem; margin-top: .2rem; line-height: 1.45; }
+.taste-insight-empty { grid-column: 1 / -1; }
+.taste-actions { display: flex; gap: .5rem; margin-top: .8rem; flex-wrap: wrap; }
+.taste-calibration-shell { scroll-margin-top: 90px; margin: 1rem 0 2rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.taste-cal-keys { color: var(--dim); font-size: .65rem; }
+.taste-cal-card { min-height: min(62vh, 600px); margin-top: 1rem; position: relative; overflow: hidden; border-radius: 8px; display: flex; flex-direction: column; justify-content: flex-end; padding: clamp(1rem,3vw,2rem); background: #111 var(--taste-bg) center / cover no-repeat; isolation: isolate; }
+.taste-cal-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg,rgba(0,0,0,.06) 20%,rgba(0,0,0,.94) 90%); }
+.taste-cal-info { position: absolute; top: 1rem; right: 1rem; display: flex; align-items: center; gap: .35rem; min-height: 40px; padding: .45rem .7rem; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: rgba(0,0,0,.62); color: #fff; cursor: pointer; }
+.taste-cal-copy { max-width: 760px; color: #fff; }
+.taste-cal-kicker { color: rgba(255,255,255,.72); font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.taste-cal-copy h3 { margin-top: .35rem; font-size: clamp(1.6rem,4vw,3rem); }
+.taste-cal-copy p { margin-top: .45rem; max-width: 65ch; line-height: 1.55; color: rgba(255,255,255,.84); font-size: .82rem; }
+.taste-cal-actions { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .6rem; margin-top: 1.1rem; }
+.taste-cal-actions button { min-height: 58px; display: flex; justify-content: center; align-items: center; gap: .4rem; border: 1px solid rgba(255,255,255,.28); border-radius: 7px; background: rgba(0,0,0,.66); color: #fff; cursor: pointer; }
+.taste-cal-actions button.primary { background: var(--red); border-color: var(--red); }
+.taste-cal-actions .material-icons-round { font-size: 1.05rem; }
+.taste-cal-loading, .taste-cal-empty { min-height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; text-align: center; color: var(--muted); }
+.taste-cal-empty button { margin-top: .4rem; min-height: 40px; padding: .5rem .8rem; border: 0; border-radius: 6px; background: var(--red); color: #fff; font-weight: 800; cursor: pointer; }
+.recent-time-badge { position: absolute; left: .45rem; bottom: .45rem; z-index: 3; padding: .18rem .42rem; border-radius: 4px; background: rgba(0,0,0,.78); color: #fff; font-size: .58rem; font-weight: 800; }
+
+@media (max-width: 720px) {
+  .super-search-overlay { padding: .5rem; align-items: flex-start; }
+  .super-search-panel { max-height: calc(100dvh - 1rem); }
+  .taste-overview-head, .taste-calibration-head { align-items: flex-start; flex-direction: column; }
+  .taste-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .taste-metrics > div:nth-child(2) { border-right: 0; }
+  .taste-insights { grid-template-columns: 1fr; }
+  .taste-cal-keys { display: none; }
+  .taste-cal-card { min-height: 68vh; }
+  .taste-cal-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .super-search-target { animation: none; outline: 3px solid var(--red); }
+}
 /* The old bottom actions bar is redundant now that Add lives in the grid */
 #profiles-panel .profiles-actions { display: none; }
 
