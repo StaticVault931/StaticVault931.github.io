@@ -151,12 +151,40 @@ function storePreference(item, action) {
   recordCalibrationAction(action, compact);
 }
 
+/* Undo: every rating is reversible — from the toast, the ⌫/Z keys, or the
+   on-card control. Undo unwinds the stored signal AND steps the deck back
+   so the title is on screen again, ready to be re-rated. (The pool only
+   serves unrated titles, so pre-calibration state is always "none".) */
+const _history = [];
+
+function undoLast() {
+  const last = _history.pop();
+  if (!last) return;
+  const key = mediaKey(last.item);
+  if (last.action === 'skip') {
+    _sessionSkipped.delete(key);
+    if (state.tasteSkips[key]) { delete state.tasteSkips[key]; persist('tasteSkips'); }
+  } else {
+    // love/like/dislike all unwind to a clean slate
+    setReaction(last.item, 'none');
+    persist('prefLikes');
+    persist('prefDislikes');
+  }
+  recordCalibrationAction('undo', last.item);
+  _index = Math.max(0, _index - 1);
+  renderCard('undo');
+  toast('Undone — rate it again', 'undo');
+}
+
 function react(action) {
   const item = current();
   if (!item) return;
   storePreference(item, action);
+  _history.push({ item, action });
+  if (_history.length > 50) _history.shift();
   const labels = { love: 'Loved', like: 'Liked', dislike: 'Hidden from recommendations', skip: 'Skipped for now' };
-  toast(labels[action], action === 'love' ? 'favorite' : action === 'like' ? 'thumb_up' : action === 'dislike' ? 'thumb_down' : 'skip_next');
+  toast(labels[action], action === 'love' ? 'favorite' : action === 'like' ? 'thumb_up' : action === 'dislike' ? 'thumb_down' : 'skip_next',
+    { actionLabel: 'Undo', onAction: undoLast });
   _index++;
   renderCard(action);
   if (_pool.length - _index < 5) loadPool();
@@ -185,6 +213,9 @@ function renderCard(direction = '') {
       <button type="button" class="taste-cal-info" data-cal-action="info" aria-label="Open details for ${esc(title)}">
         <span class="material-icons-round">info</span><span>Details</span>
       </button>
+      ${_history.length ? `<button type="button" class="taste-cal-info taste-cal-undo" data-cal-action="undo" aria-label="Undo last rating (Z or Backspace)">
+        <span class="material-icons-round">undo</span><span>Undo</span>
+      </button>` : ''}
       <button type="button" class="taste-cal-dir taste-cal-dir-up" data-cal-action="love" aria-label="Love (W or up arrow)">
         <span class="material-icons-round">keyboard_arrow_up</span>
         <span class="taste-cal-dir-face"><span class="material-icons-round">favorite</span><strong>Love</strong></span>
@@ -281,6 +312,7 @@ export function initTasteCalibration({ openInfo }) {
       }
       return;
     }
+    if (action === 'undo') { undoLast(); return; }
     react(action);
   });
   document.addEventListener('keydown', event => {
@@ -299,6 +331,11 @@ export function initTasteCalibration({ openInfo }) {
         closeTasteCalibration();
         _openInfo(item.id, typeOf(item));
       }
+      return;
+    }
+    if (event.key === 'z' || event.key === 'Z' || event.key === 'Backspace') {
+      event.preventDefault();
+      undoLast();
       return;
     }
     const map = { w: 'love', ArrowUp: 'love', d: 'like', ArrowRight: 'like', a: 'dislike', ArrowLeft: 'dislike', s: 'skip', ArrowDown: 'skip' };

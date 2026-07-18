@@ -3709,3 +3709,148 @@ body.cal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .taste-cal-card { animation: none !important; }
 }
+
+/* ═══ COMMIT 122 — right-click context menu ══════════════════════════ */
+#sv-ctx-menu {
+  position: fixed;
+  z-index: 10080;
+  min-width: 210px;
+  padding: .35rem;
+  border: 1px solid var(--border3);
+  border-radius: 10px;
+  background: var(--s1);
+  box-shadow: 0 18px 60px rgba(0,0,0,.7);
+  display: none;
+  flex-direction: column;
+}
+#sv-ctx-menu.open { display: flex; animation: ctxIn .14s var(--ease); }
+@keyframes ctxIn { from { opacity: 0; transform: scale(.96); } }
+#sv-ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  width: 100%;
+  min-height: 36px;
+  padding: .4rem .6rem;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+#sv-ctx-menu button:hover, #sv-ctx-menu button:focus-visible { background: var(--s3); outline: none; }
+#sv-ctx-menu button .material-icons-round { font-size: 1rem; color: var(--red); }
+.sv-ctx-sep { height: 1px; background: var(--border); margin: .3rem .4rem; }
+@media (prefers-reduced-motion: reduce) { #sv-ctx-menu.open { animation: none; } }
+
+/* Calibration undo chip sits beside Details (top-right stack) */
+.taste-cal-undo { top: 4rem; }
+.taste-cal-card.taste-cal-undo-in { animation: calUndoIn .3s var(--ease); }
+@keyframes calUndoIn { from { opacity: 0; transform: scale(.97); } }
+
+/* ═══ COMMIT 122 — Year in the Life: wrapped slides ══════════════════ */
+.recap-wrapped {
+  position: fixed;
+  inset: 0;
+  z-index: 9700;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 90% at 50% 110%, hsl(var(--recap-hue, 350) 85% 22% / .85), transparent 60%),
+    radial-gradient(100% 70% at 50% -10%, hsl(calc(var(--recap-hue, 350) + 40) 80% 18% / .7), transparent 55%),
+    #070707;
+  transition: background 1s var(--ease);
+  color: #fff;
+}
+.recap-progress {
+  display: flex;
+  gap: 5px;
+  padding: 1rem 1.1rem 0;
+}
+.recap-progress span {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,.18);
+  transition: background .3s;
+}
+.recap-progress span.done { background: rgba(255,255,255,.75); }
+.recap-progress span.now { background: hsl(var(--recap-hue, 350) 90% 60%); }
+.recap-wrapped .year-recap-close {
+  position: absolute;
+  top: 1.6rem;
+  right: 1.1rem;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(0,0,0,.45);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+.recap-stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 2rem clamp(1rem, 5vw, 4rem);
+  cursor: pointer;
+}
+.recap-slide { text-align: center; max-width: 760px; animation: recapSlideIn .5s var(--ease); }
+@keyframes recapSlideIn { from { opacity: 0; transform: translateY(26px) scale(.97); } }
+.recap-kicker {
+  font-size: .78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .22em;
+  color: hsl(var(--recap-hue, 350) 90% 70%);
+  animation: recapBits .6s var(--ease) .1s backwards;
+}
+.recap-big {
+  font-family: 'Bebas Neue', 'Arial Black', Impact, sans-serif;
+  font-size: clamp(3.2rem, 12vw, 8.5rem);
+  line-height: 1.02;
+  margin: .6rem 0 .4rem;
+  letter-spacing: .02em;
+  animation: recapBig .55s cubic-bezier(.34, 1.4, .64, 1) .05s backwards;
+}
+@keyframes recapBig { from { opacity: 0; transform: scale(.72); } }
+.recap-sub {
+  font-size: clamp(.95rem, 2vw, 1.2rem);
+  color: rgba(255,255,255,.82);
+  line-height: 1.6;
+  animation: recapBits .6s var(--ease) .22s backwards;
+}
+@keyframes recapBits { from { opacity: 0; transform: translateY(12px); } }
+.recap-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0 1rem 1.4rem;
+}
+.recap-nav button {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(0,0,0,.4);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background .18s, transform .18s;
+}
+.recap-nav button:hover { background: hsl(var(--recap-hue, 350) 80% 40%); transform: scale(1.06); }
+.recap-hint { font-size: .68rem; color: rgba(255,255,255,.45); }
+@media (max-width: 720px) { .recap-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .recap-slide, .recap-kicker, .recap-big, .recap-sub { animation: none !important; }
+  .recap-wrapped { transition: none; }
+}

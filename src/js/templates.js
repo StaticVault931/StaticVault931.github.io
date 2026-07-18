@@ -109,11 +109,13 @@ export function injectOverlays() {
       <span class="nc-type-pill" id="nc-type-pill"></span>
     </div>
     <div class="nc-action-row">
-      <button class="nc-btn nc-btn-play" id="nc-play" title="Play"><span class="material-icons-round">play_arrow</span></button>
-      <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save"><span class="material-icons-round">add</span></button>
-      <button class="nc-btn nc-btn-like" id="nc-like" title="Like"><span class="material-icons-round">thumb_up_off_alt</span></button>
-      <button class="nc-btn nc-btn-mute" id="nc-mute" title="Sound on/off"><span class="material-icons-round">volume_off</span></button>
-      <button class="nc-btn nc-btn-more" id="nc-more" title="More info"><span class="material-icons-round">expand_more</span></button>
+      <button class="nc-btn nc-btn-play" id="nc-play" title="Play" aria-label="Play"><span class="material-icons-round">play_arrow</span></button>
+      <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save" aria-label="Save to watchlist"><span class="material-icons-round">add</span></button>
+      <button class="nc-btn nc-btn-like" id="nc-like" title="Like" aria-label="Like"><span class="material-icons-round">thumb_up_off_alt</span></button>
+      <button class="nc-btn nc-btn-dislike" id="nc-dislike" title="Not my taste" aria-label="Not my taste"><span class="material-icons-round">thumb_down_off_alt</span></button>
+      <button class="nc-btn nc-btn-watched" id="nc-watched" title="Already watched" aria-label="Mark as already watched"><span class="material-icons-round">check_circle_outline</span></button>
+      <button class="nc-btn nc-btn-mute" id="nc-mute" title="Sound on/off" aria-label="Sound on or off"><span class="material-icons-round">volume_off</span></button>
+      <button class="nc-btn nc-btn-more" id="nc-more" title="More info" aria-label="More info"><span class="material-icons-round">expand_more</span></button>
     </div>
     <div class="nc-meta-row" id="nc-meta"></div>
     <div class="nc-genres-row" id="nc-genres"></div>
@@ -484,11 +486,11 @@ export function injectOverlays() {
           <div class="pe-quick-avatar pe-qa-default" data-avatar="" title="Default">
             <span class="material-icons-round">person</span>
           </div>
-          <div class="pe-quick-avatar" data-avatar="assets/icons/favicon.png" title="SV931">
-            <img src="assets/icons/favicon.png" alt="SV931">
+          <div class="pe-quick-avatar" data-avatar="assets/icons/favicon.png" title="StaticVault931">
+            <img src="assets/icons/favicon.png" alt="StaticVault931">
           </div>
-          <div class="pe-quick-avatar" data-avatar="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" title="StaticQuasar">
-            <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" alt="StaticQuasar">
+          <div class="pe-quick-avatar" data-avatar="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" title="StaticQuasar931">
+            <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" alt="StaticQuasar931">
           </div>
           <button class="pe-more-avatars-btn" id="profile-change-avatar-btn" title="Search actors / more options">
             <span class="material-icons-round">search</span>

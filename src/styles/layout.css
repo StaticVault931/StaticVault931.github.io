@@ -3059,8 +3059,12 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
     display: grid;
     grid-template-columns: 1.55fr 1fr;
     gap: 1rem 1.2rem;
-    align-items: start;
+    /* stretch: the right rail's last card ends exactly level with the
+       picture picker on the left — no ragged column bottoms */
+    align-items: stretch;
   }
+  .ob-stage-sec { display: flex; flex-direction: column; }
+  .ob-stage-sec:nth-of-type(3) { justify-content: flex-start; }
   .ob-stage-hero { grid-column: 1 / -1; }
   .ob-stage-sec:nth-of-type(1) { grid-column: 1; grid-row: 2 / 4; }
   .ob-stage-sec:nth-of-type(2) { grid-column: 2; }
@@ -3271,7 +3275,12 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
    common desktop sizes, so the sidebar column ends exactly with the
    poster wall instead of growing its own scrollbar. */
 @media (min-width: 881px) {
-  .ob-side { gap: .8rem; justify-content: space-between; padding-top: 2px; }
+  /* No artificial spreading: blocks stack with one fixed gap and each
+     block absorbs its share of leftover height INTERNALLY (content stays
+     vertically centered), so the column ends exactly with the poster
+     wall without visible holes between cards. */
+  .ob-side { gap: .8rem; justify-content: flex-start; padding-top: 2px; }
+  .ob-side .ob-block { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
   .ob-side .ob-block { padding: .8rem .9rem; }
   .ob-side .ob-chips {
     display: grid;

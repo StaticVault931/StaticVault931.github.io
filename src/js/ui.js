@@ -58,7 +58,10 @@ export function makeCard(m, type, opts = {}) {
   const id = m.id;
   const year = String(m.release_date || m.first_air_date || m.startDate_year || '').slice(0, 4);
   const ratingVal = m.vote_average || (m.averageScore ? m.averageScore / 10 : 0);
-  const rating = ratingVal ? ratingVal.toFixed(1) : '';
+  // Dev "label missing information": absent data renders as N/A instead of
+  // silently vanishing (window._svShowNA — toggled in the dev panel)
+  const NA = window._svShowNA ? 'N/A' : '';
+  const rating = ratingVal ? ratingVal.toFixed(1) : NA;
 
   // Image: cards are 16:9, so use the 16:9 backdrop art first —
   // portrait posters get badly cropped in a wide card. Poster is fallback only.

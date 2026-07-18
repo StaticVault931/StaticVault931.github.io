@@ -1031,6 +1031,109 @@ function _wireTipRetry() {
   }, { passive: true });
 }
 
+/* ── RIGHT-CLICK CONTEXT MENU ────────────────────────────────────────
+   Right-click any title card (including onboarding tiles) or any person
+   for quick actions. Every action toasts with a working Undo. Actions
+   reuse the exact same state functions the buttons use — no new logic. */
+// Dev-mode flag: render missing data as "N/A" instead of hiding it
+try { window._svShowNA = localStorage.getItem('sv_dev_na') === '1'; } catch { window._svShowNA = false; }
+
+function _ctxMenuEl() {
+  let menu = document.getElementById('sv-ctx-menu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'sv-ctx-menu';
+  menu.setAttribute('role', 'menu');
+  document.body.appendChild(menu);
+  const close = () => menu.classList.remove('open');
+  document.addEventListener('click', close);
+  document.addEventListener('scroll', close, { passive: true, capture: true });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  return menu;
+}
+
+function _ctxShow(items, x, y) {
+  const menu = _ctxMenuEl();
+  menu.innerHTML = items.map((it, i) => it === '-'
+    ? '<div class="sv-ctx-sep" role="separator"></div>'
+    : `<button type="button" role="menuitem" data-ctx="${i}"><span class="material-icons-round">${it.icon}</span>${it.label}</button>`).join('');
+  menu.querySelectorAll('[data-ctx]').forEach(btn => btn.addEventListener('click', () => {
+    menu.classList.remove('open');
+    items[+btn.dataset.ctx]?.run?.();
+  }));
+  menu.classList.add('open');
+  // clamp inside the viewport
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, innerWidth - r.width - 8)}px`;
+  menu.style.top = `${Math.min(y, innerHeight - r.height - 8)}px`;
+  menu.querySelector('button')?.focus();
+}
+
+document.addEventListener('contextmenu', e => {
+  // People first (cast cards, avatar chips with a person behind them)
+  const person = e.target.closest('.cast-card[data-person-id]');
+  if (person && +person.dataset.personId) {
+    e.preventDefault();
+    const pid = +person.dataset.personId;
+    _ctxShow([
+      { icon: 'person', label: 'View person', run: () => openPersonPage(pid) },
+      { icon: 'open_in_new', label: 'Open in new tab', run: () => window.open(`/?person=${pid}`, '_blank', 'noopener') },
+    ], e.clientX, e.clientY);
+    return;
+  }
+
+  const obTile = e.target.closest('.ob-tile[data-oid]');
+  const card = e.target.closest('.card[data-id][data-type]');
+  if (!obTile && !card) return;
+  e.preventDefault();
+
+  let item, isOb = false, tileEl = null;
+  if (obTile) {
+    isOb = true;
+    tileEl = obTile;
+    item = window._svObItems?.get(+obTile.dataset.oid) || { id: +obTile.dataset.oid, media_type: 'movie', title: obTile.dataset.title || '' };
+  } else {
+    item = {
+      id: +card.dataset.id,
+      type: card.dataset.type,
+      media_type: card.dataset.type,
+      title: card.dataset.title || '',
+      poster_path: card.dataset.poster || null,
+    };
+  }
+  const t = item.media_type === 'tv' ? 'tv' : item.media_type === 'anime' ? 'anime' : 'movie';
+  const undoable = (msg, icon, doIt, undoIt) => { doIt(); toast(msg, icon, { actionLabel: 'Undo', onAction: undoIt }); };
+  const syncTile = st => { if (tileEl) { const fn = window._svObSetTile; fn ? fn(tileEl, st) : null; } };
+
+  const entries = [
+    { icon: 'play_arrow', label: 'Play / More info', run: () => {
+      if (isOb) window.open(`/?id=${item.id}&type=${t}`, '_blank', 'noopener');
+      else openMedia(item.id, t, item);
+    } },
+    '-',
+    { icon: 'favorite', label: 'Love', run: () => undoable('Loved', 'favorite',
+      () => { setReaction(item, 'love'); syncTile('liked'); },
+      () => { setReaction(item, 'none'); syncTile('none'); }) },
+    { icon: 'thumb_up', label: 'Like', run: () => undoable('Liked', 'thumb_up',
+      () => { setReaction(item, 'like'); syncTile('liked'); },
+      () => { setReaction(item, 'none'); syncTile('none'); }) },
+    { icon: 'thumb_down', label: 'Not my taste', run: () => undoable('Hidden from recommendations', 'thumb_down',
+      () => { addDislike(item); syncTile('disliked'); },
+      () => { state.disliked = state.disliked.filter(d => mediaKey(d) !== mediaKey(item)); persist('disliked'); state.prefDislikes = state.prefDislikes.filter(d => mediaKey(d) !== mediaKey(item)); persist('prefDislikes'); syncTile('none'); }) },
+    { icon: 'done_all', label: isWatched(item.id) ? 'Unmark watched' : 'Mark as watched', run: () => {
+      const was = isWatched(item.id);
+      undoable(was ? 'Unmarked watched' : 'Marked as watched', 'done_all',
+        () => toggleWatched(item), () => toggleWatched(item));
+    } },
+    { icon: isInWatchlist(item.id) ? 'bookmark' : 'bookmark_border', label: isInWatchlist(item.id) ? 'Remove from watchlist' : 'Add to watchlist', run: () => {
+      const was = isInWatchlist(item.id);
+      undoable(was ? 'Removed from watchlist' : 'Added to watchlist', 'bookmark',
+        () => toggleWatchlist(item), () => toggleWatchlist(item));
+    } },
+  ];
+  _ctxShow(entries, e.clientX, e.clientY);
+});
+
 /* ── EXPERIMENTS ─────────────────────────────────────────────────────
    Alternate UIs testable from the dev panel (Experiments section).
    Each is a body class + localStorage flag; fully working, dev-gated
@@ -1444,12 +1547,14 @@ async function maybeShowOnboarding() {
   document.body.appendChild(ob);
   requestAnimationFrame(() => ob.classList.add('ob-in'));
 
-  const pickedGenres = new Set();
-  const dislikedGenres = new Set();
-  const pickedLangs = new Set(['en']);
+  // Redo-friendly: whatever this profile already picked arrives picked —
+  // redoing onboarding must show the current taste, not a blank slate
+  const pickedGenres = new Set((state.prefGenres || []).map(String));
+  const dislikedGenres = new Set((state.prefGenreDislikes || []).map(String));
+  const pickedLangs = new Set(state.prefLangs?.length ? state.prefLangs : ['en']);
   const likedTitles = new Map();    // id → item
   const dislikedTitles = new Map(); // id → item
-  let pickedAge = 'PG-13';
+  let pickedAge = state.ageRating || 'PG-13';
 
   const doneBtn = ob.querySelector('#ob-done');
   const syncDone = () => {
@@ -1518,8 +1623,10 @@ async function maybeShowOnboarding() {
     ...GENRES.filter(g => g.id !== 10751 && g.id !== 10762).slice(0, 12),
   ];
   const chipsEl = ob.querySelector('#ob-chips');
-  chipsEl.innerHTML = obGenres.map(g =>
-    `<button class="ob-chip" data-gid="${g.id}"><span class="material-icons-round">${g.icon}</span>${g.name}</button>`).join('');
+  chipsEl.innerHTML = obGenres.map(g => {
+    const st = pickedGenres.has(String(g.id)) ? ' picked' : dislikedGenres.has(String(g.id)) ? ' dis' : '';
+    return `<button class="ob-chip${st}" data-gid="${g.id}"><span class="material-icons-round">${g.icon}</span>${g.name}</button>`;
+  }).join('');
   chipsEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
@@ -1535,7 +1642,7 @@ async function maybeShowOnboarding() {
   // Language chips (multi-select, English pre-selected)
   const langsEl = ob.querySelector('#ob-langs');
   langsEl.innerHTML = OB_LANGS.map(([code, name]) =>
-    `<button class="ob-chip${code === 'en' ? ' picked' : ''}" data-lang="${code}">${name}</button>`).join('');
+    `<button class="ob-chip${pickedLangs.has(code) ? ' picked' : ''}" data-lang="${code}">${name}</button>`).join('');
   langsEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
@@ -1582,8 +1689,8 @@ async function maybeShowOnboarding() {
   // Picture options — same set the real profile editor offers
   const OB_AVATARS = [
     ['', 'Initial'],
-    ['assets/icons/favicon.png', 'SV931'],
-    ['https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', 'StaticQuasar'],
+    ['assets/icons/favicon.png', 'StaticVault931'],
+    ['https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', 'StaticQuasar931'],
   ];
   const avatarsEl = ob.querySelector('#ob-profile-avatars');
   if (avatarsEl) {
@@ -1692,8 +1799,14 @@ async function maybeShowOnboarding() {
   // Accessibility chips (multi-toggle, applied instantly so users can see;
   // these are REAL settings — they show up in Settings → Accessibility too)
   const a11yEl = ob.querySelector('#ob-a11y');
+  const A11Y_DESCS = {
+    motionLevel: 'Fewer animations and transitions across the whole site',
+    textSize: 'Larger text, buttons, and controls everywhere',
+    highContrast: 'Stronger contrast between text and backgrounds',
+    bigTargets: 'Bigger buttons and touch targets throughout',
+  };
   a11yEl.innerHTML = OB_A11Y.map(([id, label]) =>
-    `<button class="ob-chip" data-a11y="${id}">${label}</button>`).join('');
+    `<button class="ob-chip" data-a11y="${id}" title="${A11Y_DESCS[id] || ''}" aria-label="${label} — ${A11Y_DESCS[id] || ''}">${label}</button>`).join('');
   a11yEl.addEventListener('click', e => {
     const chip = e.target.closest('.ob-chip');
     if (!chip) return;
@@ -1707,8 +1820,8 @@ async function maybeShowOnboarding() {
 
   // Title tile: click cycles neutral → loved → not-my-taste → neutral,
   // and hover reveals direct buttons: ❤ love, 👎 not my taste, 🚫 hide
-  const tileHtml = x => `
-    <div class="ob-tile" data-oid="${x.id}" data-state="none" role="button" tabindex="0"
+  const tileHtml = (x, i = 0) => `
+    <div class="ob-tile" data-oid="${x.id}" data-state="none" role="button" tabindex="0" style="animation-delay:${Math.min(i * 14, 650)}ms"
       data-title="${(x.title || x.name || '').toLowerCase().replace(/"/g, '')}"
       aria-label="${(x.title || x.name || '').replace(/"/g, '&quot;')}">
       <img src="${imgUrl(x.poster_path, 'w185')}" alt="" loading="lazy">
@@ -1742,6 +1855,9 @@ async function maybeShowOnboarding() {
   };
   const cycleTile = tile =>
     setTileState(tile, { none: 'liked', liked: 'disliked', disliked: 'none' }[tile.dataset.state || 'none']);
+  // Right-click context menu hooks (see the global contextmenu handler)
+  window._svObItems = allItems;
+  window._svObSetTile = setTileState;
 
   const grid = ob.querySelector('#ob-grid');
   grid.addEventListener('click', e => {
@@ -1805,6 +1921,12 @@ async function maybeShowOnboarding() {
   //   • 4 currently trending (a couple of fresh faces)
   try {
     const cutoff = `${new Date().getFullYear() - 3}-01-01`;
+    // Recency floors: a taste wall calibrates on titles people have had a
+    // real chance to SEE — movies at least 6 months old, shows on air at
+    // least 4 weeks (classics keep the deeper 3-year floor).
+    const iso = d => d.toISOString().slice(0, 10);
+    const movieFloor = iso(new Date(Date.now() - 183 * 86400000));
+    const tvFloor = iso(new Date(Date.now() - 28 * 86400000));
     const [cm, ct, kids, cozy, intense, anime, trend] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'vote_count.desc', 'primary_release_date.lte': cutoff }),
       tmdb('/discover/tv',    { sort_by: 'vote_count.desc', 'first_air_date.lte': cutoff }),
@@ -1816,6 +1938,14 @@ async function maybeShowOnboarding() {
       tmdb('/discover/tv',    { sort_by: 'vote_count.desc', with_genres: '16', with_original_language: 'ja', 'first_air_date.lte': cutoff }),
       tmdb('/trending/all/week'),
     ]);
+    // Trending is the only source without a date filter — apply the
+    // recency floors to it manually
+    if (trend.status === 'fulfilled') {
+      trend.value = { results: (trend.value?.results || []).filter(x =>
+        x.media_type === 'tv'
+          ? String(x.first_air_date || '') <= tvFloor
+          : String(x.release_date || '') <= movieFloor) };
+    }
     const grab = (r, type = null) => r.status === 'fulfilled'
       ? (r.value.results || []).filter(x => x.poster_path && (x.media_type !== 'person'))
           .map(x => ({ ...x, media_type: type || x.media_type || 'movie' }))
@@ -1873,7 +2003,15 @@ async function maybeShowOnboarding() {
     };
     const mixed = dedupedPool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
     mixed.forEach(x => allItems.set(x.id, x));
-    grid.innerHTML = mixed.map(tileHtml).join('');
+    grid.innerHTML = mixed.map((x, i) => tileHtml(x, i)).join('');
+    // Redo-friendly: titles this profile already rated arrive pre-marked
+    const prevLiked = new Set([...(state.liked || []), ...(state.prefLikes || [])].map(x => +x.id));
+    const prevDisliked = new Set([...(state.disliked || []), ...(state.prefDislikes || [])].map(x => +x.id));
+    grid.querySelectorAll('.ob-tile[data-oid]').forEach(t => {
+      const id = +t.dataset.oid;
+      if (prevLiked.has(id)) setTileState(t, 'liked');
+      else if (prevDisliked.has(id)) setTileState(t, 'disliked');
+    });
     ob._fitGrid?.();          // size to the screen — complete rows only
     ob._applyGridFilter?.();  // top-search experiment: re-apply live filter
   } catch (err) {
@@ -2519,6 +2657,12 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
         return;
       }
       recordRowStat('dedupRemoved', rowId, impressionFiltered.length - deduped.length);
+      // PERSONAL ORDER: every non-chart row leads with the titles THIS
+      // viewer is most likely to want (loved/liked genres up, skipped and
+      // disliked patterns down) — charts keep their real-world order.
+      if (!RAW_ROWS && getSetting('personalizeContent')) {
+        toRender.sort((a, b) => getTasteScore(b) - getTasteScore(a));
+      }
       toRender.slice(0, _ROW_MAX).forEach(m => _claimHomeItem(m));
       const final = toRender.slice(0, _ROW_MAX);
       recordRowStat('itemCount', rowId, final.length);
@@ -9281,8 +9425,8 @@ function openPersonSearchForAvatar() {
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.2rem">Featured</div>
         <div style="display:flex;gap:.65rem;flex-wrap:wrap;">${(() => {
           const featuredAvatars = [
-            { url: 'assets/icons/favicon.png', name: 'SV931', special: 'sv931' },
-            { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar', special: 'sq931' },
+            { url: 'assets/icons/favicon.png', name: 'StaticVault931', special: 'sv931' },
+            { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar931', special: 'sq931' },
             // Person avatars: searched by exact name via TMDB — always correct face
             { name: 'Robert Downey Jr.',  searchName: 'Robert Downey Jr.' },
             { name: 'Millie Bobby Brown', searchName: 'Millie Bobby Brown' },
@@ -9525,41 +9669,93 @@ function showYearRecapPreview() {
   const clips = summary.clips || {};
   const rated = (cal.love || 0) + (cal.like || 0) + (cal.dislike || 0) + (cal.skip || 0);
   const positive = (cal.love || 0) + (cal.like || 0);
-  const topGenre = summary.topGenres?.[0]
-    ? GENRES.find(genre => genre.id === summary.topGenres[0].genreId)?.name || 'Something wonderfully specific'
-    : 'Still being discovered';
+  const topGenres = (summary.topGenres || [])
+    .map(g => GENRES.find(genre => genre.id === g.genreId)?.name)
+    .filter(Boolean);
+
+  // Wrapped-style: one big beat per slide, and a stat with no data is a
+  // slide that simply doesn't exist — never a zero on screen.
+  const slides = [];
+  slides.push({ hue: 350, kicker: `${summary.year} · this profile only`, big: 'Your Year', sub: 'in the life — a look back at what you actually watched, rated, and explored.' });
+  if (summary.watchHours > 0) slides.push({
+    hue: 8, kicker: 'Time well spent', big: `${summary.watchHours}h`,
+    sub: `of watching — about ${Math.max(1, Math.round(summary.watchHours / 2))} movies' worth of stories.`,
+  });
+  if (summary.plays > 0) slides.push({ hue: 32, kicker: 'Pressed play', big: String(summary.plays), sub: summary.plays === 1 ? 'title started. The first of many.' : 'times you hit play and gave something a chance.' });
+  if (topGenres.length) slides.push({
+    hue: 268, kicker: 'Your genre map', big: topGenres[0],
+    sub: topGenres.length > 1 ? `led the way — with ${topGenres.slice(1, 3).join(' and ')} close behind.` : 'ruled your year. A person of taste.',
+  });
+  if (rated > 0) slides.push({
+    hue: 140, kicker: 'Taste, calibrated', big: String(rated),
+    sub: `titles rated — ${Math.round(positive / rated * 100)}% of them made the cut. Your recommendations thank you.`,
+  });
+  if (summary.clipViews > 0) slides.push({
+    hue: 200, kicker: 'Discovery mode', big: String(summary.clipViews),
+    sub: `clips explored${clips.averageSeconds ? ` — each one held you about ${clips.averageSeconds} seconds` : ''}.`,
+  });
+  if (summary.activeDays > 0) slides.push({ hue: 45, kicker: 'You showed up', big: `${summary.activeDays} days`, sub: 'of coming back for one more story.' });
+  slides.push({ hue: 350, kicker: 'That was your year', big: 'Here\'s to the next one', sub: 'All of this stays on your device — it\'s your story, not our data.' });
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const overlay = document.createElement('div');
   overlay.id = 'year-recap-preview';
-  overlay.className = 'year-recap-preview';
+  overlay.className = 'year-recap-preview recap-wrapped';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'year-recap-title');
+  overlay.setAttribute('aria-label', `Your ${summary.year} recap`);
   overlay.innerHTML = `
-    <section class="year-recap-panel">
-      <button type="button" class="year-recap-close" aria-label="Close recap"><span class="material-icons-round">close</span></button>
-      <p class="year-recap-kicker">${summary.year} preview | local data only</p>
-      <h2 id="year-recap-title">Your Year in the Life</h2>
-      <div class="year-recap-grid">
-        <div><strong>${summary.watchHours}h</strong><span>watched</span></div>
-        <div><strong>${summary.plays}</strong><span>plays</span></div>
-        <div><strong>${summary.clipViews}</strong><span>clips explored</span></div>
-        <div><strong>${summary.activeDays}</strong><span>active days</span></div>
-      </div>
-      <div class="year-recap-notes">
-        <p><span class="material-icons-round">category</span><b>${esc(topGenre)}</b> led your genre map.</p>
-        <p><span class="material-icons-round">tune</span>You rated <b>${rated}</b> calibration titles and kept <b>${rated ? Math.round(positive / rated * 100) : 0}%</b> on the positive side.</p>
-        <p><span class="material-icons-round">movie_filter</span>Your average played clip held attention for <b>${clips.averageSeconds || 0}s</b>.</p>
-      </div>
-      <p class="year-recap-foot">Preview numbers reflect activity recorded on this profile. Older activity may predate detailed tracking.</p>
-    </section>`;
+    <div class="recap-progress" aria-hidden="true">${slides.map((_, i) => `<span data-seg="${i}"></span>`).join('')}</div>
+    <button type="button" class="year-recap-close" aria-label="Close recap"><span class="material-icons-round">close</span></button>
+    <div class="recap-stage" id="recap-stage" aria-live="polite"></div>
+    <div class="recap-nav">
+      <button type="button" class="recap-prev" aria-label="Previous"><span class="material-icons-round">chevron_left</span></button>
+      <span class="recap-hint">tap, click, or use ← → </span>
+      <button type="button" class="recap-next" aria-label="Next"><span class="material-icons-round">chevron_right</span></button>
+    </div>`;
   document.body.appendChild(overlay);
-  const close = () => { overlay.remove(); previousFocus?.focus?.(); };
-  overlay.addEventListener('click', event => { if (event.target === overlay || event.target.closest('.year-recap-close')) close(); });
+
+  let idx = 0, timer = null;
+  const stage = overlay.querySelector('#recap-stage');
+  const renderSlide = () => {
+    const s = slides[idx];
+    overlay.style.setProperty('--recap-hue', s.hue);
+    stage.innerHTML = `
+      <div class="recap-slide">
+        <p class="recap-kicker">${esc(s.kicker)}</p>
+        <div class="recap-big">${esc(s.big)}</div>
+        <p class="recap-sub">${esc(s.sub)}</p>
+      </div>`;
+    overlay.querySelectorAll('.recap-progress span').forEach((seg, i) =>
+      seg.className = i < idx ? 'done' : i === idx ? 'now' : '');
+    overlay.querySelector('.recap-prev').style.visibility = idx === 0 ? 'hidden' : '';
+  };
+  const go = d => {
+    idx = Math.max(0, idx + d);
+    if (idx >= slides.length) { close(); return; }
+    renderSlide();
+    schedule();
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    if (!reduced && idx < slides.length - 1) timer = setTimeout(() => go(1), 5000);
+  };
+  const close = () => { clearTimeout(timer); overlay.remove(); previousFocus?.focus?.(); };
+
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay || event.target.closest('.year-recap-close')) { close(); return; }
+    if (event.target.closest('.recap-prev')) { go(-1); return; }
+    if (event.target.closest('.recap-next') || event.target.closest('.recap-stage')) go(1);
+  });
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') close();
-    if (event.key === 'Tab') { event.preventDefault(); overlay.querySelector('.year-recap-close')?.focus(); }
+    else if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') { event.preventDefault(); go(1); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); go(-1); }
   });
-  overlay.querySelector('.year-recap-close')?.focus();
+  overlay.tabIndex = -1;
+  overlay.focus();
+  renderSlide();
+  schedule();
 }
 
 function populateTestPanel() {
@@ -9603,6 +9799,13 @@ function populateTestPanel() {
         <div class="dev-sec-title">Year in the Life Lab</div>
         <div class="dev-btn-row">
           <button class="dev-btn" id="dev-btn-year-recap"><span class="material-icons-round" style="font-size:.9rem;vertical-align:-2px">celebration</span> Open recap preview</button>
+        </div>
+      </div>
+
+      <div class="dev-section">
+        <div class="dev-sec-title">Diagnostics Display</div>
+        <div class="dev-btn-row">
+          <button class="dev-btn" id="dev-btn-na" title="Missing data (ratings, years…) renders as N/A instead of disappearing">Label Missing Info (N/A)</button>
         </div>
       </div>
 
@@ -9747,6 +9950,15 @@ function populateTestPanel() {
       toast('Cache cleared', 'delete_sweep');
     });
     document.getElementById('dev-btn-year-recap')?.addEventListener('click', showYearRecapPreview);
+    const naBtn = document.getElementById('dev-btn-na');
+    const syncNaBtn = () => { if (naBtn) naBtn.textContent = `${window._svShowNA ? '✓ ' : ''}Label Missing Info (N/A)`; };
+    syncNaBtn();
+    naBtn?.addEventListener('click', () => {
+      window._svShowNA = !window._svShowNA;
+      try { localStorage.setItem('sv_dev_na', window._svShowNA ? '1' : '0'); } catch {}
+      syncNaBtn();
+      toast(window._svShowNA ? 'Missing info will render as N/A (applies to new renders)' : 'N/A labels off', 'label');
+    });
 
     document.getElementById('dev-test-all-btn')?.addEventListener('click', () => {
       PROVIDERS.forEach(p => window._testProv(p.id));
@@ -10496,6 +10708,39 @@ function initHoverTrailer() {
     const icon = document.querySelector('#nc-like .material-icons-round');
     if (icon) icon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   });
+  // Hover card: dislike + watched — the big card should offer everything
+  // a right-click does, with undo in the toast
+  document.getElementById('nc-dislike')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!_hoverCurrentCard) return;
+    const id = +_hoverCurrentCard.dataset.id;
+    const type = _hoverCurrentCard.dataset.type;
+    const item = buildItemMeta(id, type);
+    addDislike(item);
+    const icon = document.querySelector('#nc-dislike .material-icons-round');
+    if (icon) icon.textContent = 'thumb_down';
+    toast('Hidden from recommendations', 'thumb_down', { actionLabel: 'Undo', onAction: () => {
+      state.disliked = state.disliked.filter(d => mediaKey(d) !== mediaKey(item));
+      persist('disliked');
+      state.prefDislikes = state.prefDislikes.filter(d => mediaKey(d) !== mediaKey(item));
+      persist('prefDislikes');
+      if (icon) icon.textContent = 'thumb_down_off_alt';
+    } });
+  });
+  document.getElementById('nc-watched')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!_hoverCurrentCard) return;
+    const id = +_hoverCurrentCard.dataset.id;
+    const type = _hoverCurrentCard.dataset.type;
+    const item = buildItemMeta(id, type);
+    const nowWatched = toggleWatched(item);
+    const icon = document.querySelector('#nc-watched .material-icons-round');
+    if (icon) icon.textContent = nowWatched ? 'done_all' : 'check_circle_outline';
+    toast(nowWatched ? 'Marked as watched' : 'Unmarked watched', 'done_all', { actionLabel: 'Undo', onAction: () => {
+      toggleWatched(item);
+      if (icon) icon.textContent = isWatched(id) ? 'done_all' : 'check_circle_outline';
+    } });
+  });
   // Mute toggle — user gesture, so browsers always honor the unmute
   document.getElementById('nc-mute')?.addEventListener('click', e => {
     e.stopPropagation();
@@ -10564,6 +10809,11 @@ async function showNetflixCard(card) {
   const frame = document.getElementById('nc-frame');
   const likeIcon = document.querySelector('#nc-like .material-icons-round');
   const wlIcon = document.querySelector('#nc-wl .material-icons-round');
+  // Sync the two-state icons to this title's current standing
+  const dislikeIcon = document.querySelector('#nc-dislike .material-icons-round');
+  if (dislikeIcon) dislikeIcon.textContent = isDisliked(+card.dataset.id) ? 'thumb_down' : 'thumb_down_off_alt';
+  const watchedIcon = document.querySelector('#nc-watched .material-icons-round');
+  if (watchedIcon) watchedIcon.textContent = isWatched(+card.dataset.id) ? 'done_all' : 'check_circle_outline';
 
   if (titleEl) titleEl.textContent = title;
   if (typePill) typePill.textContent = typeLabel;
@@ -10574,8 +10824,8 @@ async function showNetflixCard(card) {
     const rVal = parseFloat(rating);
     const rColor = rVal >= 9 ? '#22c55e' : rVal >= 7 ? '#f5c518' : rVal >= 5 ? '#f97316' : rVal > 0 ? '#f87171' : '';
     metaEl.innerHTML = [
-      year ? `<span class="nc-year">${year}</span>` : '',
-      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : '',
+      year ? `<span class="nc-year">${year}</span>` : (window._svShowNA ? '<span class="nc-year">N/A</span>' : ''),
+      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : (window._svShowNA ? '<span class="nc-rating">★ N/A</span>' : ''),
     ].filter(Boolean).join('');
   }
   if (backdrop) {
@@ -10600,8 +10850,8 @@ async function showNetflixCard(card) {
     const rVal = parseFloat(rating);
     const rColor = rVal >= 9 ? '#22c55e' : rVal >= 7 ? '#f5c518' : rVal >= 5 ? '#f97316' : rVal > 0 ? '#f87171' : '';
     metaEl.innerHTML = [
-      year ? `<span class="nc-year">${year}</span>` : '',
-      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : '',
+      year ? `<span class="nc-year">${year}</span>` : (window._svShowNA ? '<span class="nc-year">N/A</span>' : ''),
+      rating ? `<span class="nc-rating" style="color:${rColor}">★ ${rating}</span>` : (window._svShowNA ? '<span class="nc-rating">★ N/A</span>' : ''),
     ].filter(Boolean).join('');
   }
 
