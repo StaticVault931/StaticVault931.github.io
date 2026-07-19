@@ -29,6 +29,9 @@ function _entry(m, type) {
     rating: m.vote_average || 0,
     poster: m.poster_path || '',
     backdrop: m.backdrop_path || '',
+    overview: m.overview || m.description || '',
+    genres: (m.genre_ids || []).map(Number).filter(Boolean),
+    language: m.original_language || '',
   };
 }
 
@@ -91,7 +94,7 @@ export async function buildIndex() {
       const type = m.type === 'tv' ? 'tv' : 'movie';
       if (!m.id || seen.has(`${type}${m.id}`)) return;
       seen.add(`${type}${m.id}`);
-      items.push({ id: m.id, title: m.title || '', type, year: m.year || '', pop: 50, votes: 100, rating: m.rating || 0, poster: m.poster || '', backdrop: m.backdrop || '' });
+      items.push({ id: m.id, title: m.title || '', type, year: m.year || '', pop: 50, votes: 100, rating: m.rating || 0, poster: m.poster || '', backdrop: m.backdrop || '', overview: m.overview || '', genres: m.genre_ids || [], language: m.original_language || '' });
     });
 
     if (items.length) {

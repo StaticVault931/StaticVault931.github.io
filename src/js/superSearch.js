@@ -1,9 +1,23 @@
 import { esc } from './ui.js';
+import { goPage } from './router.js';
+import { searchPath } from './routes.js';
 
 let _enabled = () => false;
 let _previousFocus = null;
 let _entries = [];
 let _active = 0;
+
+const ACTIONS = [
+  { text: 'Search the full catalog', terms: 'find movie show anime actor title global catalog', kind: 'Page', icon: 'search', action: query => { location.href = searchPath(query); } },
+  { text: 'Open Settings', terms: 'preferences options captions subtitles language accessibility playback account', kind: 'Tool', icon: 'settings', action: () => goPage('prefs') },
+  { text: 'Open My Library', terms: 'watchlist saved liked loved watched recent history taste profile', kind: 'Page', icon: 'video_library', action: () => goPage('library') },
+  { text: 'Open Clips', terms: 'trailers short feed discover video', kind: 'Page', icon: 'smart_display', action: () => goPage('clips') },
+  { text: 'Open Mix & Match', terms: 'blend combine mix movies shows titles together recommendations discovery mixer', kind: 'Tool', icon: 'blender', action: () => goPage('mix') },
+  { text: 'Show feature guide and shortcuts', terms: 'help guide keyboard shortcuts features tips reference', kind: 'Help', icon: 'help_outline', action: () => document.getElementById('feature-guide-btn')?.click() },
+  { text: 'Open undo history', terms: 'undo reverse restore mistake actions history z', kind: 'Tool', icon: 'history', action: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true })) },
+  { text: 'Manage profiles', terms: 'profile account kids kid guided export avatar switch', kind: 'Tool', icon: 'manage_accounts', action: () => document.getElementById('profile-header-btn')?.click() },
+  { text: 'Replay onboarding', terms: 'onboarding setup choose genres actors preferences start over', kind: 'Help', icon: 'explore', action: () => window._svOpenOnboarding?.() },
+];
 
 const normalize = value => String(value || '')
   .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
@@ -48,6 +62,7 @@ function buildIndex() {
         : target.matches('button,[role="tab"]') ? 'Control' : 'On this page',
     });
   });
+  entries.push(...ACTIONS.map(action => ({ ...action, search: normalize(`${action.text} ${action.terms}`) })));
   return entries;
 }
 
@@ -64,12 +79,12 @@ function ensureOverlay() {
     <div class="super-search-panel">
       <div class="super-search-head">
         <span class="material-icons-round" aria-hidden="true">pageview</span>
-        <div><div id="super-search-title">Super Search</div><small>Find anything on this screen</small></div>
+        <div><div id="super-search-title">Super Search</div><small>Find content, controls, pages, and tools</small></div>
         <button type="button" class="super-search-close" aria-label="Close Super Search"><span class="material-icons-round">close</span></button>
       </div>
       <label class="super-search-input-wrap">
         <span class="material-icons-round">search</span>
-        <input id="super-search-input" type="search" autocomplete="off" placeholder="Search visible titles, descriptions, and controls" aria-controls="super-search-results">
+        <input id="super-search-input" type="search" autocomplete="off" placeholder="Search this screen, settings, pages, and tools" aria-controls="super-search-results">
         <kbd>Esc</kbd>
       </label>
       <div id="super-search-status" class="super-search-status" aria-live="polite"></div>
@@ -105,15 +120,20 @@ function matches(query) {
 function render() {
   const overlay = ensureOverlay();
   const input = overlay.querySelector('input');
-  const results = matches(input.value.trim());
+  const query = input.value.trim();
+  const results = matches(query);
+  if (query && !results.length) {
+    const catalog = ACTIONS[0];
+    results.push({ ...catalog, text: `Search the full catalog for “${query}”` });
+  }
   _active = Math.min(_active, Math.max(0, results.length - 1));
   overlay._results = results;
   overlay.querySelector('.super-search-status').textContent = results.length
-    ? `${results.length} result${results.length === 1 ? '' : 's'} on this screen`
-    : 'No matches on this screen';
+    ? `${results.length} result${results.length === 1 ? '' : 's'}`
+    : 'No matching content, controls, pages, or tools';
   overlay.querySelector('.super-search-results').innerHTML = results.map((entry, index) => `
     <button type="button" role="option" aria-selected="${index === _active}" class="super-search-result${index === _active ? ' active' : ''}" data-super-result="${index}">
-      <span class="material-icons-round">${entry.kind === 'On this page' ? 'subject' : 'movie'}</span>
+      <span class="material-icons-round">${entry.icon || (entry.kind === 'On this page' ? 'subject' : 'movie')}</span>
       <span><strong>${esc(entry.text)}</strong><small>${esc(entry.kind)}</small></span>
       <span class="material-icons-round">north_east</span>
     </button>`).join('');
@@ -123,6 +143,10 @@ function activate(index) {
   const entry = ensureOverlay()._results?.[index];
   if (!entry) return;
   closeSuperSearch();
+  if (entry.action) {
+    entry.action(ensureOverlay().querySelector('input').value.trim());
+    return;
+  }
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Teleport: center the target both vertically AND inside its scroll row,
   // then spotlight it — the page dims for a beat so the eye lands on it

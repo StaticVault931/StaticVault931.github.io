@@ -91,7 +91,11 @@ function personRecords(records) {
     const id = Number(url.searchParams.get('person'));
     if (!id) continue;
     const rawName = decodeXml(record.imageTitle || '').replace(/\s+-\s+Films.*$/i, '').trim();
-    const name = rawName || `Person ${id}`;
+    // An ID-only shell is thin, confusing, and indistinguishable from the
+    // other unnamed people to a crawler. Keep the runtime route available but
+    // only advertise people whose catalog record has a real display name.
+    if (!rawName) continue;
+    const name = rawName;
     if (!found.has(id)) found.set(id, { id, name, slug: slug(name), image: record.image || '' });
   }
   return [...found.values()];

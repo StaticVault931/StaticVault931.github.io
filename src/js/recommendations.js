@@ -24,6 +24,7 @@ const _kidsMode = () => {
   try { return !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; }
   catch { return false; }
 };
+const _kidsMaxLevel = () => Math.min(3, AGE_LEVELS[state.ageRating] ?? 3);
 const _animePreference = () => {
   try {
     const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
@@ -33,8 +34,54 @@ const _animePreference = () => {
 const _verified = async items => {
   let filtered = items || [];
   if (_animePreference() === 'no') filtered = filtered.filter(item => !isAnimeContent(item));
-  return _kidsMode() ? filterSafeItems(filtered, { kidsMode: true, maxLevel: 3 }) : filtered;
+  return _kidsMode() ? filterSafeItems(filtered, { kidsMode: true, maxLevel: _kidsMaxLevel() }) : filtered;
 };
+
+const _franchiseStem = item => String(item?.title || item?.name || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9 ]/g, ' ')
+  .replace(/\b(the|a|an|part|chapter|season|volume|vol)\b/g, ' ')
+  .replace(/\b\d+\b/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .split(' ')
+  .slice(0, 3)
+  .join(' ');
+
+/**
+ * Keeps the scorer's order intact while spacing exploration, primary genres,
+ * and obvious sequels. This is deterministic so the same profile does not see
+ * a different For You order every time the page re-renders.
+ */
+export function blendRecommendationCandidates(primary = [], exploration = [], limit = 18) {
+  const queues = [primary.slice(), exploration.slice()];
+  const output = [];
+
+  const takeBest = queue => {
+    if (!queue.length) return null;
+    const recent = output.slice(-2);
+    const recentGenres = new Set(recent.map(item => item.genre_ids?.[0]).filter(Boolean));
+    const previousStem = _franchiseStem(output.at(-1));
+    const preferredIndex = queue.findIndex(item => {
+      const genre = item.genre_ids?.[0];
+      const stem = _franchiseStem(item);
+      return (!genre || !recentGenres.has(genre)) && (!stem || stem !== previousStem);
+    });
+    return queue.splice(preferredIndex >= 0 ? preferredIndex : 0, 1)[0];
+  };
+
+  while (output.length < limit && (queues[0].length || queues[1].length)) {
+    // Reserve roughly every fourth position for discovery without moving a
+    // weak exploration result ahead of the first few high-confidence matches.
+    const wantsExploration = output.length >= 3 && (output.length + 1) % 4 === 0;
+    const preferredQueue = wantsExploration ? 1 : 0;
+    const item = takeBest(queues[preferredQueue]) || takeBest(queues[1 - preferredQueue]);
+    if (!item) break;
+    output.push(item);
+  }
+
+  return output;
+}
 
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
@@ -171,8 +218,7 @@ export async function loadForYou() {
     const mixCount = Math.floor(totalWanted * 0.25);
     const inPrefItems = inPref.slice(0, totalWanted - mixCount);
     const outPrefItems = outPref.slice(0, mixCount);
-    // Slight shuffle to intersperse discovery content
-    const mixed = [...inPrefItems, ...outPrefItems].sort(() => Math.random() - 0.3);
+    const mixed = blendRecommendationCandidates(inPrefItems, outPrefItems, totalWanted);
     // Claim against the global registry — For You loads first, so it gets
     // first pick and every later row automatically avoids these titles
     const items = _claim(mixed, totalWanted);
@@ -233,14 +279,15 @@ export async function loadBecauseYouLiked() {
   // Dedupe by id + skip titles already anchoring another row
   const seen = new Set();
   const unique = candidates.filter(x => {
-    if (seen.has(x.id) || _usedTitleIds.has(x.id)) return false;
-    seen.add(x.id);
+    const key = mediaKey(x);
+    if (seen.has(key) || _usedTitleIds.has(key)) return false;
+    seen.add(key);
     return true;
   });
 
   // Use top 3
   const picks = unique.slice(0, 3);
-  picks.forEach(p => _usedTitleIds.add(p.id));
+  picks.forEach(p => _usedTitleIds.add(mediaKey(p)));
 
   for (const item of picks) {
     const secId = `sec-because-${item.id}`;
@@ -312,8 +359,8 @@ export async function loadBecauseYouLiked() {
       });
       const verifiedMerged = await _verified(merged.map(m => ({ ...m, media_type: type })));
       const results = _claim(verifiedMerged.filter(m =>
-        m.id !== item.id && // never show the anchor inside its own row
-        !(taste.disliked || []).some(d => d.id === m.id)), 14);
+        mediaKey(m) !== mediaKey(item) && // never show the anchor inside its own row
+        !(taste.disliked || []).some(d => mediaKey(d) === mediaKey(m))), 14);
 
       if (results.length < 10) {
         console.warn(`[SV BYL] "${item.title}" row too thin (${results.length} < 10) — hidden`);
@@ -361,8 +408,8 @@ export async function loadGenreTrending() {
   row.innerHTML = skelCards(8);
 
   try {
-    const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
-    const watchedIds  = new Set((_kidsMode() ? [] : (state.watched || [])).map(x => x.id));
+    const dislikedIds = new Set((taste.disliked || []).map(mediaKey));
+    const watchedIds  = new Set((_kidsMode() ? (taste.watched || []) : (state.watched || [])).map(mediaKey));
     const [mv, tv] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 50 }),
       tmdb('/discover/tv',    { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 20 }),
@@ -372,7 +419,7 @@ export async function loadGenreTrending() {
     const mixed = []; const ml=movies.length, sl=shows.length;
     for (let i=0;i<Math.max(ml,sl);i++) { if(movies[i])mixed.push(movies[i]); if(shows[i])mixed.push(shows[i]); }
     const verifiedMixed = await _verified(mixed);
-    const filtered = _claim(verifiedMixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)), 18);
+    const filtered = _claim(verifiedMixed.filter(m => !dislikedIds.has(mediaKey(m)) && !watchedIds.has(mediaKey(m))), 18);
     if (filtered.length < 10) {
       console.warn(`[SV GenreTrending] too thin (${filtered.length} < 10) — hidden`);
       sec.style.display='none'; return;
@@ -391,10 +438,10 @@ export async function loadDeepCuts() {
   if (!sec || !row) return;
 
   const taste = getActiveTasteState();
-  const watchedIds  = new Set((_kidsMode() ? [] : (state.watched || [])).map(x => x.id));
-  const likedIds    = new Set((taste.liked || []).map(x => x.id));
-  const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
-  const recentIds   = new Set((state.recentlyViewed || []).map(x => x.id));
+  const watchedIds  = new Set((_kidsMode() ? (taste.watched || []) : (state.watched || [])).map(mediaKey));
+  const likedIds    = new Set((taste.liked || []).map(mediaKey));
+  const dislikedIds = new Set((taste.disliked || []).map(mediaKey));
+  const recentIds   = new Set((_kidsMode() ? [] : (state.recentlyViewed || [])).map(mediaKey));
 
   // Need some history to determine "unseen"
   if (!watchedIds.size && !likedIds.size) return;
@@ -412,7 +459,7 @@ export async function loadDeepCuts() {
     const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
     const verifiedAll = await _verified([...movies, ...shows]);
     const all = _claim(verifiedAll
-      .filter(m => !watchedIds.has(m.id) && !likedIds.has(m.id) && !dislikedIds.has(m.id) && !recentIds.has(m.id))
+      .filter(m => !watchedIds.has(mediaKey(m)) && !likedIds.has(mediaKey(m)) && !dislikedIds.has(mediaKey(m)) && !recentIds.has(mediaKey(m)))
       .sort((a,b) => (b.vote_average||0) - (a.vote_average||0)), 18);
     if (all.length < 10) {
       console.warn(`[SV DeepCuts] too thin (${all.length} < 10) — hidden`);
@@ -436,20 +483,26 @@ export async function loadHistoryMix() {
 
   // Pull from recently watched (not just liked) — top 4 unique items
   if (_kidsMode()) { sec.style.display = 'none'; return; }
+  const taste = getActiveTasteState();
   const history = [
     ...(state.watched || []).slice().reverse().slice(0, 4),
     ...(state.recentlyViewed || []).slice(0, 4),
   ];
   const seen = new Set();
   const candidates = history
-    .filter(x => x.id && !_usedTitleIds.has(x.id) && !seen.has(x.id) && seen.add(x.id))
+    .filter(x => {
+      const key = mediaKey(x);
+      if (!x.id || _usedTitleIds.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 3);
   if (!candidates.length) return;
 
   // Use first item as the "anchor" label — and claim it so no other
   // title-referencing row uses the same title
   const anchor = candidates[0];
-  _usedTitleIds.add(anchor.id);
+  _usedTitleIds.add(mediaKey(anchor));
   const anchorName = anchor.title || anchor.name || '';
   if (titleEl && anchorName) {
     titleEl.textContent = `More Like "${anchorName}"`;
@@ -458,8 +511,8 @@ export async function loadHistoryMix() {
   sec.style.display = '';
   row.innerHTML = skelCards(8);
 
-  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
-  const watchedIds  = new Set((state.watched  || []).map(x => x.id));
+  const dislikedIds = new Set((taste.disliked || []).map(mediaKey));
+  const watchedIds  = new Set((taste.watched || []).map(mediaKey));
 
   try {
     const recResults = await Promise.allSettled(
@@ -467,9 +520,14 @@ export async function loadHistoryMix() {
     );
     const allRecs = recResults.flatMap(r => r.status==='fulfilled' ? r.value : []);
     const uniqSeen = new Set();
-    const anchorIds = new Set(candidates.map(c => c.id));
+    const anchorIds = new Set(candidates.map(mediaKey));
     const filtered = _claim(allRecs
-      .filter(m => m.id && !anchorIds.has(m.id) && !dislikedIds.has(m.id) && !watchedIds.has(m.id) && !uniqSeen.has(m.id) && uniqSeen.add(m.id))
+      .filter(m => {
+        const key = mediaKey(m);
+        if (!m.id || anchorIds.has(key) || dislikedIds.has(key) || watchedIds.has(key) || uniqSeen.has(key)) return false;
+        uniqSeen.add(key);
+        return true;
+      })
       .sort((a,b) => (b.popularity||0)-(a.popularity||0)), 18);
     if (filtered.length < 10) {
       console.warn(`[SV HistoryMix] too thin (${filtered.length} < 10) — hidden`);
@@ -490,13 +548,13 @@ export async function loadBecauseYouWatched() {
   // anchors a "Because you liked" or "More Like" row
   if (_kidsMode()) return;
   const taste = getActiveTasteState();
-  const likedIds = new Set([...(taste.prefLikes || []), ...(taste.liked || [])].map(x => x.id));
+  const likedIds = new Set([...(taste.prefLikes || []), ...(taste.liked || [])].map(mediaKey));
   const candidates = (state.watched || [])
     .slice().reverse()
-    .filter(x => x.id && !likedIds.has(x.id) && !_usedTitleIds.has(x.id) && x.type !== 'anime')
+    .filter(x => x.id && !likedIds.has(mediaKey(x)) && !_usedTitleIds.has(mediaKey(x)) && x.type !== 'anime')
     .slice(0, 2);
   if (!candidates.length) return;
-  candidates.forEach(c => _usedTitleIds.add(c.id));
+  candidates.forEach(c => _usedTitleIds.add(mediaKey(c)));
 
   for (const item of candidates) {
     const secId = `sec-watched-${item.id}`;
@@ -548,7 +606,9 @@ export async function loadBecauseYouWatched() {
       ].filter(m => m.id && !mSeen.has(m.id) && mSeen.add(m.id));
       const verifiedMerged = await _verified(merged.map(m => ({ ...m, media_type: type })));
       const results = _claim(verifiedMerged
-        .filter(m => m.id !== item.id && !(taste.disliked || []).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
+        .filter(m => mediaKey(m) !== mediaKey(item)
+          && !(taste.disliked || []).some(d => mediaKey(d) === mediaKey(m))
+          && !(taste.watched || []).some(w => mediaKey(w) === mediaKey(m))), 14);
       if (results.length < 10) {
         console.warn(`[SV BYW] "${item.title || item.name}" row too thin (${results.length} < 10) — hidden`);
         sec.style.display='none'; continue;

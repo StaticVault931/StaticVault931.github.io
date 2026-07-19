@@ -1,10 +1,11 @@
 import { tmdb, aniQuery, normalizeAnime, getProviderLogoUrl } from './api.js';
 import { makeCard, skelCards, esc, toast } from './ui.js';
-import { state, GENRES, addRecentSearch, clearRecentSearches } from './state.js';
+import { state, GENRES, AGE_LEVELS, addRecentSearch, clearRecentSearches } from './state.js';
 import { initSearchPipeline, prepareQuery, svFlag } from './search/searchPipeline.js';
 import { recordSearchStat } from './stats.js';
 import { rankResults } from './search/ranking.js';
 import { titleScore } from './search/fuzzy.js';
+import { descriptionKeywordTerms, localDescriptionMatch, scoreDescriptionEntry } from './search/descriptionSearch.js';
 import { filterSafeItems, isAnimeContent } from './contentSafety.js';
 import { searchPath } from './routes.js';
 
@@ -746,6 +747,9 @@ const SEARCH_TIPS = [
   'Try :based on true story for real-event dramas',
   'Try :found footage — niche genre topics work too',
   'Try :superhero for the full Marvel & DC catalogue',
+  'Try ::astronauts near a black hole to search by story clues',
+  'Try ::chemistry teacher becomes criminal for description search',
+  'Use :: before a plot description when you forgot the title',
   // Filter tips
   'Use Filters → Genre + Decade for precise browsing',
   'Filter by Runtime to find short or epic-length films',
@@ -1183,6 +1187,100 @@ function _spaceVariantCandidates(q) {
   return [...new Set(out)].filter(v => v && v.toLowerCase() !== t.toLowerCase()).slice(0, 3);
 }
 
+async function _searchByDescription(query) {
+  const terms = descriptionKeywordTerms(query, 4);
+  const local = localDescriptionMatch(query, 24).map(entry => ({
+    id: entry.id,
+    title: entry.title,
+    release_date: entry.type === 'movie' && entry.year ? `${entry.year}-01-01` : '',
+    first_air_date: entry.type === 'tv' && entry.year ? `${entry.year}-01-01` : '',
+    vote_average: entry.rating || 0,
+    vote_count: entry.votes || 0,
+    popularity: entry.pop || 0,
+    poster_path: entry.poster || '',
+    backdrop_path: entry.backdrop || '',
+    overview: entry.overview || '',
+    genre_ids: entry.genres || [],
+    original_language: entry.language || '',
+    media_type: entry.type,
+    _type: entry.type,
+    _description: ['overview'],
+    _descriptionScore: entry._descriptionScore || 0,
+  }));
+
+  const keywordSearches = await Promise.allSettled(terms.map(term =>
+    tmdb('/search/keyword', { query: term }).then(data => ({ term, results: data.results || [] }))));
+  const keywords = [];
+  const keywordIds = new Set();
+  for (const result of keywordSearches) {
+    if (result.status !== 'fulfilled') continue;
+    const foldedTerm = result.value.term.toLowerCase();
+    const matches = result.value.results
+      .sort((a, b) => {
+        const ae = String(a.name || '').toLowerCase() === foldedTerm ? 1 : 0;
+        const be = String(b.name || '').toLowerCase() === foldedTerm ? 1 : 0;
+        return be - ae;
+      })
+      .slice(0, 1);
+    for (const keyword of matches) {
+      if (!keyword?.id || keywordIds.has(keyword.id)) continue;
+      keywordIds.add(keyword.id);
+      keywords.push({ ...keyword, term: result.value.term });
+    }
+  }
+
+  const requests = keywords.flatMap(keyword => [
+    tmdb('/discover/movie', { with_keywords: keyword.id, sort_by: 'popularity.desc', 'vote_count.gte': 20 })
+      .then(data => ({ type: 'movie', keyword, items: data.results || [] })),
+    tmdb('/discover/tv', { with_keywords: keyword.id, sort_by: 'popularity.desc' })
+      .then(data => ({ type: 'tv', keyword, items: data.results || [] })),
+  ]);
+  const discovered = await Promise.allSettled(requests);
+  const candidates = new Map();
+  for (const result of discovered) {
+    if (result.status !== 'fulfilled') continue;
+    for (const item of result.value.items) {
+      const typed = { ...item, media_type: result.value.type, _type: result.value.type };
+      const key = _mediaKey(typed);
+      const existing = candidates.get(key) || { ...typed, _description: [], _descriptionHits: 0 };
+      existing._descriptionHits++;
+      if (!existing._description.includes(result.value.keyword.name)) existing._description.push(result.value.keyword.name);
+      candidates.set(key, existing);
+    }
+  }
+
+  const merged = new Map();
+  for (const item of [...local, ...candidates.values()]) {
+    if (_sfActive === 'movie' && item._type !== 'movie') continue;
+    if (_sfActive === 'tv' && item._type !== 'tv') continue;
+    if (_sfActive === 'anime' && item._type !== 'anime') continue;
+    const key = _mediaKey(item);
+    const existing = merged.get(key);
+    if (!existing || (item._descriptionHits || 0) > (existing._descriptionHits || 0)) merged.set(key, item);
+  }
+
+  let items = [...merged.values()];
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    if ((settings.animePreference || (settings.hideAnime ? 'no' : 'neutral')) === 'no') {
+      items = items.filter(item => !isAnimeContent(item));
+    }
+    if (settings.kidsMode) items = await filterSafeItems(items, {
+      kidsMode: true,
+      maxLevel: Math.min(3, AGE_LEVELS[state.ageRating] ?? 3),
+    });
+  } catch {}
+  if (_providerIncludes.size || _providerExcludes.size) items = await _filterByProvider(items);
+
+  return items.sort((a, b) => {
+    const score = item => (item._descriptionHits || 0) * 32
+      + (item._descriptionScore || scoreDescriptionEntry(item, query))
+      + Math.min(8, Math.log10((item.vote_count || 0) + 1) * 2)
+      + (item.vote_average || 0) / 2;
+    return score(b) - score(a);
+  }).slice(0, 36);
+}
+
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
@@ -1207,6 +1305,29 @@ export async function doSearch(q) {
   }
 
   // ── :topic SEARCH ──────────────────────────────────────────────────
+  // Double-colon searches natural-language descriptions. It is explicit so
+  // ordinary title queries keep their fast, title-first ranking behavior.
+  if (q.startsWith('::')) {
+    const description = q.slice(2).trim();
+    if (!description) return;
+    area.innerHTML = `<div class="search-spinner"><div class="spin"></div></div>`;
+    try {
+      const items = await _searchByDescription(description);
+      _logSearch({ q, mode: 'description', n: items.length });
+      if (!items.length) {
+        area.innerHTML = `<div class="search-empty"><span class="material-icons-round">manage_search</span><p>No strong description matches for "<strong>${esc(description)}</strong>"</p><p class="muted-note">Try the most distinctive plot details, such as ::astronauts near a black hole.</p></div>`;
+        return;
+      }
+      _searchState = { query: q, page: 1, results: items, loading: false, done: true };
+      renderSearchResults(items, description, true);
+      area.insertAdjacentHTML('afterbegin', `<div class="search-did-you-mean search-description-note"><span class="material-icons-round">manage_search</span><span>Plot and description search for <strong>${esc(description)}</strong></span><span class="muted-note">Use one : for topics, two :: for story clues</span></div>`);
+    } catch (error) {
+      console.warn('[SV Search] description search failed:', error?.message || error);
+      area.innerHTML = `<div class="search-empty"><span class="material-icons-round">wifi_off</span><p>Description search could not load.</p></div>`;
+    }
+    return;
+  }
+
   // Prefix with : to search by topic/keyword instead of title
   // e.g. ":funny" ":coming out" ":space adventure"
   if (q.startsWith(':')) {
@@ -1231,8 +1352,8 @@ export async function doSearch(q) {
           tmdb('/discover/movie', { with_keywords: kw.id, sort_by: 'popularity.desc', 'vote_count.gte': 30 }),
           tmdb('/discover/tv', { with_keywords: kw.id, sort_by: 'popularity.desc' }),
         ]);
-        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'movie', _keyword: kw.name}); existIds.add(m.id); }});
-        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'tv', _keyword: kw.name}); existIds.add(m.id); }});
+        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { const item = {...m, _type:'movie', _keyword: kw.name}; const key = _mediaKey(item); if (!existIds.has(key)) { allItems.push(item); existIds.add(key); }});
+        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { const item = {...m, _type:'tv', _keyword: kw.name}; const key = _mediaKey(item); if (!existIds.has(key)) { allItems.push(item); existIds.add(key); }});
       }
 
       // Company-based discover (e.g., searching ":Marvel" finds Marvel Studios)
@@ -1241,8 +1362,8 @@ export async function doSearch(q) {
           tmdb('/discover/movie', { with_companies: co.id, sort_by: 'popularity.desc', 'vote_count.gte': 50 }),
           tmdb('/discover/tv', { with_companies: co.id, sort_by: 'popularity.desc' }),
         ]);
-        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'movie'}); existIds.add(m.id); }});
-        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { if (!existIds.has(m.id)) { allItems.push({...m, _type:'tv'}); existIds.add(m.id); }});
+        if (mv.status === 'fulfilled') (mv.value.results || []).forEach(m => { const item = {...m, _type:'movie'}; const key = _mediaKey(item); if (!existIds.has(key)) { allItems.push(item); existIds.add(key); }});
+        if (tv.status === 'fulfilled') (tv.value.results || []).forEach(m => { const item = {...m, _type:'tv'}; const key = _mediaKey(item); if (!existIds.has(key)) { allItems.push(item); existIds.add(key); }});
       }
 
       allItems.sort((a,b) => (b.popularity||0) - (a.popularity||0));
@@ -1558,7 +1679,7 @@ async function fetchSearchPage(q, page) {
       ...typoVariants,
     ].filter(Boolean).slice(0, 4);
 
-    const existIds = new Set(all.map(x => x.id));
+    const existIds = new Set(all.map(_mediaKey));
 
     for (const fq of fallbackQueries) {
       if (all.length >= 6) break;
@@ -1568,12 +1689,14 @@ async function fetchSearchPage(q, page) {
       ]);
       if (pm.status === 'fulfilled') {
         (pm.value.results || []).forEach(x => {
-          if (!existIds.has(x.id)) { all.push({ ...x, _type: 'movie', _fuzzy: true }); existIds.add(x.id); }
+          const item = { ...x, _type: 'movie', _fuzzy: true }; const key = _mediaKey(item);
+          if (!existIds.has(key)) { all.push(item); existIds.add(key); }
         });
       }
       if (ptv.status === 'fulfilled') {
         (ptv.value.results || []).forEach(x => {
-          if (!existIds.has(x.id)) { all.push({ ...x, _type: 'tv', _fuzzy: true }); existIds.add(x.id); }
+          const item = { ...x, _type: 'tv', _fuzzy: true }; const key = _mediaKey(item);
+          if (!existIds.has(key)) { all.push(item); existIds.add(key); }
         });
       }
     }
@@ -1583,7 +1706,7 @@ async function fetchSearchPage(q, page) {
       try {
         const companyRes = await tmdb('/search/company', { query: q });
         const companies = (companyRes.results || []).slice(0, 2);
-        const existIds2 = new Set(all.map(x => x.id));
+        const existIds2 = new Set(all.map(_mediaKey));
         for (const co of companies) {
           const coMovies = await tmdb('/discover/movie', {
             with_companies: co.id,
@@ -1591,7 +1714,8 @@ async function fetchSearchPage(q, page) {
             'vote_count.gte': 50,
           }).catch(() => ({ results: [] }));
           (coMovies.results || []).slice(0, 8).forEach(x => {
-            if (!existIds2.has(x.id)) { all.push({ ...x, _type: 'movie', _fuzzy: true }); existIds2.add(x.id); }
+            const item = { ...x, _type: 'movie', _fuzzy: true }; const key = _mediaKey(item);
+            if (!existIds2.has(key)) { all.push(item); existIds2.add(key); }
           });
         }
       } catch {}
@@ -1606,10 +1730,12 @@ async function fetchSearchPage(q, page) {
           const kwMovies = await tmdb('/discover/movie', { with_keywords: kw.id, sort_by: 'popularity.desc' }).catch(() => ({ results: [] }));
           const kwTV = await tmdb('/discover/tv', { with_keywords: kw.id, sort_by: 'popularity.desc' }).catch(() => ({ results: [] }));
           (kwMovies.results || []).slice(0, 4).forEach(x => {
-            if (!existIds.has(x.id)) { all.push({ ...x, _type: 'movie', _keyword: true }); existIds.add(x.id); }
+            const item = { ...x, _type: 'movie', _keyword: true }; const key = _mediaKey(item);
+            if (!existIds.has(key)) { all.push(item); existIds.add(key); }
           });
           (kwTV.results || []).slice(0, 4).forEach(x => {
-            if (!existIds.has(x.id)) { all.push({ ...x, _type: 'tv', _keyword: true }); existIds.add(x.id); }
+            const item = { ...x, _type: 'tv', _keyword: true }; const key = _mediaKey(item);
+            if (!existIds.has(key)) { all.push(item); existIds.add(key); }
           });
         }
       } catch {}
@@ -1625,23 +1751,25 @@ async function fetchSearchPage(q, page) {
       const creditResults = await Promise.allSettled(
         people.map(p => tmdb(`/person/${p.id}/combined_credits`))
       );
-      const existIds = new Set(all.map(x => x.id));
+      const existIds = new Set(all.map(_mediaKey));
       people.forEach((person, i) => {
         if (creditResults[i].status !== 'fulfilled') return;
         const credits = creditResults[i].value;
         const personMovies = (credits.cast || [])
-          .filter(m => m.media_type === 'movie' && m.poster_path && !existIds.has(m.id))
+          .filter(m => m.media_type === 'movie' && m.poster_path)
           .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
-          .slice(0, 6)
-          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name, _viaActorId: person.id }));
+          .map(m => ({ ...m, _type: 'movie', _viaActor: person.name, _viaActorId: person.id }))
+          .filter(m => !existIds.has(_mediaKey(m)))
+          .slice(0, 6);
         const personShows = (credits.cast || [])
-          .filter(m => m.media_type === 'tv' && m.poster_path && !existIds.has(m.id))
+          .filter(m => m.media_type === 'tv' && m.poster_path)
           .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
-          .slice(0, 6)
-          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name, _viaActorId: person.id }));
+          .map(m => ({ ...m, _type: 'tv', _viaActor: person.name, _viaActorId: person.id }))
+          .filter(m => !existIds.has(_mediaKey(m)))
+          .slice(0, 6);
         _personResults.push(...personMovies, ...personShows);
-        personMovies.forEach(m => existIds.add(m.id));
-        personShows.forEach(m => existIds.add(m.id));
+        personMovies.forEach(m => existIds.add(_mediaKey(m)));
+        personShows.forEach(m => existIds.add(_mediaKey(m)));
       });
     } catch {}
   }
@@ -1711,9 +1839,10 @@ function renderSearchResults(items, q, replace) {
   }
 
   const qLower = q.toLowerCase();
-  const exact = items.filter(x => !x._fuzzy && !x._keyword && !x._viaActor && (x.title || x.name || '').toLowerCase().includes(qLower));
+  const exact = items.filter(x => !x._fuzzy && !x._keyword && !x._description && !x._viaActor && (x.title || x.name || '').toLowerCase().includes(qLower));
   const viaActor = items.filter(x => x._viaActor);
-  const similar = items.filter(x => exact.indexOf(x) === -1 && !x._keyword && !x._viaActor);
+  const description = items.filter(x => x._description);
+  const similar = items.filter(x => exact.indexOf(x) === -1 && !x._keyword && !x._description && !x._viaActor);
   const keyword = items.filter(x => x._keyword);
 
   let html = '';
@@ -1727,6 +1856,10 @@ function renderSearchResults(items, q, replace) {
   if (similar.length) {
     html += `<div class="search-section-title" style="margin-top:1.5rem"><span class="material-icons-round">auto_awesome</span> Similar Results</div>
       <div class="search-grid">${similar.slice(0, 18).map(m => makeCard(m, m._type)).join('')}</div>`;
+  }
+  if (description.length) {
+    html += `<div class="search-section-title" style="margin-top:1.5rem"><span class="material-icons-round">manage_search</span> Story Matches</div>
+      <div class="search-grid">${description.slice(0, 24).map(m => makeCard(m, m._type)).join('')}</div>`;
   }
   if (keyword.length) {
     html += `<div class="search-section-title" style="margin-top:1.5rem"><span class="material-icons-round">tag</span> Related by Tags</div>

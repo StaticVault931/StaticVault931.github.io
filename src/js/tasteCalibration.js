@@ -51,7 +51,7 @@ async function loadCurated(maxLevel, known) {
   }));
   let items = results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
   if (_animePreference() === 'no') items = items.filter(item => !isAnimeContent(item));
-  if (_kidsMode()) items = await filterSafeItems(items, { kidsMode: true, maxLevel: 3 });
+  if (_kidsMode()) items = await filterSafeItems(items, { kidsMode: true, maxLevel });
   return items;
 }
 
@@ -76,7 +76,9 @@ async function loadPool(force = false) {
     const page = 1 + Math.floor(Math.random() * 8);
     const taste = getActiveTasteState();
     const genres = _kidsMode() ? '10751|16|10762|35|12' : state.prefGenres.slice(0, 3).join('|');
-    const maxLevel = _kidsMode() ? 3 : (AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG);
+    const maxLevel = _kidsMode()
+      ? Math.min(3, AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG)
+      : (AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG);
     const known = signaledKeys();
     const interactionCount = (taste.prefLikes || []).length + (taste.prefDislikes || []).length + Object.keys(taste.tasteSkips || {}).length;
     const maxMovieCert = maxLevel <= 2 ? 'G' : maxLevel === 3 ? 'PG' : maxLevel === 4 ? 'PG-13' : maxLevel === 5 ? 'R' : null;
@@ -112,7 +114,7 @@ async function loadPool(force = false) {
       ? candidates.filter(item => !isAnimeContent(item))
       : candidates;
     if (_kidsMode()) {
-      safeCandidates = await filterSafeItems(safeCandidates, { kidsMode: true, maxLevel: 3 });
+      safeCandidates = await filterSafeItems(safeCandidates, { kidsMode: true, maxLevel });
     } else if (maxLevel < 5) {
       const checked = [];
       for (let start = 0; start < candidates.length && checked.length < 18; start += 5) {

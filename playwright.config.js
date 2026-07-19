@@ -1,8 +1,12 @@
 // Playwright config — serves the static site and runs smoke tests against it.
 import { defineConfig } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 export default defineConfig({
   testDir: './tests',
+  // Keep repeated Windows runs independent from stale .last-run.json handles.
+  outputDir: path.join(tmpdir(), 'staticvault-playwright', String(process.pid)),
   timeout: 45000,
   retries: 1,
   use: {

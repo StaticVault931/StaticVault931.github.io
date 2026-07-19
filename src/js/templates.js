@@ -134,11 +134,11 @@ export function injectOverlays() {
   const shortcuts = document.createElement('div');
   shortcuts.id = 'shortcuts-overlay';
   shortcuts.setAttribute('role', 'dialog');
-  shortcuts.setAttribute('aria-label', 'Keyboard shortcuts');
+  shortcuts.setAttribute('aria-label', 'Feature guide and keyboard shortcuts');
   shortcuts.innerHTML = `
   <div id="shortcuts-modal">
     <div class="shortcuts-header">
-      <h2><span class="material-icons-round">keyboard</span> Keyboard Shortcuts</h2>
+      <h2><span class="material-icons-round">explore</span> Features &amp; Shortcuts</h2>
       <button id="shortcuts-close" aria-label="Close"><span class="material-icons-round">close</span></button>
     </div>
     <div id="shortcuts-grid" class="shortcuts-grid"></div>

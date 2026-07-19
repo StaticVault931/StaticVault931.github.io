@@ -67,6 +67,12 @@ for (const route of privateRoutes) {
   if (!/name="robots" content="noindex, follow"/i.test(html)) errors.push(`Private route is not noindex: ${route}`);
 }
 
+for (const raw of publicUrls.filter(url => /\/person\//.test(url))) {
+  const url = new URL(raw);
+  const html = await readFile(path.join(OUT, url.pathname, 'index.html'), 'utf8');
+  if (/<title>Person \d+\s*\|/i.test(html)) errors.push(`Unnamed person shell is publicly indexed: ${url.pathname}`);
+}
+
 const forbidden = [
   'package.json', 'package-lock.json', 'playwright.config.js', 'eslint.config.js', 'serve.js',
   '.gitignore', '.editorconfig', 'scripts', 'tests', '.github', 'node_modules',

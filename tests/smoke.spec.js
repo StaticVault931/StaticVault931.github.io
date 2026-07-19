@@ -589,4 +589,183 @@ test.describe('StaticVault931 smoke', () => {
     expect(selected).not.toContain('row-recently-added');
     expect(selected).not.toContain('row-new-episodes');
   });
+
+  test('description search recognizes story clues without weakening title search', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const ranked = await page.evaluate(async () => {
+      const { scoreDescriptionEntry } = await import('/src/js/search/descriptionSearch.js');
+      const entries = [
+        { title: 'Interstellar', overview: 'Astronauts travel through a wormhole near a black hole to find humanity a new home.' },
+        { title: 'Attack on Titan', overview: 'Humanity survives behind enormous walls while giants threaten civilization.' },
+        { title: 'Breaking Bad', overview: 'A chemistry teacher becomes a criminal and builds a drug empire.' },
+        { title: 'Paddington', overview: 'A polite bear finds a new family in London.' },
+      ];
+      return [
+        'movie about astronauts near a black hole',
+        'anime where humanity lives behind walls',
+        'chemistry teacher becomes criminal',
+      ].map(query => entries
+        .map(entry => ({ title: entry.title, score: scoreDescriptionEntry(entry, query) }))
+        .sort((a, b) => b.score - a.score)[0].title);
+    });
+    expect(ranked).toEqual(['Interstellar', 'Attack on Titan', 'Breaking Bad']);
+  });
+
+  test('search keeps movie and TV results with the same TMDB id distinct', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/search/movie')) {
+        await route.fulfill({ json: { results: [{ id: 77, title: 'Twin Movie', poster_path: '/movie.jpg', vote_count: 500 }] } });
+        return;
+      }
+      if (url.pathname.endsWith('/search/tv')) {
+        await route.fulfill({ json: { results: [{ id: 77, name: 'Twin Show', poster_path: '/show.jpg', vote_count: 500 }] } });
+        return;
+      }
+      await route.fulfill({ json: { results: [] } });
+    });
+    await page.route('https://graphql.anilist.co/**', route => route.fulfill({ json: { data: { Page: { media: [] } } } }));
+    await page.goto('/search/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => (await import('/src/js/search.js')).doSearch('twin'));
+    await expect(page.locator('#search-results-area')).toContainText('Twin Movie');
+    await expect(page.locator('#search-results-area')).toContainText('Twin Show');
+  });
+
+  test('double-colon description mode turns plot clues into ranked title results', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/search/keyword')) {
+        await route.fulfill({ json: { results: [{ id: 123, name: 'black hole' }] } });
+        return;
+      }
+      if (url.pathname.endsWith('/discover/movie')) {
+        await route.fulfill({ json: { results: [{
+          id: 157336, title: 'Interstellar', overview: 'Astronauts travel through a black hole.',
+          poster_path: '/interstellar.jpg', vote_count: 30000, vote_average: 8.7,
+        }] } });
+        return;
+      }
+      await route.fulfill({ json: { results: [] } });
+    });
+    await page.goto('/search/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => (await import('/src/js/search.js')).doSearch('::astronauts near a black hole'));
+    await expect(page.locator('#search-results-area')).toContainText('Story Matches');
+    await expect(page.locator('#search-results-area')).toContainText('Interstellar');
+  });
+
+  test('Settings search maps captions to trailer language and hides unrelated rows', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/customize/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#sv-settings-search-input').fill('captions');
+    await expect(page.locator('.sv-setting-wrap[data-sid="trailerLanguage"]')).toBeVisible();
+    await expect(page.locator('.sv-setting-wrap[data-sid="personalizeContent"]')).toBeHidden();
+  });
+
+  test('collection pages render one chronological row and restore the prior route', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/collection/10')) {
+        const parts = Array.from({ length: 12 }, (_, index) => ({
+          id: 100 + index,
+          title: `Collection Film ${index + 1}`,
+          release_date: `${2000 + index}-01-01`,
+          poster_path: '/poster.jpg',
+          media_type: 'movie',
+        }));
+        await route.fulfill({ json: { id: 10, name: 'Test Collection', overview: '', parts } });
+        return;
+      }
+      await route.fulfill({ json: { results: [] } });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => (await import('/src/js/app.js')).openCollectionPage(10, 'Test Collection'));
+    await expect(page.locator('#company-row-view .sec-title')).toContainText('In Release Order');
+    await expect(page.locator('#company-row-view .card')).toHaveCount(12);
+    await page.locator('#company-close').click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test('person pages keep same-id movie and TV credits distinct and restore the prior route', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/person/42')) {
+        await route.fulfill({ json: {
+          id: 42,
+          name: 'Route Tester',
+          biography: '',
+          combined_credits: { cast: [
+            { id: 77, title: 'Twin Movie Credit', media_type: 'movie', poster_path: '/movie.jpg', vote_count: 100 },
+            { id: 77, title: 'Twin Movie Credit', media_type: 'movie', poster_path: '/movie.jpg', vote_count: 100 },
+            { id: 77, name: 'Twin TV Credit', media_type: 'tv', poster_path: '/tv.jpg', vote_count: 100 },
+          ], crew: [] },
+        } });
+        return;
+      }
+      await route.fulfill({ json: { results: [], cast: [] } });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => (await import('/src/js/app.js')).openPersonPage(42));
+    await expect(page.locator('#person-grid .card')).toHaveCount(2);
+    await expect(page).toHaveURL(/\/person\/42-route-tester\/$/);
+    await page.locator('#person-close').click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test('For You blending is stable and spaces exploration and repeated genres', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const result = await page.evaluate(async () => {
+      const { blendRecommendationCandidates } = await import('/src/js/recommendations.js');
+      const primary = Array.from({ length: 8 }, (_, index) => ({
+        id: index + 1,
+        title: index < 3 ? `Space Saga ${index + 1}` : `Primary ${index + 1}`,
+        genre_ids: index < 5 ? [878] : [18 + index],
+      }));
+      const exploration = Array.from({ length: 3 }, (_, index) => ({
+        id: 100 + index,
+        title: `Explore ${index + 1}`,
+        genre_ids: [35 + index],
+        explore: true,
+      }));
+      const first = blendRecommendationCandidates(primary, exploration, 10);
+      const second = blendRecommendationCandidates(primary, exploration, 10);
+      return {
+        first: first.map(item => item.id),
+        second: second.map(item => item.id),
+        explorationPositions: first.map((item, index) => item.explore ? index + 1 : 0).filter(Boolean),
+      };
+    });
+    expect(result.first).toEqual(result.second);
+    expect(result.explorationPositions).toEqual(expect.arrayContaining([4, 8]));
+  });
+
+  test('Super Search offers useful actions when the current screen has no match', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('sv_onboarded', '1');
+      localStorage.setItem('sv_visited', '1');
+      localStorage.setItem('sv_settings', JSON.stringify({ superSearch: true }));
+    });
+    await page.goto('/library/', { waitUntil: 'domcontentloaded' });
+    await page.keyboard.press('Control+f');
+    await page.locator('#super-search-input').fill('undo history');
+    await expect(page.locator('#super-search-results')).toContainText('Open undo history');
+    await page.locator('#super-search-input').fill('blend movies together');
+    await expect(page.locator('#super-search-results')).toContainText('Mix & Match');
+    await page.locator('#super-search-input').fill('obscure title not on this page');
+    await expect(page.locator('#super-search-results')).toContainText('Search the full catalog for');
+  });
+
+  test('the feature guide is visible, replayable, and teaches description search', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#feature-guide-btn').click();
+    await expect(page.locator('#shortcuts-overlay')).toHaveClass(/open/);
+    await expect(page.locator('#shortcuts-overlay')).toContainText('Features & Shortcuts');
+    await expect(page.locator('#shortcuts-overlay')).toContainText('::story');
+    await expect(page.locator('#shortcuts-overlay')).toContainText('Search by plot clues');
+  });
+
 });

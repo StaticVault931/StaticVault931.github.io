@@ -459,6 +459,15 @@ const SHORTCUTS = [
   { key: 'L',           desc: 'Like / Unlike',               group: 'Clips' },
   { key: 'B',           desc: 'Bookmark / Watchlist',        group: 'Clips' },
   { key: 'X',           desc: 'Not Interested (hide clip)',  group: 'Clips' },
+  // Feature reference. These are informational and cannot be disabled.
+  { key: '::story',     desc: 'Search by plot clues or a remembered description', group: 'Features', toggleable: false },
+  { key: 'Ctrl/Cmd+F',  desc: 'Super Search the current screen, settings, tools, and pages', group: 'Features', toggleable: false },
+  { key: 'Z',           desc: 'Review and undo the last 10 reversible actions', group: 'Features', toggleable: false },
+  { key: 'Thumb menu',  desc: 'Choose Dislike, Like, or Love without cycling states', group: 'Features', toggleable: false },
+  { key: 'Taste Profile', desc: 'See what signals shape recommendations and tune them', group: 'Features', toggleable: false },
+  { key: 'Mix & Match', desc: 'Blend several titles into one discovery feed', group: 'Features', toggleable: false },
+  { key: 'Profile Export', desc: 'Back up one profile, or export every profile together', group: 'Features', toggleable: false },
+  { key: 'Kid-Guided', desc: 'Use verified family ratings and isolated child taste data', group: 'Features', toggleable: false },
 ];
 
 /* ── PERSON PAGE SEO ─────────────────────────────────────────────────
@@ -2833,9 +2842,10 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // (backfill reintroducing claimed items was the duplicate source).
       // If the fetch can't reach 10 unique titles, hide the row instead.
       const toRender = [...deduped];
-      const have = new Set(toRender.map(m => m.id));
+      const have = new Set(toRender.map(mediaKey));
       const backfill = (pool, allowSeen = false) => pool.forEach(m => {
-        if (m?.id && !have.has(m.id) && (allowSeen || !_homeItemSeen(m)) && toRender.length < _ROW_MAX) { have.add(m.id); toRender.push(m); }
+        const key = mediaKey(m);
+        if (m?.id && !have.has(key) && (allowSeen || !_homeItemSeen(m)) && toRender.length < _ROW_MAX) { have.add(key); toRender.push(m); }
       });
       if (toRender.length < 10) backfill(impressionFiltered);
       if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)));
@@ -3041,10 +3051,12 @@ async function _prideFetch() {
   const movies_ok = movieResults.filter(Boolean), tv_ok = tvResults.filter(Boolean);
   for (let i = 0; i < Math.max(movies_ok.length, tv_ok.length); i++) {
     const m = movies_ok[i], t = tv_ok[i];
-    if (m && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
-    if (t && !seenIds.has(t.id)) { seenIds.add(t.id); combined.push(t); }
+    const mk = m ? mediaKey(m) : '';
+    const tk = t ? mediaKey(t) : '';
+    if (m && !seenIds.has(mk)) { seenIds.add(mk); combined.push(m); }
+    if (t && !seenIds.has(tk)) { seenIds.add(tk); combined.push(t); }
   }
-  [...kwMovies, ...kwTv].forEach(x => { if (x?.id && !seenIds.has(x.id)) { seenIds.add(x.id); combined.push(x); } });
+  [...kwMovies, ...kwTv].forEach(x => { const key = mediaKey(x); if (x?.id && !seenIds.has(key)) { seenIds.add(key); combined.push(x); } });
   return combined.slice(0, 20);
 }
 
@@ -4064,11 +4076,13 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
 
   // Content New to You — things user hasn't seen/liked/watchlisted
   _scheduleRowLoad('row-new-to-you', 'sec-new-to-you', async () => {
-    const seenIds = new Set([
-      ...(state.watched||[]).map(x=>x.id),
-      ...(state.liked||[]).map(x=>x.id),
-      ...(state.watchlist||[]).map(x=>x.id),
-      ...(state.disliked||[]).map(x=>x.id),
+    const taste = getActiveTasteState();
+    const seenKeys = new Set([
+      ...(taste.watched || []).map(mediaKey),
+      ...(taste.liked || []).map(mediaKey),
+      ...(taste.loved || []).map(mediaKey),
+      ...(taste.watchlist || []).map(mediaKey),
+      ...(taste.disliked || []).map(mediaKey),
     ]);
     // Fetch a random page of popular content and filter to unseen items
     const rp = (state._randomPage || 1) + Math.floor(Math.random() * 3);
@@ -4076,8 +4090,8 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       tmdb('/movie/popular', { page: rp + 2 }).then(d => d.results || []),
       tmdb('/tv/popular',    { page: rp + 1 }).then(d => d.results || []),
     ]);
-    const m = movies.status==='fulfilled' ? movies.value.filter(x=>x.id&&!seenIds.has(x.id)).map(x=>({...x,media_type:'movie'})) : [];
-    const t = tv.status==='fulfilled'    ? tv.value.filter(x=>x.id&&!seenIds.has(x.id)).map(x=>({...x,media_type:'tv'}))    : [];
+    const m = movies.status==='fulfilled' ? movies.value.map(x=>({...x,media_type:'movie'})).filter(x=>x.id&&!seenKeys.has(mediaKey(x))) : [];
+    const t = tv.status==='fulfilled'    ? tv.value.map(x=>({...x,media_type:'tv'})).filter(x=>x.id&&!seenKeys.has(mediaKey(x)))    : [];
     const combined = [];
     for (let i=0; i<Math.max(m.length,t.length); i++) { if(m[i]) combined.push(m[i]); if(t[i]) combined.push(t[i]); }
     return combined.slice(0, 16);
@@ -4248,7 +4262,9 @@ function getRowLabel(rowId, defaultLabels) {
 
 /* ── LOAD CURATED ROWS ───────────────────────────────────────────── */
 function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
-  const personalize = getSetting('personalizeContent') !== false; // default on
+  const kidsMode = getSetting('kidsMode');
+  const personalize = getSetting('personalizeContent') !== false && !kidsMode; // default on; adult taste never enters child feeds
+  if (kidsMode) prefGenreStr2 = '';
 
   // Unified selector decides which catalog rows show today (deterministic
   // per day/profile, cooldown- and engagement-aware)
@@ -4327,11 +4343,16 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
     },
     'row-love-these':    async () => {
       if (!personalize) return tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pRng2 }).then(d => d.results || []);
-      const picks = [...state.liked, ...state.prefLikes].filter(x => x.id && x.type !== 'anime').slice(0, 3);
+      const taste = getActiveTasteState();
+      const picks = [...(taste.loved || []), ...(taste.liked || []), ...(taste.prefLikes || [])]
+        .filter(x => x.id && x.type !== 'anime').slice(0, 3);
       if (!picks.length) return tmdb('/movie/top_rated', { page: pRng2 }).then(d => d.results || []);
-      const recs = await Promise.allSettled(picks.map(p => tmdb(`/${p.type || 'movie'}/${p.id}/recommendations`).then(d => d.results || [])));
+      const recs = await Promise.allSettled(picks.map(p => {
+        const type = p.type || p.media_type || 'movie';
+        return tmdb(`/${type}/${p.id}/recommendations`).then(d => (d.results || []).map(item => ({ ...item, media_type: type })));
+      }));
       const all = recs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-      const seen = new Set(); return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0, 20);
+      const seen = new Set(); return all.filter(m => { const key = mediaKey(m); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 20);
     },
     'row-awards':        () => tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 1500, 'vote_average.gte': 7.8, page: pRng2 }).then(d => d.results || []),
     'row-tv-faves':      () => tmdb('/tv/top_rated', { page: pRng2 }).then(d => d.results || []),
@@ -4570,20 +4591,24 @@ async function loadPageForYou(rowId, contentType) {
   row.innerHTML = skelCards(8);
 
   try {
-    const prefG = state.prefGenres.length ? state.prefGenres.slice(0, 3).join('|') : null;
-    const dislikedIds = new Set(state.disliked.map(x => x.id));
-    const watchedIds = new Set(state.watched.map(x => x.id));
-    const likedIds = new Set([...state.liked, ...state.prefLikes].map(x => x.id));
+    const kidsMode = getSetting('kidsMode');
+    const taste = getActiveTasteState();
+    const prefG = !kidsMode && state.prefGenres.length ? state.prefGenres.slice(0, 3).join('|') : null;
+    const dislikedKeys = new Set((taste.disliked || []).map(mediaKey));
+    const watchedKeys = new Set((taste.watched || []).map(mediaKey));
 
     const endpoint = contentType === 'tv'
       ? tmdb('/discover/tv', { sort_by: 'popularity.desc', ...(prefG ? { with_genres: prefG } : {}) })
       : tmdb('/discover/movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 200, ...(prefG ? { with_genres: prefG } : {}) });
 
     const d = await endpoint;
-    const items = (d.results || [])
-      .filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id))
+    let items = (d.results || [])
       .map(m => ({ ...m, media_type: contentType }))
-      .slice(0, 16);
+      .filter(m => !dislikedKeys.has(mediaKey(m)) && !watchedKeys.has(mediaKey(m)));
+    if (kidsMode) items = await filterSafeItems(items, _safetyContext());
+    else if (window._svSafeItem) items = items.filter(item => window._svSafeItem(item));
+    items.sort((a, b) => getTasteScore(b) - getTasteScore(a));
+    items = items.slice(0, 16);
 
     if (!items.length) { row.innerHTML = ''; return; }
     renderRow(rowId, items, contentType);
@@ -5254,6 +5279,51 @@ function applyAllSettings() {
    label match beats keyword match beats description/group match. Matching
    rows stay visible with the best hit highlighted; empty group headers
    hide. */
+const SETTING_SEARCH_TERMS = {
+  showHoverTrailer: 'preview autoplay card video mouse hover',
+  autoNextProvider: 'source fallback provider server retry broken playback',
+  disableSandbox: 'iframe ads popup compatibility security provider',
+  showRatings: 'score stars tmdb rating votes',
+  useTitleLogos: 'logo artwork treatment title image',
+  compactMode: 'dense grid rows horizontal space',
+  streamMode: 'single feed mixed continuous duplicates headings',
+  showProgressBar: 'continue watching progress resume percentage',
+  darkPlayer: 'player background black theater cinema',
+  personalizeContent: 'recommendations algorithm taste for you tailored',
+  superSearch: 'spotlight find ctrl f command f current screen',
+  featureTips: 'help hints discovery learn features',
+  kidsMode: 'child children parental safety family maturity restriction',
+  animePreference: 'japanese animation manga hide boost',
+  uiLanguage: 'translation menus buttons locale interface',
+  metaLanguage: 'translation title synopsis plot overview description writing',
+  trailerLanguage: 'captions subtitles audio dub trailer language',
+  disableAgeFilter: 'adult maturity rating unrestricted unlock nc17 r tvma',
+  repeatContent: 'duplicates repetition cooldown seen impressions',
+  wideInfo: 'details modal fullscreen width information page',
+  defaultInfoMode: 'details information instead player open behavior',
+  motionLevel: 'animations transition movement reduced motion vestibular',
+  hdFirst: 'quality resolution 4k 1080p source high definition',
+  skipRecap: 'intro opening recap reminder skip',
+  showAccountsOnStart: 'profiles startup launch who is watching account',
+  hideTabClips: 'navigation trailer feed remove clips',
+  hideTabAnime: 'navigation anime remove hide tab',
+  automuteHoverTrailer: 'silent sound volume muted preview',
+  mobileHideHeader: 'phone top bar navigation scroll auto hide',
+  mobileIconNav: 'phone bottom navigation icons compact labels',
+  glassEffects: 'frost blur translucent transparency apple liquid',
+  showOMDbRatings: 'imdb rotten tomatoes rt metacritic external scores',
+  showWhereToWatch: 'providers streaming services availability offers',
+  showKeywordTags: 'topics tags keywords collection franchise',
+  showAwardsBanner: 'oscars emmys nominations wins trophies',
+};
+
+const SETTINGS_QUERY_ALIASES = {
+  caption: ['subtitle', 'audio'], captions: ['subtitles', 'audio'], subtitle: ['captions', 'language'], subtitles: ['captions', 'language'],
+  font: ['text', 'readable'], parental: ['kids', 'safety'], child: ['kids'], children: ['kids'],
+  quality: ['hd', 'resolution'], autoplay: ['preview', 'trailer'], privacy: ['profile', 'data'],
+  language: ['translation', 'audio', 'titles'], animation: ['motion'], animations: ['motion'],
+};
+
 function _wireSettingsSearch(grid) {
   let box = document.getElementById('sv-settings-search');
   if (!box) {
@@ -5276,16 +5346,21 @@ function _wireSettingsSearch(grid) {
       headers.forEach(h => h.style.display = '');
       return;
     }
-    const words = q.split(/\s+/).filter(Boolean);
+    const rawWords = q.split(/\s+/).filter(Boolean);
+    const words = [...new Set(rawWords.flatMap(word => [word, ...(SETTINGS_QUERY_ALIASES[word] || [])]))];
     let best = null, bestScore = 0;
     wraps.forEach(w => {
       let score = 0;
+      let matchedRaw = 0;
       for (const word of words) {
         if (w.dataset.slabel.includes(word)) score += w.dataset.slabel.startsWith(word) ? 5 : 3;
         else if (w.dataset.skw.includes(word)) score += 2;
         else if (w.dataset.find.includes(word)) score += 1;
-        else { score = 0; break; } // every word must match somewhere
+        else if (rawWords.includes(word)) { score = 0; break; }
+        if (rawWords.includes(word) && (w.dataset.slabel.includes(word) || w.dataset.skw.includes(word) || w.dataset.find.includes(word))) matchedRaw++;
       }
+      if (matchedRaw !== rawWords.length) score = 0;
+      if (w.dataset.slabel === q) score += 20;
       w.style.display = score ? '' : 'none';
       if (score) {
         w.classList.add('sv-search-hit');
@@ -5380,8 +5455,11 @@ function buildSettingsUI() {
     html += `<div class="settings-group-header" data-sgroup="${esc(groupName)}">${groupName}</div>`;
     html += settings.map(s => {
       // Wrap each row with searchable metadata (label + desc + keywords + group)
-      const find = `${s.label} ${s.desc} ${s.keywords || ''} ${groupName}`.toLowerCase();
-      return `<div class="sv-setting-wrap" data-sid="${esc(s.id)}" data-sgroup="${esc(groupName)}" data-find="${esc(find)}" data-slabel="${esc(s.label.toLowerCase())}" data-skw="${esc((s.keywords || '').toLowerCase())}">${renderSetting(s)}</div>`;
+      const extraTerms = SETTING_SEARCH_TERMS[s.id] || '';
+      const optionTerms = [...(s.options || []), ...(s.optLabels || [])].join(' ');
+      const keywords = `${s.keywords || ''} ${extraTerms} ${optionTerms} ${s.id}`.toLowerCase();
+      const find = `${s.label} ${s.desc} ${keywords} ${groupName}`.toLowerCase();
+      return `<div class="sv-setting-wrap" data-sid="${esc(s.id)}" data-sgroup="${esc(groupName)}" data-find="${esc(find)}" data-slabel="${esc(s.label.toLowerCase())}" data-skw="${esc(keywords)}">${renderSetting(s)}</div>`;
     }).join('');
   }
   if (getSetting('kidsMode')) {
@@ -6144,7 +6222,7 @@ function initEventDelegation() {
   });
 
   // Shortcuts button in footer
-  document.getElementById('footer-shortcuts-btn')?.addEventListener('click', showShortcuts);
+  document.getElementById('feature-guide-btn')?.addEventListener('click', showShortcuts);
 
   // Open media from search autocomplete
   document.addEventListener('sv:open-media', e => {
@@ -7155,7 +7233,7 @@ function buildMediaUrl(id, type, title, year) {
 let _overlayReturnUrl = null;
 function _rememberOverlayReturnRoute() {
   if (_overlayReturnUrl) return;
-  if (parseCleanRoute(location.pathname)?.kind === 'title') return;
+  if (['title', 'person', 'collection'].includes(parseCleanRoute(location.pathname)?.kind)) return;
   _overlayReturnUrl = `${location.pathname}${location.search}${location.hash}`;
 }
 
@@ -8459,13 +8537,16 @@ export async function openCompanyPage(companyId, companyName) {
 
 /* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
 export async function openCollectionPage(collectionId, collectionName) {
+  _rememberOverlayReturnRoute();
   const initialPath = collectionPath(collectionId, collectionName);
   history.pushState({ collectionId }, '', initialPath);
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${SITE_ORIGIN}${initialPath}`);
   _openCompanyOverlay({
     name: collectionName,
     subtitle: 'Film Collection',
-    defaultCompact: true, // collections look better as a grid
+    // A franchise is chronological browsing, so lead with the roomy
+    // horizontal row. Compact grid remains available through the view toggle.
+    defaultCompact: false,
     fetchFn: async () => {
       const col = await tmdb(`/collection/${collectionId}`);
       let movies = (col.parts || [])
@@ -8487,6 +8568,7 @@ export async function openCollectionPage(collectionId, collectionName) {
       ].filter(Boolean).join(' · ');
 
       return {
+        kind: 'collection',
         name: col.name || collectionName,
         desc: col.overview || '',
         parent: subtitle,
@@ -8499,6 +8581,14 @@ export async function openCollectionPage(collectionId, collectionName) {
 }
 
 /* ── UNIFIED COMPANY / PROVIDER / COLLECTION OVERLAY ─────────────── */
+function _closeCompanyOverlay() {
+  const ov = document.getElementById('company-overlay');
+  if (!ov?.classList.contains('open')) return;
+  ov.classList.remove('open');
+  document.body.style.overflow = '';
+  if (parseCleanRoute(location.pathname)?.kind === 'collection') _restoreOverlayRoute();
+}
+
 async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCompact = false }) {
   // Stop hover trailer immediately — don't let it play behind the overlay
   clearHoverTrailer();
@@ -8510,11 +8600,9 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   // Wire once
   if (!ov._wired) {
     ov._wired = true;
-    ov.querySelector('#company-close')?.addEventListener('click', () => {
-      ov.classList.remove('open'); document.body.style.overflow = '';
-    });
+    ov.querySelector('#company-close')?.addEventListener('click', _closeCompanyOverlay);
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && ov.classList.contains('open')) { ov.classList.remove('open'); document.body.style.overflow = ''; }
+      if (e.key === 'Escape' && ov.classList.contains('open')) _closeCompanyOverlay();
     });
     // Card clicks → close overlay first
     ov.addEventListener('click', e => {
@@ -8529,7 +8617,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
       const card = e.target.closest('.card[data-id][data-type]');
       if (!card || e.target.closest('button')) return;
       e.preventDefault(); // card is now an <a>
-      ov.classList.remove('open'); document.body.style.overflow = '';
+      _closeCompanyOverlay();
       setTimeout(() => openMedia(+card.dataset.id, card.dataset.type), 60);
     });
     // View toggle: Row / Compact
@@ -8619,7 +8707,6 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     const moreMovies = data.moreMovies || [];
     const moreTv     = data.moreTv     || [];
     const originals  = data.originals  || [];
-    const topRated   = data.topRated   || data.topMovies || [];
     const all        = [...movies, ...tv];
 
     // ── ROW VIEW: Full home-page style rows ───────────────────────
@@ -8644,24 +8731,20 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
         </div>`;
       };
 
-      // Interleave movies+TV for the popular mixed row
-      const popularMixed = [];
-      for (let i=0; i<Math.max(movies.length,tv.length); i++) { if(movies[i]) popularMixed.push(movies[i]); if(tv[i]) popularMixed.push(tv[i]); }
       const topMixed = [];
       for (let i=0; i<Math.max(topMovies.length,topTv.length); i++) { if(topMovies[i]) topMixed.push(topMovies[i]); if(topTv[i]) topMixed.push(topTv[i]); }
       const moreMixed = [];
       for (let i=0; i<Math.max(moreMovies.length,moreTv.length); i++) { if(moreMovies[i]) moreMixed.push(moreMovies[i]); if(moreTv[i]) moreMixed.push(moreTv[i]); }
 
-      const rows = [
-        originals.length    ? makeRow('cp-originals',  'star',              `Only on ${name}`,  originals,    null)   : '',
-        popularMixed.length ? makeRow('cp-popular',    'local_fire_department', `Popular on ${name}`, popularMixed, null) : '',
-        movies.length       ? makeRow('cp-movies',     'movie',             'Popular Movies',    movies,       'movie'): '',
-        tv.length           ? makeRow('cp-tv',         'tv',                'Popular Shows',     tv,           'tv')   : '',
-        topMixed.length     ? makeRow('cp-toprated',   'workspace_premium', 'Top Rated',         topMixed,     null)   : '',
-        topMovies.length    ? makeRow('cp-topmovies',  'movie',             'Top Rated Movies',  topMovies,    'movie'): '',
-        topTv.length        ? makeRow('cp-toptv',      'tv',                'Top Rated Shows',   topTv,        'tv')   : '',
-        moreMixed.length    ? makeRow('cp-more',       'explore',           'More to Explore',   moreMixed,    null)   : '',
-      ].filter(Boolean);
+      const rows = data.kind === 'collection'
+        ? [makeRow('cp-collection', 'theaters', 'In Release Order', movies, 'movie')]
+        : [
+            originals.length    ? makeRow('cp-originals',  'star',              `Only on ${name}`,  originals,    null)   : '',
+            movies.length       ? makeRow('cp-movies',     'movie',             'Popular Movies',    movies,       'movie'): '',
+            tv.length           ? makeRow('cp-tv',         'tv',                'Popular Shows',     tv,           'tv')   : '',
+            topMixed.length     ? makeRow('cp-toprated',   'workspace_premium', 'Top Rated',         topMixed,     null)   : '',
+            moreMixed.length    ? makeRow('cp-more',       'explore',           'More to Explore',   moreMixed,    null)   : '',
+          ].filter(Boolean);
 
       rowView.innerHTML = rows.join('') || '<p style="padding:3rem;color:var(--muted);text-align:center;font-size:1rem">No content available for this provider in your region.</p>';
 
@@ -8672,18 +8755,6 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
         });
       });
 
-      // Wire card clicks
-      rowView.querySelectorAll('.card[data-id][data-type]').forEach(cardEl => {
-        if (!cardEl._provWired) {
-          cardEl._provWired = true;
-          cardEl.addEventListener('click', e => {
-            if (e.target.closest('button')) return;
-            ov.classList.remove('open');
-            document.body.style.overflow = '';
-            setTimeout(() => openMedia(+cardEl.dataset.id, cardEl.dataset.type), 60);
-          });
-        }
-      });
     }
 
     // ── COMPACT VIEW: dense grid ──────────────────────────────────
@@ -9135,6 +9206,7 @@ export async function openPersonPage(personId) {
   }
 
   ov._personId = personId;
+  _rememberOverlayReturnRoute();
   history.pushState({ personId }, '', personPath(personId, 'person'));
   _setPersonSEO(personId, null); // unique canonical immediately — data refines it below
 
@@ -9247,7 +9319,12 @@ async function loadPersonCredits(personId, type) {
   // Sort by vote_count * vote_average — most culturally significant works first
   items.sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)));
   const seen = new Set();
-  items = items.filter(m => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; });
+  items = items.filter(m => {
+    const key = mediaKey(m);
+    if (!m.id || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const html = items.map(m => makeCard(m, m.media_type || type)).join('');
   grid.innerHTML = html || `<p style="color:var(--muted);padding:1rem;text-align:center;">No credits found.</p>`;
 }
@@ -9266,9 +9343,16 @@ async function _loadPersonNetwork(person) {
       } catch {}
     }
     if (!data) {
+      const seenTitles = new Set();
       const topTitles = [...(person.combined_credits?.cast || [])]
         .filter(m => m.id && (m.media_type === 'movie' || m.media_type === 'tv'))
         .sort((a, b) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+        .filter(title => {
+          const key = mediaKey(title);
+          if (seenTitles.has(key)) return false;
+          seenTitles.add(key);
+          return true;
+        })
         .slice(0, 5);
       const credits = await Promise.all(topTitles.map(title =>
         tmdb(`/${title.media_type}/${title.id}/credits`).catch(() => ({ cast: [] }))));
@@ -9311,9 +9395,8 @@ function closePersonPage({ restoreHistory = true } = {}) {
   document.getElementById('person-overlay')?.classList.remove('open');
   document.body.style.overflow = '';
   document.getElementById('jsonld-person')?.remove();
-  // Restore URL when closing person page
-  if (restoreHistory && location.search.includes('person=')) history.back();
-  else if (!restoreHistory) resetPageSEO();
+  if (restoreHistory) _restoreOverlayRoute();
+  else resetPageSEO();
 }
 
 export function closeInfoPage() {
@@ -9493,8 +9576,9 @@ function initShortcutsModal() {
         <div class="sc-group-label">${g}</div>
         ${SHORTCUTS.filter(s => s.group === g).map(s => {
           const keyId = s.key.toLowerCase().replace(/[^a-z0-9/]/g, '_');
-          const isOff = !!disabled[keyId];
-          return `<div class="sc-item shortcut-row${isOff ? ' disabled' : ''}" data-shortcut-id="${keyId}" title="${isOff ? 'Click to re-enable' : 'Click to disable this shortcut'}">
+          const toggleable = s.toggleable !== false;
+          const isOff = toggleable && !!disabled[keyId];
+          return `<div class="sc-item${toggleable ? ' shortcut-row' : ' feature-reference-row'}${isOff ? ' disabled' : ''}"${toggleable ? ` data-shortcut-id="${keyId}" title="${isOff ? 'Click to re-enable' : 'Click to disable this shortcut'}"` : ''}>
             <kbd class="sc-key shortcut-key">${esc(s.key)}</kbd>
             <span class="sc-desc">${esc(s.desc)}${isOff ? '<span class="shortcut-disabled-badge">off</span>' : ''}</span>
           </div>`;
@@ -11660,8 +11744,10 @@ function _scoreClipItem(item) {
   // Genre ids arrive as numbers from TMDB but may be stored as strings or
   // numbers in prefs — index both forms so matches never silently fail
   const taste = getActiveTasteState();
-  const prefGenres = new Set((getSetting('kidsMode') ? [] : (state.prefGenres || [])).flatMap(g => [g, String(g), +g]));
-  const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
+  const kidsMode = getSetting('kidsMode');
+  const prefGenres = new Set((kidsMode ? [] : (state.prefGenres || [])).flatMap(g => [g, String(g), +g]));
+  const itemKey = mediaKey(item);
+  const dislikedKeys = new Set((taste.disliked || []).map(mediaKey));
   const genreIds = item.genre_ids || [];
   let score = 0;
   score += getTasteScore(item) * 1.25;
@@ -11670,26 +11756,28 @@ function _scoreClipItem(item) {
     score += (_clipsDwellPrefs().get(g) || 0) * 1.5; // amplify dwell signal
   });
   // Strong boost: watchlisted (user wants to watch but hasn't yet — perfect clip)
-  if ((state.watchlist || []).some(w => w.id === item.id)) score += 4;
+  if ((taste.watchlist || []).some(w => mediaKey(w) === itemKey)) score += 4;
   // Mild boost: continue watching (already invested)
-  if (state.continueWatching?.[item.id]) score += 2;
+  if (!kidsMode && getContinue(item.id, item.media_type || item.type || 'movie')) score += 2;
   // Liked items should still show (maybe they want to re-discover)
-  if ((state.loved || []).some(l => l.id === item.id)) score += 3;
-  else if ((state.liked || []).some(l => l.id === item.id)) score += 1;
+  if ((taste.loved || []).some(l => mediaKey(l) === itemKey)) score += 3;
+  else if ((taste.liked || []).some(l => mediaKey(l) === itemKey)) score += 1;
   // Penalty: disliked items
-  if (dislikedIds.has(item.id)) score -= 8;
+  if (dislikedKeys.has(itemKey)) score -= 8;
   // Penalty: recently viewed (already know about it)
-  if (state.recentlyViewed?.some(r => r.id === item.id)) score -= 2;
+  if (state.recentlyViewed?.some(r => mediaKey(r) === itemKey)) score -= 2;
   // Quality signal: boost high-rated content slightly
   const quality = (item.vote_average || 0) - 5; // positive for >5, negative for <5
   score += quality * 0.3;
   // Watch-TIME affinity from the stats ledger: genres you actually watch
   // (not just clicked like on) pull their clips up; capped so it stays
   // one signal among many
-  try {
-    const gHours = getStats()?.life?.genres || {};
-    genreIds.forEach(g => { score += Math.min(2, (gHours[g] || 0) / 3600000 / 4); });
-  } catch {}
+  if (!kidsMode) {
+    try {
+      const gHours = getStats()?.life?.genres || {};
+      genreIds.forEach(g => { score += Math.min(2, (gHours[g] || 0) / 3600000 / 4); });
+    } catch {}
+  }
   return score;
 }
 
@@ -12123,23 +12211,24 @@ async function _loadMoreTrailers() {
       shows = shows.map(m => ({ ...m, _type: 'tv' }));
     }
     const existIds = new Set(_trailersItems.map(i => `${i._type}-${i.id}`));
-    const watchlistIds = new Set((state.watchlist || []).map(w => w.id));
-    const recentIds = new Set((state.recentlyViewed || []).map(r => r.id));
-
     const activeTaste = getActiveTasteState();
-    const dislikedIds = new Set((activeTaste.disliked || []).map(x => x.id));
-    const watchedIds = new Set((getSetting('kidsMode') ? [] : (state.watched || [])).map(x => x.id));
+    const kidsMode = getSetting('kidsMode');
+    const watchlistKeys = new Set((activeTaste.watchlist || []).map(mediaKey));
+    const recentKeys = new Set((kidsMode ? [] : (state.recentlyViewed || [])).map(mediaKey));
+    const dislikedKeys = new Set((activeTaste.disliked || []).map(mediaKey));
+    const watchedKeys = new Set((activeTaste.watched || []).map(mediaKey));
     const clipsSeen = _getClipsSeen();
     const hideAnimeClips = !!(getSetting('animePreference') === 'no' || localStorage.getItem('sv_clips_noanime') === '1');
     let combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
       // Never show disliked content in clips
-      if (dislikedIds.has(i.id)) return false;
-      if (watchedIds.has(i.id)) return false;
+      const key = mediaKey(i);
+      if (dislikedKeys.has(key)) return false;
+      if (watchedKeys.has(key)) return false;
       if (clipsSeen[`${i._type}:${i.id}`]) return false;
       if (hideAnimeClips && i.original_language === 'ja' && (i.genre_ids || []).includes(16)) return false;
       // Suppress recently-viewed on low repeat tolerance (but watchlisted items always show)
-      if (recentIds.has(i.id) && !watchlistIds.has(i.id) && (state._repeatTolerance === 'minimum' || !state._repeatTolerance)) return false;
+      if (recentKeys.has(key) && !watchlistKeys.has(key) && (state._repeatTolerance === 'minimum' || !state._repeatTolerance)) return false;
       return true;
     });
 
@@ -12905,15 +12994,17 @@ function initKeyboard() {
       const d = JSON.parse(e.data);
       // playerState 0 = ended — user watched it (or most of it)
       if (d.event === 'infoDelivery' && d.info?.playerState === 0 && state.currentMedia) {
-        const { id } = state.currentMedia;
+        const { id, type = 'movie' } = state.currentMedia;
         if (id) {
           // Reward watching: reduce impression count so content can surface again
-          const imp = state.impressions[id];
+          const key = `${type}:${+id}`;
+          const imp = state.impressions[key] ?? state.impressions[id];
           if (imp && typeof imp === 'object') {
-            state.impressions[id] = { ...imp, count: Math.max(0, imp.count - 10) };
+            state.impressions[key] = { ...imp, count: Math.max(0, imp.count - 10) };
           } else if (typeof state.impressions[id] === 'number') {
-            state.impressions[id] = Math.max(0, (state.impressions[id] || 0) - 10);
+            state.impressions[key] = Math.max(0, state.impressions[id] - 10);
           }
+          delete state.impressions[id];
           persist('impressions');
         }
       }
@@ -12922,40 +13013,43 @@ function initKeyboard() {
 
   // VidSrc.ru postMessage watch-progress tracking (MEDIA_DATA events)
   window.addEventListener('message', e => {
-    if (!e.origin.includes('vidsrc.ru')) return;
+    const playerFrame = document.getElementById('player-frame');
+    if (e.origin !== 'https://vidsrc.ru' || !playerFrame?.contentWindow || e.source !== playerFrame.contentWindow) return;
     try {
       const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (d?.type !== 'MEDIA_DATA' || !d.payload) return;
       const { mediaType, tmdbId, currentTime, duration, season, episode } = d.payload;
-      if (!tmdbId || !currentTime || !duration) return;
+      const numericId = +tmdbId;
+      const elapsed = +currentTime;
+      const total = +duration;
+      if (!numericId || !Number.isFinite(elapsed) || !Number.isFinite(total) || elapsed <= 0 || total <= 0) return;
 
       // Don't save if less than 5% or more than 95% watched (too early or already finished)
-      const pct = currentTime / duration;
+      const pct = elapsed / total;
       if (pct < 0.05 || pct > 0.95) return;
 
       const type = mediaType === 'tv' ? 'tv' : 'movie';
-      const key = String(tmdbId);
+      const cm = state.currentMedia || {};
+      if (+cm.id !== numericId || (cm.type && cm.type !== type)) return;
 
       // Get existing continue-watching entry or build a stub from currentMedia
-      const existing = state.continueWatching[key] || state.continueWatching[tmdbId] || {};
-      const cm = state.currentMedia || {};
+      const existing = getContinue(numericId, type) || {};
 
       const entry = {
         ...existing,
-        id:        tmdbId,
+        id:        numericId,
         type,
         title:     existing.title || cm.title || cm.name || '',
         poster_path: existing.poster_path || cm.poster_path || null,
-        progress:  Math.round((currentTime / duration) * 100),
-        currentTime: Math.round(currentTime),
-        duration:  Math.round(duration),
+        progress:  Math.round(pct * 100),
+        currentTime: Math.round(elapsed),
+        duration:  Math.round(total),
         updatedAt: Date.now(),
       };
       if (type === 'tv' && season)  entry.season  = season;
       if (type === 'tv' && episode) entry.episode = episode;
 
-      state.continueWatching[key] = entry;
-      persist('continueWatching');
+      saveContinue(numericId, entry);
     } catch {}
   });
 }
