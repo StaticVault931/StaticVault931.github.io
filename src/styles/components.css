@@ -3284,7 +3284,6 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
   appearance: slider-vertical;
   writing-mode: vertical-lr;
   direction: rtl;
-  transform: rotate(180deg);
   width: 8px;
   height: 84px;
   accent-color: var(--red);

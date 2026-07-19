@@ -7,15 +7,34 @@ const ROOT = process.cwd();
 const OUT = path.resolve(ROOT, process.argv[2] || 'dist');
 const ORIGIN = 'https://staticvault931.github.io';
 const CHUNK = 10000;
-const EXCLUDE = new Set(['.git', '.github', '.claude', 'node_modules', 'tests', 'test-results', 'playwright-report', 'scripts', 'dist']);
+const EXCLUDE_DIRS = new Set([
+  '.git', '.github', '.claude', '.codex', '.agents', '.vscode', '.idea',
+  'node_modules', 'tests', 'test-results', 'playwright-report', 'scripts',
+  'dist', 'build', 'coverage', 'backups', 'exports', 'private', 'credentials',
+]);
+const EXCLUDE_FILES = new Set([
+  '.gitignore', '.editorconfig', 'eslint.config.js', 'package.json', 'package-lock.json',
+  'playwright.config.js', 'serve.js', 'README.md',
+]);
+const PRIVATE_FILE = /^(?:\.env(?:\..*)?|.*\.(?:log|pem|key|p12|pfx|jks|keystore|sqlite3?|db)|staticvault-(?:backup|export).*\.json)$/i;
 const esc = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const decodeXml = value => String(value || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-const slug = value => String(value || 'title').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'title';
+const slug = value => String(value || 'title').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'title';
+
+const PROVIDERS = [
+  [8, 'Netflix'], [337, 'Disney Plus'], [9, 'Amazon Prime Video'], [1899, 'Max'],
+  [15, 'Hulu'], [350, 'Apple TV Plus'], [531, 'Paramount Plus'], [386, 'Peacock'],
+  [283, 'Crunchyroll'], [37, 'Showtime'], [43, 'Starz'], [123, 'Shudder'],
+  [100, 'Tubi TV'], [73, 'Pluto TV'], [11, 'MUBI'], [526, 'AMC Plus'],
+  [151, 'BritBox'], [520, 'Discovery Plus'], [188, 'YouTube Premium'],
+  [175, 'Netflix Kids'],
+];
 
 async function copyPublicTree(source, destination) {
   await mkdir(destination, { recursive: true });
   for (const entry of await readdir(source, { withFileTypes: true })) {
-    if (EXCLUDE.has(entry.name) || path.resolve(source, entry.name) === OUT) continue;
+    if (EXCLUDE_DIRS.has(entry.name) || path.resolve(source, entry.name) === OUT) continue;
+    if (entry.isFile() && (EXCLUDE_FILES.has(entry.name) || PRIVATE_FILE.test(entry.name))) continue;
     const from = path.join(source, entry.name);
     const to = path.join(destination, entry.name);
     if (entry.isDirectory()) await copyPublicTree(from, to);
@@ -32,11 +51,11 @@ function parseLegacySitemap(xml) {
     else if (line === '</url>') { if (current?.loc) records.push(current); current = null; }
     else if (current && line.startsWith('<loc>')) current.loc = decodeXml(line.slice(5, line.indexOf('</loc>')));
     else if (current && line.startsWith('<image:image>')) {
-      const imageLocStart = line.indexOf('<image:loc>');
-      const imageLocEnd = line.indexOf('</image:loc>');
+      const imageStart = line.indexOf('<image:loc>');
+      const imageEnd = line.indexOf('</image:loc>');
       const titleStart = line.indexOf('<image:title>');
       const titleEnd = line.indexOf('</image:title>');
-      if (imageLocStart >= 0 && imageLocEnd > imageLocStart) current.image = decodeXml(line.slice(imageLocStart + 11, imageLocEnd));
+      if (imageStart >= 0 && imageEnd > imageStart) current.image = decodeXml(line.slice(imageStart + 11, imageEnd));
       if (titleStart >= 0 && titleEnd > titleStart) current.imageTitle = decodeXml(line.slice(titleStart + 13, titleEnd));
     }
   }
@@ -51,10 +70,12 @@ function titleRecords(records) {
     const type = url.searchParams.get('watch');
     const id = Number(url.searchParams.get('id'));
     if (!['movie', 'tv', 'anime'].includes(type) || !id) continue;
-    const name = url.searchParams.get('name') || record.imageTitle?.replace(/\s+-\s+Watch.*$/i, '') || `${type}-${id}`;
+    const imageName = record.imageTitle?.replace(/\s+-\s+Watch.*$/i, '').trim();
+    const routeName = String(url.searchParams.get('name') || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    const name = imageName || routeName || `${type} ${id}`;
     const key = `${type}:${id}`;
     if (!found.has(key) || url.searchParams.get('mode') === 'info') {
-      found.set(key, { type, id, name, slug: slug(name), image: record.image || '', legacy: `/?watch=${type}&name=${encodeURIComponent(name)}&id=${id}&mode=info` });
+      found.set(key, { type, id, name, slug: slug(name), image: record.image || '' });
     }
   }
   return [...found.values()];
@@ -69,14 +90,32 @@ function personRecords(records) {
     if (!id) continue;
     const rawName = decodeXml(record.imageTitle || '').replace(/\s+-\s+Films.*$/i, '').trim();
     const name = rawName || `Person ${id}`;
-    if (!found.has(id)) found.set(id, { id, name, slug: slug(name), image: record.image || '', legacy: `/?person=${id}` });
+    if (!found.has(id)) found.set(id, { id, name, slug: slug(name), image: record.image || '' });
   }
   return [...found.values()];
 }
 
-function shell({ title, description, canonical, legacy, type = 'WebPage', image = '' }) {
-  const ld = { '@context': 'https://schema.org', '@type': type, name: title, description, url: canonical, ...(image ? { image } : {}) };
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}">${image ? `<meta property="og:image" content="${esc(image)}">` : ''}<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script><meta http-equiv="refresh" content="0;url=${esc(legacy)}"><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:760px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff5a63}</style></head><body><main><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p><p><a href="${esc(legacy)}">Open in StaticVault931</a></p></main><script>location.replace(${JSON.stringify(legacy)})</script></body></html>`;
+function shell({ title, description, canonical, type = 'WebPage', image = '', noindex = false, items = [] }) {
+  const entity = { '@type': type, name: title, description, url: canonical, ...(image ? { image } : {}) };
+  const graph = [entity, {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${ORIGIN}/` },
+      { '@type': 'ListItem', position: 2, name: title.replace(/\s+\|\s+StaticVault931$/, ''), item: canonical },
+    ],
+  }];
+  if (items.length) {
+    graph.push({
+      '@type': 'ItemList',
+      itemListElement: items.map((item, index) => ({
+        '@type': 'ListItem', position: index + 1, name: item.name, url: item.url,
+        item: { '@type': item.type === 'movie' ? 'Movie' : 'TVSeries', name: item.name, url: item.url, ...(item.image ? { image: item.image } : {}) },
+      })),
+    });
+  }
+  const list = items.length ? `<section><h2>Featured titles</h2><ul>${items.map(item => `<li><a href="${esc(item.url)}">${esc(item.name)}</a></li>`).join('')}</ul></section>` : '';
+  const boot = `fetch('/index.html').then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(h=>{document.open();document.write(h.replace('<head>','<head><base href="/">'));document.close()}).catch(()=>{})`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}">${image ? `<meta property="og:image" content="${esc(image)}">` : ''}<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a> / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
   return serialize(parse(html));
 }
 
@@ -90,41 +129,62 @@ function sitemapXml(urls) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(item => `  <url><loc>${esc(item.loc)}</loc><lastmod>${item.lastmod}</lastmod></url>`).join('\n')}\n</urlset>\n`;
 }
 
+function lastModified(paths) {
+  try { return execFileSync('git', ['log', '-1', '--format=%cs', '--', ...paths], { cwd: ROOT, encoding: 'utf8' }).trim(); }
+  catch { return new Date().toISOString().slice(0, 10); }
+}
+
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 await copyPublicTree(ROOT, OUT);
-const legacyXml = await readFile(path.join(ROOT, 'sitemap.xml'), 'utf8');
+const legacyXml = await readFile(path.join(ROOT, 'scripts', 'data', 'catalog-source.xml'), 'utf8');
 const legacyRecords = parseLegacySitemap(legacyXml);
 const titles = titleRecords(legacyRecords);
 const people = personRecords(legacyRecords);
-let lastmod;
-try { lastmod = execFileSync('git', ['log', '-1', '--format=%cs', '--', 'sitemap.xml'], { cwd: ROOT, encoding: 'utf8' }).trim(); }
-catch { lastmod = new Date().toISOString().slice(0, 10); }
+const lastmod = lastModified(['scripts/data/catalog-source.xml', 'scripts/generate-seo.mjs', 'src/js/routes.js']);
 
 const publicPages = [
-  ['movies', 'Movies', 'Browse popular, acclaimed, and new movies.', 'CollectionPage'],
-  ['tv', 'TV Shows', 'Browse popular, acclaimed, and new television shows.', 'CollectionPage'],
-  ['anime', 'Anime', 'Browse anime series and movies.', 'CollectionPage'],
-  ['clips', 'Clips', 'Discover movies and shows through trailers and clips.', 'CollectionPage'],
-  ['mix', 'Mix & Match', 'Blend several titles to discover recommendations they have in common.', 'WebApplication'],
+  ['movies', 'Movies', 'Browse popular, acclaimed, and new movies.', 'CollectionPage', titles.filter(item => item.type === 'movie').slice(0, 12)],
+  ['tv', 'TV Shows', 'Browse popular, acclaimed, and new television shows.', 'CollectionPage', titles.filter(item => item.type === 'tv').slice(0, 12)],
+  ['anime', 'Anime', 'Browse anime series and movies.', 'CollectionPage', titles.filter(item => item.type === 'anime').slice(0, 12)],
+  ['clips', 'Clips', 'Discover movies and shows through trailers and clips.', 'CollectionPage', []],
+  ['mix', 'Mix & Match', 'Blend several titles to discover recommendations they have in common.', 'WebApplication', []],
 ];
-for (const [route, title, description, type] of publicPages) {
-  await writeRoute(route, shell({ title: `${title} | StaticVault931`, description, canonical: `${ORIGIN}/${route}/`, legacy: `/?page=${route}`, type }));
+const itemLink = item => ({ ...item, url: `${ORIGIN}/title/${item.type}/${item.id}-${item.slug}/` });
+for (const [route, title, description, type, items] of publicPages) {
+  await writeRoute(route, shell({ title: `${title} | StaticVault931`, description, canonical: `${ORIGIN}/${route}/`, type, items: items.map(itemLink) }));
+}
+
+const privatePages = [
+  ['search', 'Search', 'Search movies, shows, anime, people, and topics.'],
+  ['library', 'My Library', 'Your private watchlist, reactions, and viewing activity.'],
+  ['customize', 'Customize Your Feed', 'Adjust your private discovery and accessibility preferences.'],
+];
+for (const [route, title, description] of privatePages) {
+  await writeRoute(route, shell({ title: `${title} | StaticVault931`, description, canonical: `${ORIGIN}/${route}/`, noindex: true }));
 }
 
 const urls = [{ loc: `${ORIGIN}/`, lastmod }, ...publicPages.map(([route]) => ({ loc: `${ORIGIN}/${route}/`, lastmod }))];
 for (const item of titles) {
   const route = `title/${item.type}/${item.id}-${item.slug}`;
   const canonical = `${ORIGIN}/${route}/`;
-  const description = `View details, related titles, and playback options for ${item.name} on StaticVault931.`;
-  await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, legacy: item.legacy, type: item.type === 'movie' ? 'Movie' : 'TVSeries', image: item.image }));
+  const description = `View details, related titles, and viewing options for ${item.name} on StaticVault931.`;
+  const schemaType = item.type === 'movie' ? 'Movie' : 'TVSeries';
+  await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, type: schemaType, image: item.image }));
   urls.push({ loc: canonical, lastmod });
 }
 for (const person of people) {
   const route = `person/${person.id}-${person.slug}`;
   const canonical = `${ORIGIN}/${route}/`;
   const description = `Explore ${person.name}'s movies, television credits, collaborators, and related titles on StaticVault931.`;
-  await writeRoute(route, shell({ title: `${person.name} | StaticVault931`, description, canonical, legacy: person.legacy, type: 'Person', image: person.image }));
+  await writeRoute(route, shell({ title: `${person.name} | StaticVault931`, description, canonical, type: 'Person', image: person.image }));
+  urls.push({ loc: canonical, lastmod });
+}
+for (const [id, name] of PROVIDERS) {
+  const route = `provider/${id}-${slug(name)}`;
+  const canonical = `${ORIGIN}/${route}/`;
+  const description = `Browse movies and television shows available through ${name} in the United States.`;
+  await writeRoute(route, shell({ title: `${name} | StaticVault931`, description, canonical, type: 'CollectionPage' }));
   urls.push({ loc: canonical, lastmod });
 }
 
@@ -138,6 +198,6 @@ for (let start = 0; start < urls.length; start += CHUNK) {
 }
 const index = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${parts.map(name => `  <sitemap><loc>${ORIGIN}/sitemaps/${name}</loc><lastmod>${lastmod}</lastmod></sitemap>`).join('\n')}\n</sitemapindex>\n`;
 await writeFile(path.join(OUT, 'sitemap.xml'), index);
-await writeFile(path.join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /?page=library\nDisallow: /?page=prefs\nDisallow: /?page=search\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
+await writeFile(path.join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
 await writeFile(path.join(OUT, 'seo-build.json'), JSON.stringify({ generatedAt: new Date().toISOString(), lastmod, publicUrls: urls.length, sitemapParts: parts.length }, null, 2));
 console.log(`SEO build: ${urls.length} public URLs in ${parts.length} sitemap files`);

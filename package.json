@@ -10,6 +10,7 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "lint:fix": "eslint src/js --fix",
     "seo:build": "node scripts/generate-seo.mjs dist",
+    "seo:check": "node scripts/check-seo.mjs dist",
     "test": "playwright test",
     "test:headed": "playwright test --headed"
   },

@@ -6,6 +6,7 @@ import { recordSearchStat } from './stats.js';
 import { rankResults } from './search/ranking.js';
 import { titleScore } from './search/fuzzy.js';
 import { filterSafeItems, isAnimeContent } from './contentSafety.js';
+import { searchPath } from './routes.js';
 
 let _debounce = null;
 let _sfActive = 'all';
@@ -555,6 +556,14 @@ export function initSearch() {
   initSearchPipeline(); // aliases + spell dictionary + local index (async)
   const inp = document.getElementById('search-input');
   if (!inp) return;
+  const initialQuery = location.pathname.replace(/\/+$/, '') === '/search'
+    ? new URLSearchParams(location.search).get('q')?.trim()
+    : '';
+  if (initialQuery) {
+    inp.value = initialQuery;
+    const initialClear = document.getElementById('search-clear');
+    if (initialClear) initialClear.style.display = 'flex';
+  }
 
   inp.addEventListener('input', function () {
     const clear = document.getElementById('search-clear');
@@ -566,6 +575,9 @@ export function initSearch() {
 
     if (!q) {
       closeInlineDrop();
+      if (document.getElementById('page-search')?.classList.contains('active')) {
+        history.replaceState({ page: 'search' }, '', searchPath());
+      }
       loadSearchDefault();
       return;
     }
@@ -601,6 +613,7 @@ export function initSearch() {
       inp.value = '';
       clear.style.display = 'none';
       closeInlineDrop();
+      history.replaceState({ page: 'search' }, '', searchPath());
       loadSearchDefault();
       inp.focus();
     });
@@ -1173,6 +1186,12 @@ function _spaceVariantCandidates(q) {
 export async function doSearch(q) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
+
+  q = String(q || '').trim();
+  if (!q) return;
+  if (document.getElementById('page-search')?.classList.contains('active')) {
+    history.replaceState({ page: 'search', query: q }, '', searchPath(q));
+  }
 
   addRecentSearch(q);
   if (checkSearchEasterEgg?.(q)) return; // stop if easter egg found

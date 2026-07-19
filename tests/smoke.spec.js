@@ -292,6 +292,105 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page.locator('#page-library')).toBeVisible();
     await page.locator('.nav-tab[data-page="prefs"]').click();
     await expect(page.locator('#page-prefs')).toBeVisible();
+    await expect(page).toHaveURL(/\/customize\/$/);
+  });
+
+  test('clean private and discovery routes load without legacy query URLs', async ({ page }) => {
+    await seedReturningUser(page);
+    for (const route of ['/library/', '/customize/', '/clips/']) {
+      await page.goto(route, { waitUntil: 'domcontentloaded' });
+      await expect(page).toHaveURL(new RegExp(`${route.replace(/\//g, '\\/')}$`));
+      await expect(page).not.toHaveURL(/\?page=/);
+    }
+  });
+
+  test('search query is shareable on the clean search route', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', route => route.fulfill({ json: { results: [] } }));
+    await page.route('https://graphql.anilist.co/**', route => route.fulfill({ json: { data: { Page: { media: [] } } } }));
+    await page.goto('/search/?q=blade%20runner', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#search-input')).toHaveValue('blade runner', { timeout: 5000 });
+    await expect(page).toHaveURL(/\/search\/\?q=blade%20runner$/);
+  });
+
+  test('clean route helpers keep provider and browse URLs canonical', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const routes = await page.evaluate(async () => {
+      const route = await import('/src/js/routes.js');
+      return {
+        provider: route.providerPath(9, 'Amazon Prime Video'),
+        parsedProvider: route.parseCleanRoute('/provider/9-amazon-prime-video/'),
+        browse: route.browsePath('row-trending', 'Trending Now'),
+        parsedBrowse: route.parseCleanRoute('/browse/row-trending/trending-now/'),
+      };
+    });
+    expect(routes.provider).toBe('/provider/9-amazon-prime-video/');
+    expect(routes.parsedProvider).toMatchObject({ kind: 'provider', id: 9, slug: 'amazon-prime-video' });
+    expect(routes.browse).toBe('/browse/row-trending/trending-now/');
+    expect(routes.parsedBrowse).toMatchObject({ kind: 'browse', key: 'row-trending', slug: 'trending-now' });
+  });
+
+  test('right-click reactions expose filled and outline state icons', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => {
+      const store = await import('/src/js/state.js');
+      store.setReaction({ id: 603, type: 'movie', title: 'The Matrix' }, 'love');
+      const card = document.createElement('div');
+      card.id = 'context-reaction-fixture';
+      card.className = 'card';
+      card.dataset.id = '603';
+      card.dataset.type = 'movie';
+      card.dataset.title = 'The Matrix';
+      card.textContent = 'The Matrix';
+      document.body.appendChild(card);
+    });
+    await page.locator('#context-reaction-fixture').click({ button: 'right' });
+    const love = page.locator('#sv-ctx-menu [role="menuitemcheckbox"]', { hasText: 'Remove Love' });
+    const like = page.locator('#sv-ctx-menu [role="menuitemcheckbox"]', { hasText: 'Like' });
+    await expect(love).toHaveAttribute('aria-checked', 'true');
+    await expect(love.locator('.material-icons-round')).toHaveText('favorite');
+    await expect(like).toHaveAttribute('aria-checked', 'false');
+    await expect(like.locator('.material-icons-round')).toHaveText('thumb_up_off_alt');
+  });
+
+  test('profile export snapshot includes inactive profile metadata and data', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const snapshot = await page.evaluate(async () => {
+      const profiles = await import('/src/js/profiles.js');
+      const first = profiles.getProfiles()[0];
+      const second = profiles.createProfile('Second Profile', 'avatar-url', '#123456');
+      profiles.switchProfile(second.id);
+      const state = await import('/src/js/state.js');
+      state.state.liked = [{ id: 77, type: 'movie', title: 'Saved on second profile' }];
+      state.persist('liked');
+      profiles.switchProfile(first.id);
+      return profiles.exportProfilesSnapshot();
+    });
+    expect(snapshot.profiles.map(profile => profile.name)).toContain('Second Profile');
+    const second = snapshot.profiles.find(profile => profile.name === 'Second Profile');
+    expect(snapshot.profileData[second.id].liked[0].title).toBe('Saved on second profile');
+  });
+
+  test('profile snapshot restore adds profiles without overwriting existing ones', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const restored = await page.evaluate(async () => {
+      const profiles = await import('/src/js/profiles.js');
+      const before = profiles.getProfiles().map(profile => profile.name);
+      const result = profiles.restoreProfilesSnapshot({
+        activeProfileId: 'backup-profile',
+        profiles: [{ id: 'backup-profile', name: 'Backup Profile', avatar: null, color: '#456789', createdAt: 1 }],
+        profileData: { 'backup-profile': { liked: [{ id: 88, type: 'movie', title: 'Restored title' }] } },
+      });
+      const store = await import('/src/js/state.js');
+      return { before, after: profiles.getProfiles().map(profile => profile.name), result, liked: store.state.liked };
+    });
+    expect(restored.after).toEqual(expect.arrayContaining(restored.before));
+    expect(restored.after).toContain('Backup Profile');
+    expect(restored.result.imported).toBe(1);
+    expect(restored.liked[0].title).toBe('Restored title');
   });
 
   test('Super Search only replaces browser Find when enabled', async ({ page }) => {
@@ -322,6 +421,52 @@ test.describe('StaticVault931 smoke', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#onboard-screen')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#ob-skip')).toBeVisible();
+  });
+
+  test('onboarding poster wall keeps complete rows after candidate deduplication', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('https://api.themoviedb.org/**', route => {
+      const url = new URL(route.request().url());
+      const genre = url.searchParams.get('with_genres') || '';
+      const base = url.pathname.includes('/trending/') ? 600
+        : url.pathname.includes('/tv') && genre === '16' ? 500
+        : genre.includes('27') ? 400
+        : genre === '35' ? 300
+        : url.pathname.includes('/tv') ? 200
+        : genre === '10751' ? 0 : 100;
+      const letters = value => {
+        let result = '';
+        for (let n = value; n >= 0; n = Math.floor(n / 26) - 1) result = String.fromCharCode(97 + (n % 26)) + result;
+        return result;
+      };
+      const results = Array.from({ length: 20 }, (_, index) => ({
+        id: base + index + 1,
+        title: `Calibration ${letters(base + index)}`,
+        name: `Calibration ${letters(base + index)}`,
+        poster_path: `/poster-${base + index + 1}.jpg`,
+        release_date: '2020-01-01',
+        first_air_date: '2020-01-01',
+        vote_count: 10000 - index,
+        vote_average: 7,
+        genre_ids: [18],
+        media_type: url.pathname.includes('/tv') ? 'tv' : 'movie',
+      }));
+      return route.fulfill({ json: { results } });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#onboard-screen')).toBeVisible({ timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('#ob-grid .ob-tile[data-oid]').length >= 50);
+    const rows = await page.locator('#ob-grid').evaluate(grid => {
+      const counts = new Map();
+      [...grid.querySelectorAll('.ob-tile:not(.ob-tile-overflow)')].forEach(tile => {
+        if (getComputedStyle(tile).display === 'none') return;
+        const y = tile.offsetTop;
+        counts.set(y, (counts.get(y) || 0) + 1);
+      });
+      return [...counts.values()];
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(rows).size).toBe(1);
   });
 
   test('idle info trailer is not replaced before the user presses play', async ({ page }) => {

@@ -106,7 +106,50 @@ function loadProfileData(profileId) {
   } catch { return null; }
 }
 
+export function exportProfilesSnapshot() {
+  const profiles = getProfiles();
+  const activeProfileId = getActiveProfileId();
+  if (activeProfileId && profiles.some(profile => profile.id === activeProfileId)) saveProfileData(activeProfileId);
+  const profileData = {};
+  profiles.forEach(profile => {
+    const data = loadProfileData(profile.id);
+    if (data) profileData[profile.id] = data;
+  });
+  return {
+    activeProfileId,
+    profiles: profiles.map(profile => ({ ...profile })),
+    profileData,
+  };
+}
+
 /* ── SWITCH PROFILE ───────────────────────────────────────────────── */
+export function restoreProfilesSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.profiles) || !snapshot.profileData) return { imported: 0, activeProfileId: null };
+  const available = Math.max(0, MAX_PROFILES - getProfiles().length);
+  const importedProfiles = snapshot.profiles.slice(0, available);
+  const idMap = new Map();
+
+  importedProfiles.forEach(source => {
+    const baseName = String(source.name || 'Imported Profile').slice(0, 40);
+    let name = baseName;
+    let counter = 2;
+    const current = getProfiles();
+    while (current.some(profile => profile.name === name)) name = `${baseName} (${counter++})`.slice(0, 40);
+    const created = createProfile(name, source.avatar || null, source.color || '#e50914');
+    if (!created) return;
+    if (source.avatarCrop) updateProfile(created.id, { avatarCrop: { ...source.avatarCrop } });
+    const data = snapshot.profileData[source.id];
+    if (data && typeof data === 'object') {
+      try { localStorage.setItem(`sv_pd_${created.id}`, JSON.stringify(data)); } catch {}
+    }
+    idMap.set(source.id, created.id);
+  });
+
+  const activeProfileId = idMap.get(snapshot.activeProfileId) || idMap.values().next().value || null;
+  if (activeProfileId) switchProfile(activeProfileId);
+  return { imported: idMap.size, activeProfileId };
+}
+
 export function switchProfile(toId) {
   const profiles = getProfiles();
   if (!profiles.some(p => p.id === toId)) return false;

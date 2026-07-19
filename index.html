@@ -67,7 +67,7 @@
     "@type": "SearchAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "https://staticvault931.github.io/?search={search_term_string}"
+      "urlTemplate": "https://staticvault931.github.io/search/?q={search_term_string}"
     },
     "query-input": "required name=search_term_string"
   },
@@ -80,11 +80,11 @@
     "@type": "ItemList",
     "name": "Browse Sections",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "Movies",   "url": "https://staticvault931.github.io/?page=movies" },
-      { "@type": "ListItem", "position": 2, "name": "TV Shows", "url": "https://staticvault931.github.io/?page=tv" },
-      { "@type": "ListItem", "position": 3, "name": "Anime",    "url": "https://staticvault931.github.io/?page=anime" },
-      { "@type": "ListItem", "position": 4, "name": "Clips",    "url": "https://staticvault931.github.io/?page=clips" },
-      { "@type": "ListItem", "position": 5, "name": "Search",   "url": "https://staticvault931.github.io/?page=search" }
+      { "@type": "ListItem", "position": 1, "name": "Movies",   "url": "https://staticvault931.github.io/movies/" },
+      { "@type": "ListItem", "position": 2, "name": "TV Shows", "url": "https://staticvault931.github.io/tv/" },
+      { "@type": "ListItem", "position": 3, "name": "Anime",    "url": "https://staticvault931.github.io/anime/" },
+      { "@type": "ListItem", "position": 4, "name": "Clips",    "url": "https://staticvault931.github.io/clips/" },
+      { "@type": "ListItem", "position": 5, "name": "Search",   "url": "https://staticvault931.github.io/search/" }
     ]
   }
 }
@@ -112,21 +112,6 @@
   ]
 }
 </script>
-<!-- Structured Data: Breadcrumbs -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home",     "item": "https://staticvault931.github.io/" },
-    { "@type": "ListItem", "position": 2, "name": "Movies",   "item": "https://staticvault931.github.io/?page=movies" },
-    { "@type": "ListItem", "position": 3, "name": "TV Shows", "item": "https://staticvault931.github.io/?page=tv" },
-    { "@type": "ListItem", "position": 4, "name": "Anime",    "item": "https://staticvault931.github.io/?page=anime" },
-    { "@type": "ListItem", "position": 5, "name": "Clips",    "item": "https://staticvault931.github.io/?page=clips" }
-  ]
-}
-</script>
-
 <!-- Preconnect to external origins -->
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -849,26 +834,26 @@
   <div class="lib-quick-providers">
     <span class="lib-qp-label">Browse by service</span>
     <div class="lib-qp-row" id="lib-qp-row">
-      <button class="lib-qp-btn" data-prov-id="8"   data-prov-name="Netflix"     aria-label="Browse Netflix"><img class="lib-qp-logo" src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Netflix"><span>Netflix</span></button>
-      <button class="lib-qp-btn" data-prov-id="337" data-prov-name="Disney+"     aria-label="Browse Disney+"><img class="lib-qp-logo" src="https://img.logo.dev/disneyplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Disney+"><span>Disney+</span></button>
-      <button class="lib-qp-btn" data-prov-id="9"   data-prov-name="Amazon Prime Video" aria-label="Browse Prime Video"><img class="lib-qp-logo" src="https://img.logo.dev/primevideo.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Prime Video"><span>Prime</span></button>
-      <button class="lib-qp-btn" data-prov-id="1899" data-prov-name="Max"        aria-label="Browse Max"><img class="lib-qp-logo" src="https://img.logo.dev/max.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Max"><span>Max</span></button>
-      <button class="lib-qp-btn" data-prov-id="15"  data-prov-name="Hulu"        aria-label="Browse Hulu"><img class="lib-qp-logo" src="https://img.logo.dev/hulu.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Hulu"><span>Hulu</span></button>
-      <button class="lib-qp-btn" data-prov-id="350" data-prov-name="Apple TV+"   aria-label="Browse Apple TV+"><img class="lib-qp-logo" src="https://img.logo.dev/tv.apple.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Apple TV+"><span>Apple TV+</span></button>
-      <button class="lib-qp-btn" data-prov-id="531" data-prov-name="Paramount+"  aria-label="Browse Paramount+"><img class="lib-qp-logo" src="https://img.logo.dev/paramountplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Paramount+"><span>Paramount+</span></button>
-      <button class="lib-qp-btn" data-prov-id="386" data-prov-name="Peacock"     aria-label="Browse Peacock"><img class="lib-qp-logo" src="https://img.logo.dev/peacocktv.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Peacock"><span>Peacock</span></button>
-      <button class="lib-qp-btn" data-prov-id="283" data-prov-name="Crunchyroll" aria-label="Browse Crunchyroll"><img class="lib-qp-logo" src="https://img.logo.dev/crunchyroll.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Crunchyroll"><span>Crunchyroll</span></button>
-      <button class="lib-qp-btn" data-prov-id="37"  data-prov-name="Showtime"    aria-label="Browse Showtime"><img class="lib-qp-logo" src="https://img.logo.dev/showtime.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Showtime"><span>Showtime</span></button>
-      <button class="lib-qp-btn" data-prov-id="43"  data-prov-name="Starz"       aria-label="Browse Starz"><img class="lib-qp-logo" src="https://img.logo.dev/starz.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Starz"><span>Starz</span></button>
-      <button class="lib-qp-btn" data-prov-id="123" data-prov-name="Shudder"     aria-label="Browse Shudder"><img class="lib-qp-logo" src="https://img.logo.dev/shudder.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Shudder"><span>Shudder</span></button>
-      <button class="lib-qp-btn" data-prov-id="100" data-prov-name="Tubi TV"     aria-label="Browse Tubi"><img class="lib-qp-logo" src="https://img.logo.dev/tubitv.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Tubi"><span>Tubi</span></button>
-      <button class="lib-qp-btn" data-prov-id="73"  data-prov-name="Pluto TV"    aria-label="Browse Pluto TV"><img class="lib-qp-logo" src="https://img.logo.dev/pluto.tv?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Pluto TV"><span>Pluto TV</span></button>
-      <button class="lib-qp-btn" data-prov-id="11"  data-prov-name="MUBI"        aria-label="Browse MUBI"><img class="lib-qp-logo" src="https://img.logo.dev/mubi.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="MUBI"><span>MUBI</span></button>
-      <button class="lib-qp-btn" data-prov-id="526" data-prov-name="AMC Plus"    aria-label="Browse AMC Plus"><img class="lib-qp-logo" src="https://img.logo.dev/amcplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="AMC Plus"><span>AMC+</span></button>
-      <button class="lib-qp-btn" data-prov-id="151" data-prov-name="BritBox"     aria-label="Browse BritBox"><img class="lib-qp-logo" src="https://img.logo.dev/britbox.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="BritBox"><span>BritBox</span></button>
-      <button class="lib-qp-btn" data-prov-id="520" data-prov-name="Discovery+"  aria-label="Browse Discovery+"><img class="lib-qp-logo" src="https://img.logo.dev/discoveryplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Discovery+"><span>Discovery+</span></button>
-      <button class="lib-qp-btn" data-prov-id="188" data-prov-name="YouTube Premium" aria-label="Browse YouTube Premium"><img class="lib-qp-logo" src="https://img.logo.dev/youtube.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="YouTube Premium"><span>YouTube</span></button>
-      <button class="lib-qp-btn" data-prov-id="175" data-prov-name="Netflix Kids" aria-label="Browse Netflix Kids"><img class="lib-qp-logo" src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Netflix Kids"><span>Netflix Kids</span></button>
+      <a class="lib-qp-btn" href="/provider/8-netflix/" data-prov-id="8" data-prov-name="Netflix" aria-label="Browse Netflix"><img class="lib-qp-logo" src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Netflix"><span>Netflix</span></a>
+      <a class="lib-qp-btn" href="/provider/337-disney-plus/" data-prov-id="337" data-prov-name="Disney Plus" aria-label="Browse Disney Plus"><img class="lib-qp-logo" src="https://img.logo.dev/disneyplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Disney Plus"><span>Disney+</span></a>
+      <a class="lib-qp-btn" href="/provider/9-amazon-prime-video/" data-prov-id="9" data-prov-name="Amazon Prime Video" aria-label="Browse Prime Video"><img class="lib-qp-logo" src="https://img.logo.dev/primevideo.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Prime Video"><span>Prime</span></a>
+      <a class="lib-qp-btn" href="/provider/1899-max/" data-prov-id="1899" data-prov-name="Max" aria-label="Browse Max"><img class="lib-qp-logo" src="https://img.logo.dev/max.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Max"><span>Max</span></a>
+      <a class="lib-qp-btn" href="/provider/15-hulu/" data-prov-id="15" data-prov-name="Hulu" aria-label="Browse Hulu"><img class="lib-qp-logo" src="https://img.logo.dev/hulu.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Hulu"><span>Hulu</span></a>
+      <a class="lib-qp-btn" href="/provider/350-apple-tv-plus/" data-prov-id="350" data-prov-name="Apple TV Plus" aria-label="Browse Apple TV Plus"><img class="lib-qp-logo" src="https://img.logo.dev/tv.apple.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Apple TV Plus"><span>Apple TV+</span></a>
+      <a class="lib-qp-btn" href="/provider/531-paramount-plus/" data-prov-id="531" data-prov-name="Paramount Plus" aria-label="Browse Paramount Plus"><img class="lib-qp-logo" src="https://img.logo.dev/paramountplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Paramount Plus"><span>Paramount+</span></a>
+      <a class="lib-qp-btn" href="/provider/386-peacock/" data-prov-id="386" data-prov-name="Peacock" aria-label="Browse Peacock"><img class="lib-qp-logo" src="https://img.logo.dev/peacocktv.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Peacock"><span>Peacock</span></a>
+      <a class="lib-qp-btn" href="/provider/283-crunchyroll/" data-prov-id="283" data-prov-name="Crunchyroll" aria-label="Browse Crunchyroll"><img class="lib-qp-logo" src="https://img.logo.dev/crunchyroll.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Crunchyroll"><span>Crunchyroll</span></a>
+      <a class="lib-qp-btn" href="/provider/37-showtime/" data-prov-id="37" data-prov-name="Showtime" aria-label="Browse Showtime"><img class="lib-qp-logo" src="https://img.logo.dev/showtime.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Showtime"><span>Showtime</span></a>
+      <a class="lib-qp-btn" href="/provider/43-starz/" data-prov-id="43" data-prov-name="Starz" aria-label="Browse Starz"><img class="lib-qp-logo" src="https://img.logo.dev/starz.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Starz"><span>Starz</span></a>
+      <a class="lib-qp-btn" href="/provider/123-shudder/" data-prov-id="123" data-prov-name="Shudder" aria-label="Browse Shudder"><img class="lib-qp-logo" src="https://img.logo.dev/shudder.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Shudder"><span>Shudder</span></a>
+      <a class="lib-qp-btn" href="/provider/100-tubi-tv/" data-prov-id="100" data-prov-name="Tubi TV" aria-label="Browse Tubi"><img class="lib-qp-logo" src="https://img.logo.dev/tubitv.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Tubi"><span>Tubi</span></a>
+      <a class="lib-qp-btn" href="/provider/73-pluto-tv/" data-prov-id="73" data-prov-name="Pluto TV" aria-label="Browse Pluto TV"><img class="lib-qp-logo" src="https://img.logo.dev/pluto.tv?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Pluto TV"><span>Pluto TV</span></a>
+      <a class="lib-qp-btn" href="/provider/11-mubi/" data-prov-id="11" data-prov-name="MUBI" aria-label="Browse MUBI"><img class="lib-qp-logo" src="https://img.logo.dev/mubi.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="MUBI"><span>MUBI</span></a>
+      <a class="lib-qp-btn" href="/provider/526-amc-plus/" data-prov-id="526" data-prov-name="AMC Plus" aria-label="Browse AMC Plus"><img class="lib-qp-logo" src="https://img.logo.dev/amcplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="AMC Plus"><span>AMC+</span></a>
+      <a class="lib-qp-btn" href="/provider/151-britbox/" data-prov-id="151" data-prov-name="BritBox" aria-label="Browse BritBox"><img class="lib-qp-logo" src="https://img.logo.dev/britbox.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="BritBox"><span>BritBox</span></a>
+      <a class="lib-qp-btn" href="/provider/520-discovery-plus/" data-prov-id="520" data-prov-name="Discovery Plus" aria-label="Browse Discovery Plus"><img class="lib-qp-logo" src="https://img.logo.dev/discoveryplus.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Discovery Plus"><span>Discovery+</span></a>
+      <a class="lib-qp-btn" href="/provider/188-youtube-premium/" data-prov-id="188" data-prov-name="YouTube Premium" aria-label="Browse YouTube Premium"><img class="lib-qp-logo" src="https://img.logo.dev/youtube.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="YouTube Premium"><span>YouTube</span></a>
+      <a class="lib-qp-btn" href="/provider/175-netflix-kids/" data-prov-id="175" data-prov-name="Netflix Kids" aria-label="Browse Netflix Kids"><img class="lib-qp-logo" src="https://img.logo.dev/netflix.com?token=pk_Ls472ChRSLSBvfBYgW6R7Q&size=64&format=png" alt="Netflix Kids"><span>Netflix Kids</span></a>
     </div>
   </div>
 
@@ -1257,12 +1242,12 @@
 <section id="about-content" aria-label="About StaticVault931">
   <div class="about-inner">
     <h2>Discover Movies, TV Shows &amp; Anime on StaticVault931</h2>
-    <p>StaticVault931 is a free discovery platform for <a href="/?page=movies">movies</a>, <a href="/?page=tv">TV shows</a>, and <a href="/?page=anime">anime</a>. Browse trending titles, all-time classics, hidden gems, and personalized recommendations tailored to your taste — no account or sign-up required. Every title includes ratings from IMDb, Rotten Tomatoes, and Metacritic, full cast and crew details, trailers, and streaming availability across Netflix, Disney+, Prime Video, Max, Hulu, and more.</p>
+    <p>StaticVault931 is a free discovery platform for <a href="/movies/">movies</a>, <a href="/tv/">TV shows</a>, and <a href="/anime/">anime</a>. Browse trending titles, all-time classics, hidden gems, and personalized recommendations tailored to your taste — no account or sign-up required. Every title includes ratings from IMDb, Rotten Tomatoes, and Metacritic, full cast and crew details, trailers, and streaming availability across Netflix, Disney+, Prime Video, Max, Hulu, and more.</p>
 
     <div class="about-cols">
       <div class="about-col">
         <h3>Personalized For You</h3>
-        <p>Tell us your favorite genres and titles, and your home feed adapts — from Korean thrillers to feel-good comedies to hard sci-fi. The <a href="/?page=clips">Clips feed</a> lets you scroll trailers like shorts to discover your next binge.</p>
+        <p>Tell us your favorite genres and titles, and your home feed adapts — from Korean thrillers to feel-good comedies to hard sci-fi. The <a href="/clips/">Clips feed</a> lets you scroll trailers like shorts to discover your next binge.</p>
       </div>
       <div class="about-col">
         <h3>Deep Search &amp; Filters</h3>
@@ -1306,16 +1291,16 @@
       <div class="footer-col">
         <h4>Browse</h4>
         <a href="/" data-page="home">Home</a>
-        <a href="/?page=movies" data-page="movies">Movies</a>
-        <a href="/?page=tv" data-page="tv">TV Shows</a>
-        <a href="/?page=clips" data-page="clips">Clips</a>
+        <a href="/movies/" data-page="movies">Movies</a>
+        <a href="/tv/" data-page="tv">TV Shows</a>
+        <a href="/clips/" data-page="clips">Clips</a>
       </div>
       <div class="footer-col">
         <h4>My Space</h4>
-        <a href="/?page=search" data-page="search">Search</a>
-        <a href="/?page=library" data-page="library">Library</a>
-        <a href="/?page=mix" data-page="mix">Mix &amp; Match</a>
-        <a href="/?page=prefs" data-page="prefs">Customize Feed</a>
+        <a href="/search/" data-page="search">Search</a>
+        <a href="/library/" data-page="library">Library</a>
+        <a href="/mix/" data-page="mix">Mix &amp; Match</a>
+        <a href="/customize/" data-page="prefs">Customize Feed</a>
       </div>
       <div class="footer-col">
         <h4>Community</h4>

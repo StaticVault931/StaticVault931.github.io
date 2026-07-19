@@ -125,7 +125,7 @@ Don't worry — the show goes on back home.</p>
 
 <div class="btns">
   <a href="/" class="btn btn-primary">🎬 Back to StaticVault</a>
-  <a href="/?page=search" class="btn btn-secondary">🔍 Search Content</a>
+  <a href="/search/" class="btn btn-secondary">🔍 Search Content</a>
 </div>
 
 <script>
@@ -133,8 +133,6 @@ Don't worry — the show goes on back home.</p>
   const sp = new URLSearchParams(location.search || window.location.search);
   const ref = document.referrer;
   const msg = document.getElementById('err-msg');
-  if (!msg) return;
-
   const watchParam = sp.get('watch') || sp.get('type');
   const nameParam = sp.get('name');
   if (watchParam && !['movie','tv','anime'].includes(watchParam)) {
@@ -154,12 +152,17 @@ Don't worry — the show goes on back home.</p>
   const emojis = ['🎬','🍿','🎭','🎥','📽️','⭐','🎞️','🎦'];
   // GitHub Pages serves this file for clean routes added after the latest
   // static SEO build. Hand those routes back to the SPA without losing IDs.
-  const cleanTitle = location.pathname.match(/^\/title\/(movie|tv|anime)\/(\d+)/i);
-  const cleanPerson = location.pathname.match(/^\/person\/(\d+)/i);
-  const cleanCollection = location.pathname.match(/^\/collection\/(\d+)/i);
-  if (cleanTitle) location.replace(`/?watch=${cleanTitle[1].toLowerCase()}&id=${cleanTitle[2]}&mode=info`);
-  else if (cleanPerson) location.replace(`/?person=${cleanPerson[1]}`);
-  else if (cleanCollection) location.replace(`/?collection=${cleanCollection[1]}`);
+  const cleanAppRoute = /^\/(?:movies|tv|anime|clips|mix|search|library|customize)\/?$|^\/(?:title|person|collection|provider|browse)\//i.test(location.pathname);
+  if (cleanAppRoute) {
+    fetch('/index.html').then(response => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    }).then(html => {
+      document.open();
+      document.write(html.replace('<head>', '<head><base href="/">'));
+      document.close();
+    }).catch(() => {});
+  }
 
   function spawnPopcorn() {
     const el = document.createElement('div');

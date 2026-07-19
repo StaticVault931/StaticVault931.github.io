@@ -1,7 +1,15 @@
 export const SITE_ORIGIN = 'https://staticvault931.github.io';
 
 export const PAGE_PATHS = Object.freeze({
-  home: '/', movies: '/movies/', tv: '/tv/', anime: '/anime/', clips: '/clips/', mix: '/mix/',
+  home: '/',
+  movies: '/movies/',
+  tv: '/tv/',
+  anime: '/anime/',
+  clips: '/clips/',
+  mix: '/mix/',
+  search: '/search/',
+  library: '/library/',
+  prefs: '/customize/',
 });
 
 export function slugifyRoute(value = '') {
@@ -11,6 +19,20 @@ export function slugifyRoute(value = '') {
 
 export function pagePath(page) {
   return PAGE_PATHS[page] || `/?page=${encodeURIComponent(page)}`;
+}
+
+export function searchPath(query = '') {
+  const value = String(query || '').trim();
+  return value ? `/search/?q=${encodeURIComponent(value)}` : PAGE_PATHS.search;
+}
+
+export function providerPath(id, name = '') {
+  return `/provider/${Number(id)}-${slugifyRoute(name || 'streaming-service')}/`;
+}
+
+export function browsePath(key, title = '') {
+  const safeKey = slugifyRoute(key || 'all');
+  return `/browse/${safeKey}/${slugifyRoute(title || safeKey)}/`;
 }
 
 export function canonicalPageUrl(page) {
@@ -41,6 +63,14 @@ export function parseCleanRoute(pathname = '/') {
   if (match) return { kind: 'person', id: Number(match[1]) };
   match = path.match(/^\/collection\/(\d+)(?:-[^/]*)?\/?$/i);
   if (match) return { kind: 'collection', id: Number(match[1]) };
+  match = path.match(/^\/provider\/(\d+)(?:-([^/]*))?\/?$/i);
+  if (match) return { kind: 'provider', id: Number(match[1]), slug: match[2] || '' };
+  match = path.match(/^\/browse\/([^/]+)(?:\/([^/]+))?\/?$/i);
+  if (match) return { kind: 'browse', key: decodeURIComponent(match[1]), slug: match[2] || '' };
   return null;
 }
 
+export function routeLabel(slug = '', fallback = '') {
+  const label = decodeURIComponent(String(slug || '')).replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()).trim();
+  return label || fallback;
+}

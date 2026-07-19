@@ -3,6 +3,7 @@ node_modules/
 
 # Generated builds and caches
 dist/
+dist-*/
 build/
 coverage/
 .cache/

@@ -18,7 +18,7 @@ import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAuto
 import { svFlag, setSvFlag } from './search/searchPipeline.js';
 import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
-import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, MAX_PROFILES } from './profiles.js';
+import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, exportProfilesSnapshot, restoreProfilesSnapshot, MAX_PROFILES } from './profiles.js';
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
@@ -28,7 +28,7 @@ import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, rec
 import { initSuperSearch, closeSuperSearch } from './superSearch.js';
 import { initTasteCalibration } from './tasteCalibration.js';
 import { resolveContentSafety, filterSafeItems, isAnimeContent } from './contentSafety.js';
-import { parseCleanRoute, titlePath, personPath, collectionPath, SITE_ORIGIN } from './routes.js';
+import { parseCleanRoute, titlePath, personPath, collectionPath, providerPath, searchPath, pagePath, routeLabel, SITE_ORIGIN } from './routes.js';
 import { undoManager } from './undoManager.js';
 import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.js';
 import { parseBackupText } from './backup.js';
@@ -647,8 +647,9 @@ function _ensureMixPage() {
     const seeds = _mixSeeds();
     if (seeds.length < 2) return;
     const encoded = seeds.map(seed => `${seed.type === 'tv' ? 'tv' : 'movie'}:${seed.id}`).join(',');
-    const url = `${location.origin}${location.pathname}?page=mix&seeds=${encoded}`;
-    history.replaceState({ page: 'mix' }, '', `${location.pathname}?page=mix&seeds=${encoded}`);
+    const path = `${pagePath('mix')}?seeds=${encodeURIComponent(encoded)}`;
+    const url = `${location.origin}${path}`;
+    history.replaceState({ page: 'mix' }, '', path);
     try {
       await navigator.clipboard.writeText(url);
       toast('Shareable mix link copied', 'link');
@@ -938,14 +939,13 @@ registerLoader('mix', () => {
   const rawSeeds = new URLSearchParams(location.search).get('seeds') || '';
   setTimeout(async () => {
     await _loadMixSeedsFromUrl(rawSeeds);
-    goPage('library');
+    goPage('library', { history: 'none' });
     await _libShowMixTab();
-    if (rawSeeds) {
-      history.replaceState({ page: 'mix' }, '', `${location.pathname}?page=mix&seeds=${encodeURIComponent(rawSeeds)}`);
-    }
+    const route = rawSeeds ? `${pagePath('mix')}?seeds=${encodeURIComponent(rawSeeds)}` : pagePath('mix');
+    history.replaceState({ page: 'mix' }, '', route);
   }, 0);
 });
-window._svOpenMix = () => { goPage('library'); _libShowMixTab(); };
+window._svOpenMix = () => goPage('mix');
 
 /* ── FEATURE TIP ROWS ────────────────────────────────────────────────
    Slim banners slotted between home rows that point at features the
@@ -1082,7 +1082,7 @@ function _ctxShow(items, x, y) {
   const menu = _ctxMenuEl();
   menu.innerHTML = items.map((it, i) => it === '-'
     ? '<div class="sv-ctx-sep" role="separator"></div>'
-    : `<button type="button" role="menuitem" data-ctx="${i}"><span class="material-icons-round">${it.icon}</span>${it.label}</button>`).join('');
+    : `<button type="button" role="${it.checkable ? 'menuitemcheckbox' : 'menuitem'}" data-ctx="${i}"${it.checkable ? ` aria-checked="${!!it.active}"` : ''} class="${it.active ? 'is-active' : ''}"><span class="material-icons-round">${it.icon}</span>${it.label}</button>`).join('');
   menu.querySelectorAll('[data-ctx]').forEach(btn => btn.addEventListener('click', () => {
     menu.classList.remove('open');
     items[+btn.dataset.ctx]?.run?.();
@@ -1103,7 +1103,7 @@ document.addEventListener('contextmenu', e => {
     const pid = +person.dataset.personId;
     _ctxShow([
       { icon: 'person', label: 'View person', run: () => openPersonPage(pid) },
-      { icon: 'open_in_new', label: 'Open in new tab', run: () => window.open(`/?person=${pid}`, '_blank', 'noopener') },
+      { icon: 'open_in_new', label: 'Open in new tab', run: () => window.open(personPath(pid, person.dataset.name || 'person'), '_blank', 'noopener') },
     ], e.clientX, e.clientY);
     return;
   }
@@ -1135,28 +1135,32 @@ document.addEventListener('contextmenu', e => {
   };
   const syncTile = st => { if (tileEl) { const fn = window._svObSetTile; fn ? fn(tileEl, st) : null; } };
 
+  const priorReaction = getReaction(item.id, t);
+  const runReaction = reaction => {
+    const previous = getReaction(item.id, t);
+    const next = previous === reaction ? 'none' : reaction;
+    const labels = { love: 'Loved', like: 'Liked', dislike: 'Hidden from recommendations', none: 'Reaction removed' };
+    const icons = { love: 'favorite', like: 'thumb_up', dislike: 'thumb_down', none: 'remove_circle_outline' };
+    undoable(labels[next], icons[next],
+      () => { setReaction(item, next); syncTile(next === 'dislike' ? 'disliked' : next === 'none' ? 'none' : 'liked'); },
+      () => { setReaction(item, previous); syncTile(previous === 'dislike' ? 'disliked' : previous === 'none' ? 'none' : 'liked'); });
+  };
   const entries = [
     { icon: 'play_arrow', label: 'Play / More info', run: () => {
       if (isOb) window.open(`/?id=${item.id}&type=${t}`, '_blank', 'noopener');
       else openMedia(item.id, t, item);
     } },
     '-',
-    { icon: 'favorite', label: 'Love', run: () => undoable('Loved', 'favorite',
-      () => { setReaction(item, 'love'); syncTile('liked'); },
-      () => { setReaction(item, 'none'); syncTile('none'); }) },
-    { icon: 'thumb_up', label: 'Like', run: () => undoable('Liked', 'thumb_up',
-      () => { setReaction(item, 'like'); syncTile('liked'); },
-      () => { setReaction(item, 'none'); syncTile('none'); }) },
-    { icon: 'thumb_down', label: 'Not my taste', run: () => undoable('Hidden from recommendations', 'thumb_down',
-      () => { addDislike(item); syncTile('disliked'); },
-      () => { setReaction(item, 'none'); syncTile('none'); }) },
-    { icon: 'done_all', label: isWatched(item.id) ? 'Unmark watched' : 'Mark as watched', run: () => {
-      const was = isWatched(item.id);
+    { icon: priorReaction === 'love' ? 'favorite' : 'favorite_border', label: priorReaction === 'love' ? 'Remove Love' : 'Love', checkable: true, active: priorReaction === 'love', run: () => runReaction('love') },
+    { icon: priorReaction === 'like' ? 'thumb_up' : 'thumb_up_off_alt', label: priorReaction === 'like' ? 'Remove Like' : 'Like', checkable: true, active: priorReaction === 'like', run: () => runReaction('like') },
+    { icon: priorReaction === 'dislike' ? 'thumb_down' : 'thumb_down_off_alt', label: priorReaction === 'dislike' ? 'Remove Not my taste' : 'Not my taste', checkable: true, active: priorReaction === 'dislike', run: () => runReaction('dislike') },
+    { icon: isWatched(item.id, t) ? 'done_all' : 'check_circle_outline', label: isWatched(item.id, t) ? 'Unmark watched' : 'Mark as watched', checkable: true, active: isWatched(item.id, t), run: () => {
+      const was = isWatched(item.id, t);
       undoable(was ? 'Unmarked watched' : 'Marked as watched', 'done_all',
         () => toggleWatched(item), () => toggleWatched(item));
     } },
-    { icon: isInWatchlist(item.id) ? 'bookmark' : 'bookmark_border', label: isInWatchlist(item.id) ? 'Remove from watchlist' : 'Add to watchlist', run: () => {
-      const was = isInWatchlist(item.id);
+    { icon: isInWatchlist(item.id, t) ? 'bookmark' : 'bookmark_border', label: isInWatchlist(item.id, t) ? 'Remove from watchlist' : 'Add to watchlist', checkable: true, active: isInWatchlist(item.id, t), run: () => {
+      const was = isInWatchlist(item.id, t);
       undoable(was ? 'Removed from watchlist' : 'Added to watchlist', 'bookmark',
         () => toggleWatchlist(item), () => toggleWatchlist(item));
     } },
@@ -1365,7 +1369,7 @@ let _cardCertObserver = null;
   const watchType = sp.get('watch') || sp.get('type') || (_route?.kind === 'title' ? _route.type : null);
   const watchStart = sp.get('start') ? parseInt(sp.get('start')) : null;
   const pageParam = sp.get('page') || (_route?.kind === 'page' ? _route.page : null);
-  const searchParam = sp.get('search');
+  const searchParam = sp.get('q') || sp.get('search');
   const modeParam = sp.get('mode');
 
   // Validate URL params — only redirect to 404 if CLEARLY broken, not just missing optional parts
@@ -1415,26 +1419,30 @@ let _cardCertObserver = null;
   } else if (_route?.kind === 'collection') {
     document.getElementById('loading-screen')?.classList.add('out');
     setTimeout(() => openCollectionPage(_route.id, 'Collection'), 300);
+  } else if (_route?.kind === 'provider') {
+    document.getElementById('loading-screen')?.classList.add('out');
+    setTimeout(() => openProviderPage(_route.id, routeLabel(_route.slug, `Provider ${_route.id}`)), 250);
+  } else if (_route?.kind === 'browse') {
+    setTimeout(() => goSeeAll(_route.key, routeLabel(_route.slug, 'Browse All'), { history: 'replace' }), 150);
   } else if (pageParam === 'provider' && sp.get('id') && sp.get('name')) {
     const pid = +sp.get('id');
     const pname = decodeURIComponent(sp.get('name'));
     if (pid > 0) setTimeout(() => openProviderPage(pid, pname), 200);
-  } else if (pageParam) {
-    setTimeout(() => goPage(pageParam), 100);
-  } else if (searchParam) {
+  } else if (searchParam && (!pageParam || pageParam === 'search')) {
     const _triggerSearch = (attempts = 0) => {
-      goPage('search');
+      goPage('search', { history: 'replace' });
       const inp = document.getElementById('search-input');
       if (inp) {
         inp.value = decodeURIComponent(searchParam.replace(/\+/g, ' '));
         inp.dispatchEvent(new Event('input', { bubbles: true }));
-        // Update URL to reflect the search without query param (avoids infinite reload)
-        history.replaceState({ page: 'search' }, '', location.pathname + '?page=search');
+        history.replaceState({ page: 'search', query: inp.value }, '', searchPath(inp.value));
       } else if (attempts < 8) {
         setTimeout(() => _triggerSearch(attempts + 1), 200);
       }
     };
-    setTimeout(() => _triggerSearch(), 300);
+    setTimeout(() => _triggerSearch(), 0);
+  } else if (pageParam) {
+    setTimeout(() => goPage(pageParam, { history: 'replace' }), 100);
   } else if (sp.get('person')) {
     const personId = +sp.get('person');
     if (personId > 0) {
@@ -1458,7 +1466,7 @@ let _cardCertObserver = null;
     } else if (e.state?.personId) {
       openPersonPage(e.state.personId);
     } else if (e.state?.page) {
-      goPage(e.state.page);
+      goPage(e.state.page, { history: 'none' });
     } else {
       closeModal();
       closeInfoPage();
@@ -1711,10 +1719,7 @@ async function maybeShowOnboarding() {
 
   // Genre chips — cycle: neutral → love → avoid → neutral (same as CYF).
   // Family & Kids are always included so gentle tastes are one tap away.
-  const obGenres = [
-    ...GENRES.filter(g => g.id === 10751 || g.id === 10762),
-    ...GENRES.filter(g => g.id !== 10751 && g.id !== 10762).slice(0, 12),
-  ];
+  const obGenres = GENRES;
   const chipsEl = ob.querySelector('#ob-chips');
   chipsEl.innerHTML = obGenres.map(g => {
     const st = pickedGenres.has(String(g.id)) ? ' picked' : dislikedGenres.has(String(g.id)) ? ' dis' : '';
@@ -2000,12 +2005,17 @@ async function maybeShowOnboarding() {
     const GAP = 10;
     // Dense taste wall: target five or six complete rows and use the width.
     const targetRows = H >= 620 ? 6 : 5;
-    const maxTileWForRows = Math.max(70, ((H - GAP * (targetRows - 1)) / targetRows) / 1.5);
-    const cols = Math.max(7, Math.min(12, Math.ceil((W + GAP) / (maxTileWForRows + GAP))));
-    const tileW = (W - GAP * (cols - 1)) / cols;
-    const tileH = tileW * 1.5;
-    const rows = Math.max(4, Math.min(targetRows, Math.floor((H + GAP) / (tileH + GAP))));
-    const visible = cols * rows;
+    const tileCount = grid.querySelectorAll('.ob-tile').length;
+    const choices = [];
+    for (let candidateCols = 7; candidateCols <= 14; candidateCols++) {
+      const tileW = (W - GAP * (candidateCols - 1)) / candidateCols;
+      const fitRows = Math.floor((H + GAP) / (tileW * 1.5 + GAP));
+      const rows = Math.min(targetRows, fitRows, Math.floor(tileCount / candidateCols));
+      if (rows >= 4) choices.push({ cols: candidateCols, rows, visible: candidateCols * rows, tileW });
+    }
+    choices.sort((a, b) => b.visible - a.visible || b.tileW - a.tileW);
+    const best = choices[0] || { cols: 7, rows: Math.max(1, Math.floor(tileCount / 7)), visible: tileCount };
+    const { cols, visible } = best;
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gap = `${GAP}px`;
     grid.querySelectorAll('.ob-tile').forEach((t, i) =>
@@ -6225,6 +6235,7 @@ function initEventDelegation() {
   document.getElementById('page-library')?.addEventListener('click', e => {
     const card = e.target.closest('.lib-prov-card, .lib-qp-btn');
     if (!card) return;
+    e.preventDefault();
     const id = +card.dataset.provId;
     const name = card.dataset.provName || '';
     if (id) openProviderPage(id, name);
@@ -6552,8 +6563,9 @@ function initEventDelegation() {
   // Export data
   document.getElementById('btn-export-data')?.addEventListener('click', () => {
     const exportData = {
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
+      profilesSnapshot: exportProfilesSnapshot(),
       watchlist:        state.watchlist,
       liked:            state.liked,
       loved:            state.loved,
@@ -6627,11 +6639,13 @@ function initEventDelegation() {
       try {
         const data = parseBackupText(e.target.result);
 
+        const canRestoreProfiles = !!data.profilesSnapshot?.profiles?.length;
         const choice = await showChoice(
           'Import Data',
           'How would you like to import this backup?',
           [
-            { label: 'Create New Profile', value: 'new', style: 'primary' },
+            ...(canRestoreProfiles ? [{ label: 'Restore Profiles from Backup', value: 'profiles', style: 'primary' }] : []),
+            { label: 'Create New Profile', value: 'new', style: canRestoreProfiles ? '' : 'primary' },
             { label: 'Merge into Current Profile', value: 'merge' },
             { label: 'Cancel', value: 'cancel' },
           ]
@@ -6689,7 +6703,23 @@ function initEventDelegation() {
           }
         };
 
-        if (choice === 'new') {
+        if (choice === 'profiles') {
+          const restored = restoreProfilesSnapshot(data.profilesSnapshot);
+          if (!restored.imported) {
+            toast(`No profile slots available. This device supports up to ${MAX_PROFILES}.`, 'error');
+            return;
+          }
+          updateProfileHeaderBtn();
+          applyAllSettings();
+          renderLibrary();
+          renderProfilesGrid();
+          _clearRowCache();
+          _homeLoading = false;
+          loadHero().catch(() => {});
+          loadHomeRows().catch(() => {});
+          toast(`Restored ${restored.imported} profile${restored.imported === 1 ? '' : 's'} from backup`, 'group');
+          document.dispatchEvent(new CustomEvent('sv:backup-imported'));
+        } else if (choice === 'new') {
           const profiles = getProfiles();
           if (profiles.length >= MAX_PROFILES) {
             toast(`Max ${MAX_PROFILES} profiles reached`, 'error'); return;
@@ -7933,6 +7963,7 @@ export async function openProviderPage(providerId, providerName) {
   const allProviders = await getTmdbWatchProviders();
   if (requestToken !== _providerPageToken) return;
   const tmdbMatch = allProviders.find(p => p.provider_id === providerId);
+  providerName = tmdbMatch?.provider_name || providerName;
   const logoUrl = tmdbMatch?.logo_path
     ? `https://image.tmdb.org/t/p/w92${tmdbMatch.logo_path}`
     : getProviderLogoUrl(providerName, 48);
@@ -7969,6 +8000,7 @@ export async function openProviderPage(providerId, providerName) {
     pg.querySelector('#provider-switcher')?.addEventListener('click', e => {
       const btn = e.target.closest('.provider-switch-btn');
       if (!btn) return;
+      e.preventDefault();
       const pid = +btn.dataset.providerId;
       const pname = btn.dataset.providerName;
       openProviderPage(pid, pname);
@@ -7984,10 +8016,10 @@ export async function openProviderPage(providerId, providerName) {
         const logoSrc = p.logo_path
           ? `https://image.tmdb.org/t/p/w92${p.logo_path}`
           : '';
-        return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
+        return `<a class="provider-switch-btn" href="${providerPath(p.provider_id, p.provider_name)}" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
           ${logoSrc ? `<img src="${logoSrc}" width="22" height="22" style="border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
           <span>${esc(p.provider_name)}</span>
-        </button>`;
+        </a>`;
       }).join('');
     });
   } else {
@@ -7999,10 +8031,10 @@ export async function openProviderPage(providerId, providerName) {
           const logoSrc = p.logo_path
             ? `https://image.tmdb.org/t/p/w92${p.logo_path}`
             : '';
-          return `<button class="provider-switch-btn" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
+          return `<a class="provider-switch-btn" href="${providerPath(p.provider_id, p.provider_name)}" data-provider-id="${p.provider_id}" data-provider-name="${esc(p.provider_name)}" title="${esc(p.provider_name)}">
             ${logoSrc ? `<img src="${logoSrc}" width="22" height="22" style="border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" alt="${esc(p.provider_name)}">` : ''}
             <span>${esc(p.provider_name)}</span>
-          </button>`;
+          </a>`;
         }).join('');
       });
     }
@@ -8052,11 +8084,32 @@ export async function openProviderPage(providerId, providerName) {
   document.body.style.overflow = '';
 
   state._prevPage = state.currentPage;
-  goPage('provider');
+  goPage('provider', { history: 'none' });
 
   // Fix URL to include provider id and name
-  const provUrl = `${location.pathname}?page=provider&id=${providerId}&name=${encodeURIComponent(providerName)}`;
+  const provUrl = providerPath(providerId, providerName);
   history.replaceState({ page:'provider', providerId, providerName }, providerName, provUrl);
+  const canonical = `${SITE_ORIGIN}${provUrl}`;
+  const providerTitle = `${providerName} Movies & TV Shows | StaticVault931`;
+  const providerDescription = `Browse movies and television shows available through ${providerName} in the United States.`;
+  document.title = providerTitle;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', providerDescription);
+  document.querySelector('meta[name="robots"]')?.setAttribute('content', 'index, follow, max-snippet:-1, max-image-preview:large');
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonical);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', providerTitle);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', providerDescription);
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonical);
+  const providerLd = document.getElementById('jsonld-media');
+  if (providerLd) providerLd.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'CollectionPage', name: providerTitle, description: providerDescription, url: canonical },
+      { '@type': 'BreadcrumbList', itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_ORIGIN}/` },
+        { '@type': 'ListItem', position: 2, name: providerName, item: canonical },
+      ] },
+    ],
+  });
 
   // ── Build rows ──
   const body = document.getElementById('provider-page-body');
@@ -11969,7 +12022,7 @@ function _buildTrailerSlide(item) {
             <span class="material-icons-round">${(_trailersMuted || _clipsVolume === 0) ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up'}</span>
           </button>
           <input type="range" class="clips-vol-slider" min="0" max="100" value="${_clipsVolume}"
-            aria-label="Trailer volume" data-action="volume">
+            aria-label="Trailer volume" aria-orientation="vertical" data-action="volume">
         </div>
         <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
           <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
@@ -12023,18 +12076,7 @@ function _buildTrailerSlide(item) {
       slide.dataset.clipsPaused = '1';
       openInfoPage(id, type, { title, year, rating, poster: '', backdrop: item.backdrop_path || '' });
     } else if (action === 'mute') {
-      _trailersMuted = !_trailersMuted;
-      document.querySelectorAll('.trailer-slide [data-action="mute"] .material-icons-round').forEach(ic => {
-        ic.textContent = _trailersMuted ? 'volume_off' : 'volume_up';
-      });
-      // postMessage mute/unMute — no src rewrite, so the video never reloads.
-      // Only the ACTIVE slide gets unmuted; others stay muted (no audio bleed).
-      const activeSlide = _getActiveClipSlide();
-      document.querySelectorAll('.trailer-slide-iframe').forEach(f => {
-        if (!f.src?.includes('youtube.com/embed')) return;
-        const unmute = !_trailersMuted && f.closest('.trailer-slide') === activeSlide;
-        _ytCmd(f, unmute ? 'unMute' : 'mute');
-      });
+      _toggleClipsMute();
     } else if (action === 'like') {
       const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '', genre_ids: item.genre_ids || [], original_language: item.original_language || '' };
       const previousReaction = getReaction(id, type);
@@ -12241,8 +12283,24 @@ function _ytCmd(iframe, func, args) {
 
 /* Clips volume (0-100, persisted). 0 behaves as mute. */
 let _clipsVolume = (() => { const v = +localStorage.getItem('sv_clips_volume'); return isNaN(v) ? 80 : v; })();
+let _clipsLastAudibleVolume = _clipsVolume > 0 ? _clipsVolume : 80;
+function _syncClipsVolumeUI() {
+  document.querySelectorAll('.clips-vol-slider').forEach(slider => {
+    slider.value = _clipsVolume;
+    slider.setAttribute('aria-valuetext', _clipsVolume === 0 ? 'Muted' : `${_clipsVolume} percent`);
+  });
+  document.querySelectorAll('.trailer-slide [data-action="mute"]').forEach(button => {
+    const muted = _trailersMuted || _clipsVolume === 0;
+    const icon = button.querySelector('.material-icons-round');
+    if (icon) icon.textContent = muted ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up';
+    button.setAttribute('aria-label', muted ? 'Unmute trailer' : 'Mute trailer');
+    button.setAttribute('aria-pressed', String(muted));
+    button.title = muted ? 'Unmute (M)' : `Mute, volume ${_clipsVolume}% (M)`;
+  });
+}
 function _setClipsVolume(v) {
   _clipsVolume = Math.max(0, Math.min(100, Math.round(v)));
+  if (_clipsVolume > 0) _clipsLastAudibleVolume = _clipsVolume;
   try { localStorage.setItem('sv_clips_volume', String(_clipsVolume)); } catch {}
   _trailersMuted = _clipsVolume === 0;
   const active = _getActiveClipSlide();
@@ -12251,10 +12309,19 @@ function _setClipsVolume(v) {
     if (_clipsVolume === 0) _ytCmd(iframe, 'mute');
     else { _ytCmd(iframe, 'unMute'); _ytCmd(iframe, 'setVolume', [_clipsVolume]); }
   }
-  document.querySelectorAll('.clips-vol-slider').forEach(sl => { sl.value = _clipsVolume; });
-  document.querySelectorAll('[data-action="mute"] .material-icons-round').forEach(ic => {
-    ic.textContent = _clipsVolume === 0 ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up';
-  });
+  _syncClipsVolumeUI();
+}
+function _toggleClipsMute() {
+  if (_trailersMuted || _clipsVolume === 0) {
+    _setClipsVolume(_clipsLastAudibleVolume || 80);
+    return;
+  }
+  _clipsLastAudibleVolume = _clipsVolume;
+  _trailersMuted = true;
+  const active = _getActiveClipSlide();
+  const iframe = active?.querySelector('.trailer-slide-iframe');
+  if (iframe?.src?.includes('youtube.com/embed')) _ytCmd(iframe, 'mute');
+  _syncClipsVolumeUI();
 }
 
 // YouTube's embed API ignores commands (and sends no infoDelivery events)

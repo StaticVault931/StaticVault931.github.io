@@ -1,6 +1,6 @@
 import { state, persist } from './state.js';
 import { recordPageView } from './stats.js';
-import { pagePath, canonicalPageUrl } from './routes.js';
+import { pagePath, canonicalPageUrl, browsePath } from './routes.js';
 
 /* ── PAGE TITLES & DESCRIPTIONS ─────────────────────────────────── */
 const PAGE_META = {
@@ -27,7 +27,7 @@ const PAGE_BREADCRUMBS = {
   mix:      [{ name: 'Mix & Match',  url: canonicalPageUrl('mix') }],
   clips:    [{ name: 'Clips',           url: canonicalPageUrl('clips') }],
 };
-const PRIVATE_PAGES = new Set(['search', 'library', 'prefs', 'seeall', 'provider', 'holidayrows']);
+const PRIVATE_PAGES = new Set(['search', 'library', 'prefs', 'seeall', 'holidayrows']);
 
 function updateVisibleItemList(page) {
   if (!['home', 'movies', 'tv', 'anime', 'clips', 'mix'].includes(page)) return;
@@ -110,7 +110,7 @@ export function registerLoader(page, fn) {
 }
 
 /* ── NAVIGATE ────────────────────────────────────────────────────── */
-export function goPage(p) {
+export function goPage(p, options = {}) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => {
     const on = el.dataset.page === p;
@@ -134,7 +134,10 @@ export function goPage(p) {
   }
 
   // Update URL, title, and meta for each page
-  history.pushState({ page: p }, '', pagePath(p));
+  if (options.history !== 'none') {
+    const method = options.history === 'replace' ? 'replaceState' : 'pushState';
+    history[method]({ page: p }, '', pagePath(p));
+  }
   updatePageMeta(p);
 
   // Show/hide header search pill on search page
@@ -165,7 +168,7 @@ export function getSeeAllFetcher(key) {
   return SEE_ALL_REGISTRY[key] || null;
 }
 
-export function goSeeAll(key, title) {
+export function goSeeAll(key, title, options = {}) {
   state.seeAll = {
     key,
     title,
@@ -175,5 +178,7 @@ export function goSeeAll(key, title) {
     loading: false,
     prevPage: state.currentPage || 'home',
   };
-  goPage('seeall');
+  goPage('seeall', { history: 'none' });
+  const method = options.history === 'replace' ? 'replaceState' : 'pushState';
+  history[method]({ page: 'seeall', key, title }, '', browsePath(key, title));
 }

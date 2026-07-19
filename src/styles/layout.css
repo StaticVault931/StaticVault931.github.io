@@ -472,6 +472,7 @@
   padding: .8rem 0 .9rem;
   background: linear-gradient(to top, #070707 55%, transparent);
 }
+#ob-import { margin-right: auto; }
 @media (max-width: 880px) {
   .ob-footer { position: sticky; bottom: 0; }
 }
@@ -2251,6 +2252,7 @@ body.sv-no-motion *, body.sv-no-motion *::before, body.sv-no-motion *::after {
   white-space: nowrap;
   min-width: 60px;
   text-align: center;
+  text-decoration: none;
 }
 .lib-qp-btn:hover {
   transform: translateY(-3px);
@@ -2690,6 +2692,7 @@ body.sv-hide-ratings .card-rating { display: none !important; }
   padding: .22rem .6rem; border-radius: 14px;
   background: var(--s2); border: 1.5px solid var(--border2);
   color: var(--muted); font-size: .7rem; font-weight: 700;
+  text-decoration: none;
   cursor: pointer; white-space: nowrap; flex-shrink: 0;
   transition: all .18s;
 }
@@ -3280,7 +3283,7 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
      vertically centered), so the column ends exactly with the poster
      wall without visible holes between cards. */
   .ob-side { gap: .8rem; justify-content: flex-start; padding-top: 2px; }
-  .ob-side .ob-block { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+  .ob-side .ob-block { flex: 0 0 auto; display: flex; flex-direction: column; justify-content: flex-start; }
   .ob-side .ob-block { padding: .8rem .9rem; }
   .ob-side .ob-chips {
     display: grid;
@@ -3295,6 +3298,7 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
     white-space: nowrap;
   }
   .ob-side .ob-chip .material-icons-round { font-size: .9rem; }
+  #ob-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #ob-ages { grid-template-columns: repeat(5, 1fr); }
   #ob-ages .ob-chip { padding: .38rem .2rem; font-size: .72rem; }
   .ob-side .ob-hint { margin-top: .45rem; }

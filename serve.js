@@ -12,9 +12,21 @@ const mime = {
 };
 http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
-  let p = path.join(root, pathname === '/' ? 'index.html' : pathname);
-  if (!fs.existsSync(p)) { res.writeHead(404); return res.end('Not found'); }
+  const relative = decodeURIComponent(pathname).replace(/^\/+/, '');
+  let p = path.resolve(root, relative || 'index.html');
+  let injectBase = false;
+  const fromRoot = path.relative(root, p);
+  if (fromRoot.startsWith('..') || path.isAbsolute(fromRoot)) { res.writeHead(403); return res.end('Forbidden'); }
+  if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');
+  if (!fs.existsSync(p)) {
+    const appRoute = /^\/(?:movies|tv|anime|clips|mix|search|library|customize)\/?$|^\/(?:title|person|collection|provider|browse)\//i.test(pathname);
+    if (appRoute) { p = path.join(root, 'index.html'); injectBase = true; }
+    else { res.writeHead(404); return res.end('Not found'); }
+  }
   const ext = path.extname(p);
   res.writeHead(200, { 'Content-Type': mime[ext] || 'text/plain' });
+  if (injectBase) {
+    return res.end(fs.readFileSync(p, 'utf8').replace('<head>', '<head><base href="/">'));
+  }
   fs.createReadStream(p).pipe(res);
 }).listen(port, () => console.log(`Serving on ${port}`));
