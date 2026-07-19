@@ -1,0 +1,24 @@
+{
+  "name": "staticvault931",
+  "version": "0.0.2",
+  "type": "module",
+  "private": true,
+  "description": "StaticVault931 streaming discovery SPA (static site, no build step)",
+  "scripts": {
+    "serve": "http-server -p 8931 -c-1 .",
+    "lint": "eslint src/js",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "lint:fix": "eslint src/js --fix",
+    "seo:build": "node scripts/generate-seo.mjs dist",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.49.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "http-server": "^14.1.1",
+    "parse5": "^8.0.1"
+  }
+}

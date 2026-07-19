@@ -126,7 +126,7 @@ function _certCap() {
     if (!state) return null;
     let kidsMode = false;
     try { kidsMode = !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; } catch {}
-    const lvl = kidsMode ? 2 : (AGE_LEVELS[state.ageRating] ?? 4);
+    const lvl = kidsMode ? 3 : (AGE_LEVELS[state.ageRating] ?? 4);
     if (lvl <= 2) return 'G';
     if (lvl === 3) return 'PG';
     if (lvl === 4) return 'PG-13';
@@ -148,7 +148,7 @@ export async function tmdb(path, params = {}) {
   params = { ...params, language: lang };
   const key = cacheKey(path, params);
   const cached = cacheGet(key);
-  if (cached) return cached;
+  if (cached) return attachProvenance(cached, { provider: 'TMDB', endpoint: path, cache: 'hit' });
 
   const u = new URL(TMDB_BASE + path);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, String(v));
@@ -159,6 +159,17 @@ export async function tmdb(path, params = {}) {
   if (!r.ok) throw new Error(`TMDB ${r.status}: ${path}`);
   const data = await r.json();
   cacheSet(key, data);
+  return attachProvenance(data, { provider: 'TMDB', endpoint: path, cache: 'miss' });
+}
+
+function attachProvenance(data, provenance) {
+  if (!data || typeof data !== 'object') return data;
+  const attach = value => {
+    if (!value || typeof value !== 'object') return;
+    try { Object.defineProperty(value, '_provenance', { value: provenance, configurable: true, enumerable: true }); } catch {}
+  };
+  attach(data);
+  if (Array.isArray(data.results)) data.results.forEach(attach);
   return data;
 }
 

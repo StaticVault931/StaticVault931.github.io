@@ -15,7 +15,7 @@ const PROFILE_STATE_KEYS = [
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
   'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'prefLangs',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
-  'disabledShortcuts', 'tasteSkips', // per-profile shortcut overrides
+  'disabledShortcuts', 'tasteSkips', 'kidsTaste', // per-profile shortcut overrides
 ];
 
 const PERSIST_MAP_KEYS = {
@@ -38,6 +38,7 @@ const PERSIST_MAP_KEYS = {
   impressions:      'sv_impressions',
   recentSearches:   'sv_recent_searches',
   tasteSkips:       'sv_taste_skips',
+  kidsTaste:        'sv_kids_taste',
 };
 
 /* ── PROFILE STORAGE ──────────────────────────────────────────────── */
@@ -134,6 +135,7 @@ export function switchProfile(toId) {
         prefGenreDislikes: [], prefTagLikes: [], prefTagDislikes: [], prefLangs: [],
         ageRating: 'PG-13', lastProvider: 'vidsrc',
         impressions: {}, recentSearches: [], tasteSkips: {},
+        kidsTaste: { liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {} },
       };
       state[k] = defaults[k] ?? state[k];
     }

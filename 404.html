@@ -152,6 +152,15 @@ Don't worry — the show goes on back home.</p>
 
 <script>
   const emojis = ['🎬','🍿','🎭','🎥','📽️','⭐','🎞️','🎦'];
+  // GitHub Pages serves this file for clean routes added after the latest
+  // static SEO build. Hand those routes back to the SPA without losing IDs.
+  const cleanTitle = location.pathname.match(/^\/title\/(movie|tv|anime)\/(\d+)/i);
+  const cleanPerson = location.pathname.match(/^\/person\/(\d+)/i);
+  const cleanCollection = location.pathname.match(/^\/collection\/(\d+)/i);
+  if (cleanTitle) location.replace(`/?watch=${cleanTitle[1].toLowerCase()}&id=${cleanTitle[2]}&mode=info`);
+  else if (cleanPerson) location.replace(`/?person=${cleanPerson[1]}`);
+  else if (cleanCollection) location.replace(`/?collection=${cleanCollection[1]}`);
+
   function spawnPopcorn() {
     const el = document.createElement('div');
     el.className = 'popcorn';

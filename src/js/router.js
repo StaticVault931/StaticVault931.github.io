@@ -1,5 +1,6 @@
 import { state, persist } from './state.js';
 import { recordPageView } from './stats.js';
+import { pagePath, canonicalPageUrl } from './routes.js';
 
 /* ── PAGE TITLES & DESCRIPTIONS ─────────────────────────────────── */
 const PAGE_META = {
@@ -17,21 +18,44 @@ const PAGE_META = {
 
 const PAGE_BREADCRUMBS = {
   home:    [],
-  movies:  [{ name: 'Movies',       url: 'https://staticvault931.github.io/?page=movies' }],
-  tv:      [{ name: 'TV Shows',     url: 'https://staticvault931.github.io/?page=tv' }],
-  anime:   [{ name: 'Anime',        url: 'https://staticvault931.github.io/?page=anime' }],
-  search:  [{ name: 'Search',       url: 'https://staticvault931.github.io/?page=search' }],
-  library: [{ name: 'My Library',   url: 'https://staticvault931.github.io/?page=library' }],
-  prefs:    [{ name: 'Customize Feed', url: 'https://staticvault931.github.io/?page=prefs' }],
-  mix:      [{ name: 'Mix & Match',  url: 'https://staticvault931.github.io/?page=mix' }],
-  clips:    [{ name: 'Clips',           url: 'https://staticvault931.github.io/?page=clips' }],
+  movies:  [{ name: 'Movies',       url: canonicalPageUrl('movies') }],
+  tv:      [{ name: 'TV Shows',     url: canonicalPageUrl('tv') }],
+  anime:   [{ name: 'Anime',        url: canonicalPageUrl('anime') }],
+  search:  [{ name: 'Search',       url: canonicalPageUrl('search') }],
+  library: [{ name: 'My Library',   url: canonicalPageUrl('library') }],
+  prefs:    [{ name: 'Customize Feed', url: canonicalPageUrl('prefs') }],
+  mix:      [{ name: 'Mix & Match',  url: canonicalPageUrl('mix') }],
+  clips:    [{ name: 'Clips',           url: canonicalPageUrl('clips') }],
 };
+const PRIVATE_PAGES = new Set(['search', 'library', 'prefs', 'seeall', 'provider', 'holidayrows']);
+
+function updateVisibleItemList(page) {
+  if (!['home', 'movies', 'tv', 'anime', 'clips', 'mix'].includes(page)) return;
+  const active = document.getElementById(`page-${page}`);
+  const cards = [...(active?.querySelectorAll('.card[data-id][data-type]') || [])].slice(0, 30);
+  if (!cards.length) return;
+  const ldEl = document.getElementById('jsonld-media');
+  if (!ldEl) return;
+  let data;
+  try { data = JSON.parse(ldEl.textContent || '{}'); } catch { data = {}; }
+  const graph = Array.isArray(data['@graph']) ? data['@graph'].filter(node => node['@type'] !== 'ItemList') : [];
+  graph.push({
+    '@type': 'ItemList',
+    itemListElement: cards.map((card, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: card.dataset.title || 'Title',
+      url: new URL(card.querySelector('.card-main-link')?.getAttribute('href') || '/', location.origin).href,
+    })),
+  });
+  ldEl.textContent = JSON.stringify({ '@context': 'https://schema.org', '@graph': graph });
+}
 
 function updatePageMeta(p) {
   const m = PAGE_META[p] || PAGE_META.home;
   document.title = m.title;
   const base = 'https://staticvault931.github.io/';
-  const pageUrl = p === 'home' ? base : `${base}?page=${p}`;
+  const pageUrl = canonicalPageUrl(p);
   const siteImg = `${base}assets/icons/favicon.png`;
 
   document.querySelector('meta[name="description"]')?.setAttribute('content', m.desc);
@@ -43,6 +67,9 @@ function updatePageMeta(p) {
   document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', m.title);
   document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', siteImg);
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', pageUrl);
+  document.querySelector('meta[name="robots"]')?.setAttribute('content', PRIVATE_PAGES.has(p)
+    ? 'noindex, nofollow'
+    : 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1');
 
   // Inject per-page JSON-LD: BreadcrumbList + a CollectionPage node so
   // browse pages (movies/tv/anime/search) carry their own identity for
@@ -107,11 +134,7 @@ export function goPage(p) {
   }
 
   // Update URL, title, and meta for each page
-  if (p === 'home') {
-    history.replaceState({ page: p }, '', location.pathname);
-  } else {
-    history.pushState({ page: p }, '', `${location.pathname}?page=${p}`);
-  }
+  history.pushState({ page: p }, '', pagePath(p));
   updatePageMeta(p);
 
   // Show/hide header search pill on search page
@@ -128,6 +151,7 @@ export function goPage(p) {
   state.currentPage = p;
   recordPageView(); // stats ledger
   if (!loadedBeforeActivation && PAGE_LOADERS[p]) PAGE_LOADERS[p]();
+  setTimeout(() => updateVisibleItemList(p), 1200);
 }
 
 /* ── SEE-ALL ─────────────────────────────────────────────────────── */

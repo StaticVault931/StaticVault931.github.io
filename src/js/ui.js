@@ -1,5 +1,6 @@
 import { state, isLiked, isLoved, getReaction, isInWatchlist, isWatched, getContinue } from './state.js';
 import { imgUrl } from './api.js';
+import { titlePath } from './routes.js';
 
 /* ── ESCAPE ──────────────────────────────────────────────────────── */
 export const esc = s =>
@@ -28,7 +29,8 @@ export function toast(msg, icon = 'info', options = {}) {
     t.appendChild(action);
   }
   t.classList.add('on');
-  _toastTimer = setTimeout(() => t.classList.remove('on'), options.duration || 3600);
+  const duration = options.duration || (options.actionLabel ? 10000 : 3600);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), duration);
 }
 
 /* ── SKELETON ────────────────────────────────────────────────────── */
@@ -48,7 +50,7 @@ export function makeCard(m, type, opts = {}) {
   // Guard: don't render cards with null/invalid IDs
   if (!m || !m.id || isNaN(+m.id) || +m.id <= 0) return '';
 
-  const { numbered, showProgress = true, compact = false } = opts;
+  const { numbered, showProgress = true, compact = false, removableRecent = false } = opts;
 
   const baseTitle = m.title || m.name || m.romaji || '';
   // Disambiguate UK remakes (e.g. "The Office (UK)" vs "The Office")
@@ -88,6 +90,8 @@ export function makeCard(m, type, opts = {}) {
   if (lovedNow) badges.push(`<span class="card-badge badge-liked">Loved</span>`);
   else if (likedNow) badges.push(`<span class="card-badge badge-liked">Liked</span>`);
   if (watchedNow) badges.push(`<span class="card-badge badge-watched">Watched</span>`);
+  const certification = m.certification || m.content_rating || m.rated;
+  if (certification) badges.push(`<span class="card-badge badge-cert" title="Content rating">${esc(certification)}</span>`);
 
   // Progress bar
   const progressBar = (contData && contData.progress)
@@ -101,20 +105,24 @@ export function makeCard(m, type, opts = {}) {
   const showOverlayRating = true;
 
   // Use <a> so Google can crawl and index individual titles via ?watch= deep links
-  const cardHref = `?watch=${type}&id=${id}`;
+  const cardHref = titlePath(type, id, title);
+  const provenance = m._provenance || {};
 
-  return `<a class="card${compact ? ' card-compact' : ''}"
-    href="${cardHref}"
+  return `<article class="card${compact ? ' card-compact' : ''}"
     data-id="${id}"
     data-type="${type}"
     data-title="${esc(title)}"
     data-year="${esc(year)}"
     data-rating="${esc(rating)}"
+    data-certification="${esc(certification || '')}"
     data-poster="${esc(poster || '')}"
     data-backdrop="${esc(m.backdrop_path || '')}"
     data-lang="${esc(m.original_language || '')}"
     data-genres="${esc((m.genre_ids || []).join(','))}"
-    aria-label="${esc(title)} (${typeLabel})">
+    data-source="${esc(provenance.provider || '')}"
+    data-endpoint="${esc(provenance.endpoint || '')}"
+    data-cache="${esc(provenance.cache || '')}">
+    <a class="card-main-link" href="${cardHref}" aria-label="${esc(title)} (${typeLabel})">
     <div class="card-poster">
       ${imgSrc
         ? `<img src="${imgSrc}" alt="${esc(title)}" loading="lazy"
@@ -139,19 +147,6 @@ export function makeCard(m, type, opts = {}) {
         <div class="card-img-title-name">${esc(title)}</div>
         ${year ? `<div class="card-img-title-year">${year}</div>` : ''}
       </div>
-      <div class="card-ov">
-        <div class="card-ov-actions">
-          <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
-            <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
-          </button>
-          <button class="card-like-btn${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${getReaction(id, type) === 'love' ? 'Loved. Activate to clear' : getReaction(id, type) === 'like' ? 'Liked. Activate to love' : 'Like'}" title="Like, then Love">
-            <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>
-          </button>
-          <button class="card-wl-btn${wlNow ? ' saved' : ''}" data-action="watchlist" data-id="${id}" data-type="${type}" aria-label="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}">
-            <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>
-          </button>
-        </div>
-      </div>
       ${progressBar}
     </div>
     <div class="card-body">
@@ -161,7 +156,22 @@ export function makeCard(m, type, opts = {}) {
         ${rating ? `<span class="card-sub-rating${ratingClass}"><span class="material-icons-round">star</span>${rating}</span>` : ''}
       </div>
     </div>
-  </a>`;
+    </a>
+    <div class="card-ov">
+      <div class="card-ov-actions">
+        ${removableRecent ? `<button class="card-watched-btn card-recent-remove-btn" data-action="remove-recent" data-id="${id}" data-type="${type}" aria-label="Remove ${esc(title)} from Recently Viewed" title="Remove from Recently Viewed"><span class="material-icons-round">close</span></button>` : ''}
+        <button class="card-watched-btn${watchedNow ? ' done' : ''}" data-action="watched" data-id="${id}" data-type="${type}" aria-label="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}" title="${watchedNow ? 'Mark unwatched' : 'Mark as watched'}">
+          <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
+        </button>
+        <button class="card-like-btn${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" data-action="like" data-id="${id}" data-type="${type}" aria-label="${getReaction(id, type) === 'love' ? 'Loved. Activate to clear' : getReaction(id, type) === 'like' ? 'Liked. Activate to love' : 'Like'}" title="Like, then Love">
+          <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>
+        </button>
+        <button class="card-wl-btn${wlNow ? ' saved' : ''}" data-action="watchlist" data-id="${id}" data-type="${type}" aria-label="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}" title="${wlNow ? 'Remove from watchlist' : 'Add to watchlist'}">
+          <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>
+        </button>
+      </div>
+    </div>
+  </article>`;
 }
 
 /* ── ROW RENDER ──────────────────────────────────────────────────── */
@@ -253,14 +263,19 @@ export function showHero(idx) {
   const desc = document.getElementById('hero-desc');
   if (desc) desc.textContent = (m.overview || '').slice(0, 200) + ((m.overview || '').length > 200 ? '…' : '');
 
-  document.querySelectorAll('.hdot').forEach((d, j) => d.classList.toggle('on', j === idx));
+  document.querySelectorAll('.hdot').forEach((d, j) => {
+    const selected = j === idx;
+    d.classList.toggle('on', selected);
+    d.setAttribute('aria-selected', String(selected));
+    d.tabIndex = selected ? 0 : -1;
+  });
 }
 
 export function buildHeroDots() {
   const dots = document.getElementById('hero-dots');
   if (!dots) return;
   dots.innerHTML = state.heroItems
-    .map((_, i) => `<div class="hdot${i === 0 ? ' on' : ''}" data-hero-dot="${i}" role="button" tabindex="0" aria-label="Slide ${i + 1}"></div>`)
+    .map((_, i) => `<div class="hdot${i === 0 ? ' on' : ''}" data-hero-dot="${i}" role="tab" tabindex="${i === 0 ? '0' : '-1'}" aria-selected="${i === 0}" aria-label="Slide ${i + 1}"></div>`)
     .join('');
 }
 

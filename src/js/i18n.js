@@ -20,11 +20,11 @@ export const UI_LANGS = [
   { code: 'ja', label: '日本語' },
 ];
 
-const TMDB_CODES = { en: 'en-US', es: 'es-ES', pt: 'pt-BR', fr: 'fr-FR', ja: 'ja-JP' };
+const TMDB_CODES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', de: 'de-DE', it: 'it-IT', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', hi: 'hi-IN', zh: 'zh-CN' };
 
 /* Starter dictionary — app chrome only. Extend by adding keys; missing
    keys always fall back to English. */
-const STRINGS = {
+export const STRINGS = {
   en: {
     'nav.home': 'Home', 'nav.movies': 'Movies', 'nav.tv': 'TV Shows', 'nav.anime': 'Anime',
     'nav.clips': 'Clips', 'nav.library': 'Library', 'nav.customize': 'Customize Feed',
@@ -136,5 +136,8 @@ export function applyUITranslations() {
   });
   const searchInput = document.getElementById('search-input');
   if (searchInput) searchInput.placeholder = t('search.placeholder');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+  document.querySelectorAll('[data-i18n-label]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nLabel)); });
   document.documentElement.lang = uiLang();
 }

@@ -1,7 +1,9 @@
 import { tmdb, imgUrl, getContentRating } from './api.js';
-import { state, persist, mediaKey, setReaction, addDislike, recordTasteSkip, AGE_LEVELS } from './state.js';
+import { state, persist, mediaKey, setReaction, addDislike, recordTasteSkip, AGE_LEVELS, getActiveTasteState } from './state.js';
 import { esc, toast } from './ui.js';
 import { recordCalibrationAction } from './stats.js';
+import { filterSafeItems, isAnimeContent } from './contentSafety.js';
+import { undoManager } from './undoManager.js';
 
 let _openInfo = () => {};
 let _pool = [];
@@ -9,6 +11,16 @@ let _index = 0;
 let _loading = false;
 let _sessionSkipped = new Set();
 const _shownKeys = new Set();
+const _kidsMode = () => {
+  try { return !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; }
+  catch { return false; }
+};
+const _animePreference = () => {
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    return settings.animePreference || (settings.hideAnime ? 'no' : 'neutral');
+  } catch { return 'neutral'; }
+};
 
 // Deliberately broad starters teach more than another popularity page. The
 // first session spans tone, format, era, language, animation, and intensity;
@@ -34,10 +46,13 @@ async function loadCurated(maxLevel, known) {
     const level = AGE_LEVELS[rating];
     if (maxLevel < 5 && (level == null || level > maxLevel)) return null;
     if (known.has(mediaKey(normalized)) || _sessionSkipped.has(mediaKey(normalized))) return null;
-    if (window._svSafeItem && !window._svSafeItem(normalized)) return null;
+    if (!_kidsMode() && window._svSafeItem && !window._svSafeItem(normalized)) return null;
     return normalized;
   }));
-  return results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+  let items = results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+  if (_animePreference() === 'no') items = items.filter(item => !isAnimeContent(item));
+  if (_kidsMode()) items = await filterSafeItems(items, { kidsMode: true, maxLevel: 3 });
+  return items;
 }
 
 function typeOf(item) {
@@ -45,9 +60,10 @@ function typeOf(item) {
 }
 
 function signaledKeys() {
+  const taste = getActiveTasteState();
   return new Set([
-    ...state.liked, ...state.disliked, ...state.watched,
-    ...state.prefLikes, ...state.prefDislikes,
+    ...(taste.liked || []), ...(taste.disliked || []), ...(_kidsMode() ? [] : state.watched),
+    ...(taste.prefLikes || []), ...(taste.prefDislikes || []),
   ].map(mediaKey));
 }
 
@@ -58,10 +74,11 @@ async function loadPool(force = false) {
   if (host && !_pool.length) host.innerHTML = '<div class="taste-cal-loading"><span class="spin"></span><p>Building a varied set of titles...</p></div>';
   try {
     const page = 1 + Math.floor(Math.random() * 8);
-    const genres = state.prefGenres.slice(0, 3).join('|');
-    const maxLevel = AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG;
+    const taste = getActiveTasteState();
+    const genres = _kidsMode() ? '10751|16|10762|35|12' : state.prefGenres.slice(0, 3).join('|');
+    const maxLevel = _kidsMode() ? 3 : (AGE_LEVELS[state.ageRating] ?? AGE_LEVELS.PG);
     const known = signaledKeys();
-    const interactionCount = state.prefLikes.length + state.prefDislikes.length + Object.keys(state.tasteSkips || {}).length;
+    const interactionCount = (taste.prefLikes || []).length + (taste.prefDislikes || []).length + Object.keys(taste.tasteSkips || {}).length;
     const maxMovieCert = maxLevel <= 2 ? 'G' : maxLevel === 3 ? 'PG' : maxLevel === 4 ? 'PG-13' : maxLevel === 5 ? 'R' : null;
     const [movies, shows, trending, curated] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by: 'popularity.desc', page, 'vote_count.gte': 250,
@@ -79,7 +96,7 @@ async function loadPool(force = false) {
         const normalized = { ...item, media_type, type: media_type };
         const key = mediaKey(normalized);
         if (!item.id || item.adult || !item.backdrop_path || known.has(key) || _sessionSkipped.has(key)) return;
-        if (window._svSafeItem && !window._svSafeItem(normalized)) return;
+        if (!_kidsMode() && window._svSafeItem && !window._svSafeItem(normalized)) return;
         if (!candidates.some(candidate => mediaKey(candidate) === key)) candidates.push(normalized);
       });
     };
@@ -91,8 +108,12 @@ async function loadPool(force = false) {
 
     // Movie discover supports certification filters. TV discover does not,
     // so verify TV ratings before a restrictive profile can see them.
-    let safeCandidates = candidates;
-    if (maxLevel < 5) {
+    let safeCandidates = _animePreference() === 'no'
+      ? candidates.filter(item => !isAnimeContent(item))
+      : candidates;
+    if (_kidsMode()) {
+      safeCandidates = await filterSafeItems(safeCandidates, { kidsMode: true, maxLevel: 3 });
+    } else if (maxLevel < 5) {
       const checked = [];
       for (let start = 0; start < candidates.length && checked.length < 18; start += 5) {
         const batch = candidates.slice(start, start + 5);
@@ -140,14 +161,14 @@ function storePreference(item, action) {
     setReaction(compact, action);
   } else if (action === 'dislike') {
     setReaction(compact, 'none');
-    state.prefDislikes.unshift(compact);
+    const taste = getActiveTasteState();
+    taste.prefDislikes.unshift(compact);
     addDislike(compact);
   } else {
     _sessionSkipped.add(key);
     recordTasteSkip(compact);
   }
-  persist('prefLikes');
-  persist('prefDislikes');
+  _kidsMode() ? persist('kidsTaste') : (persist('prefLikes'), persist('prefDislikes'));
   recordCalibrationAction(action, compact);
 }
 
@@ -157,13 +178,18 @@ function storePreference(item, action) {
    serves unrated titles, so pre-calibration state is always "none".) */
 const _history = [];
 
-function undoLast() {
-  const last = _history.pop();
+function undoEntry(last) {
   if (!last) return;
+  const historyIndex = _history.indexOf(last);
+  if (historyIndex >= 0) _history.splice(historyIndex, 1);
   const key = mediaKey(last.item);
   if (last.action === 'skip') {
     _sessionSkipped.delete(key);
-    if (state.tasteSkips[key]) { delete state.tasteSkips[key]; persist('tasteSkips'); }
+    const taste = getActiveTasteState();
+    if (taste.tasteSkips[key]) {
+      delete taste.tasteSkips[key];
+      _kidsMode() ? persist('kidsTaste') : persist('tasteSkips');
+    }
   } else {
     // love/like/dislike all unwind to a clean slate
     setReaction(last.item, 'none');
@@ -176,15 +202,29 @@ function undoLast() {
   toast('Undone — rate it again', 'undo');
 }
 
+function undoLast() {
+  const last = _history.at(-1);
+  if (!last) return;
+  if (last.undoId) undoManager.undo(last.undoId);
+  else undoEntry(last);
+}
+
 function react(action) {
   const item = current();
   if (!item) return;
   storePreference(item, action);
-  _history.push({ item, action });
+  const entry = { item, action, undoId: null };
+  _history.push(entry);
   if (_history.length > 50) _history.shift();
   const labels = { love: 'Loved', like: 'Liked', dislike: 'Hidden from recommendations', skip: 'Skipped for now' };
+  entry.undoId = undoManager.record({
+    label: labels[action],
+    title: item.title || item.name || '',
+    icon: action === 'love' ? 'favorite' : action === 'like' ? 'thumb_up' : action === 'dislike' ? 'thumb_down' : 'skip_next',
+    undo: () => undoEntry(entry),
+  });
   toast(labels[action], action === 'love' ? 'favorite' : action === 'like' ? 'thumb_up' : action === 'dislike' ? 'thumb_down' : 'skip_next',
-    { actionLabel: 'Undo', onAction: undoLast });
+    { actionLabel: 'Undo', onAction: () => undoManager.undo(entry.undoId) });
   _index++;
   renderCard(action);
   if (_pool.length - _index < 5) loadPool();
@@ -316,6 +356,7 @@ export function initTasteCalibration({ openInfo }) {
     react(action);
   });
   document.addEventListener('keydown', event => {
+    if (event.defaultPrevented) return;
     const shell = document.getElementById('taste-calibration-shell');
     if (!shell || shell.hidden || event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
     if (event.key === 'Escape' && shell.classList.contains('cal-fullscreen')) {
@@ -333,7 +374,7 @@ export function initTasteCalibration({ openInfo }) {
       }
       return;
     }
-    if (event.key === 'z' || event.key === 'Z' || event.key === 'Backspace') {
+    if (event.key === 'Backspace') {
       event.preventDefault();
       undoLast();
       return;

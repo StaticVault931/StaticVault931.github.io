@@ -1,7 +1,9 @@
-import { state, persist, mediaKey } from './state.js';
+import { state, persist, mediaKey, getActiveTasteState } from './state.js';
 import { makeCard, skelCards, emptyState, toast, esc } from './ui.js';
 import { getStats, getFavorites, lifetimeSummary } from './stats.js';
 import { GENRES } from './state.js';
+import { undoManager } from './undoManager.js';
+import { getActiveProfileId } from './profiles.js';
 
 /* ── RENDER LIBRARY PAGE ─────────────────────────────────────────── */
 /* Library stats banner — your viewing at a glance (reads the local
@@ -69,7 +71,9 @@ function renderTasteProfile() {
   const summary = lifetimeSummary();
   const genreNames = favorites.genres.map(entry => GENRES.find(genre => genre.id === entry.genreId)?.name).filter(Boolean);
   const actors = favorites.actors.map(actor => actor.name).filter(Boolean);
-  const signals = state.prefLikes.length + state.prefDislikes.length + state.prefGenres.length + state.prefGenreDislikes.length;
+  const taste = getActiveTasteState();
+  const kidsMode = taste !== state;
+  const signals = (taste.prefLikes || []).length + (taste.prefDislikes || []).length + (kidsMode ? 0 : state.prefGenres.length + state.prefGenreDislikes.length);
   const insightRows = [
     genreNames.length ? ['category', 'Genres shaping your feed', genreNames.join(', ')] : null,
     actors.length ? ['groups', 'Actors you return to', actors.join(', ')] : null,
@@ -88,7 +92,7 @@ function renderTasteProfile() {
       </div>
       <div class="taste-metrics">
         <div><strong>${signals}</strong><span>explicit signals</span></div>
-        <div><strong>${state.loved?.length || 0}</strong><span>loved titles</span></div>
+        <div><strong>${taste.loved?.length || 0}</strong><span>loved titles</span></div>
         <div><strong>${summary.watchHours}h</strong><span>watch time</span></div>
         <div><strong>${summary.searches}</strong><span>searches</span></div>
       </div>
@@ -132,6 +136,7 @@ function renderContinueSection() {
   const sec = document.getElementById('lib-continue-sec');
   const grid = document.getElementById('lib-continue-grid');
   if (!grid) return;
+  if (getActiveTasteState() !== state) { if (sec) sec.style.display = 'none'; grid.innerHTML = ''; return; }
 
   // Use Object.entries to backfill numeric id from key (same fix as renderContinueRow in app.js)
   const items = Object.entries(state.continueWatching)
@@ -169,36 +174,39 @@ function renderContinueSection() {
 function renderWatchlistSection() {
   const grid = document.getElementById('lib-watchlist-grid');
   if (!grid) return;
+  const watchlist = getActiveTasteState().watchlist || [];
 
-  grid.classList.toggle('lib-grid-empty', !state.watchlist.length);
-  if (!state.watchlist.length) {
+  grid.classList.toggle('lib-grid-empty', !watchlist.length);
+  if (!watchlist.length) {
     grid.innerHTML = emptyState('bookmark_add', 'Nothing saved yet — tap the bookmark on any title.', [
       { action: 'go-home', label: 'Browse Trending' },
       { action: 'go-search', label: 'Search' },
     ]);
     return;
   }
-  grid.innerHTML = state.watchlist.map(m => makeCard(m, m.type || 'movie')).join('');
+  grid.innerHTML = watchlist.map(m => makeCard(m, m.type || 'movie')).join('');
 }
 
 function renderLikedSection() {
   const grid = document.getElementById('lib-liked-grid');
   if (!grid) return;
+  const liked = getActiveTasteState().liked || [];
 
-  grid.classList.toggle('lib-grid-empty', !state.liked.length);
-  if (!state.liked.length) {
+  grid.classList.toggle('lib-grid-empty', !liked.length);
+  if (!liked.length) {
     grid.innerHTML = emptyState('favorite_border', 'Nothing liked yet — tap ❤ on any title to shape your feed.', [
       { action: 'go-home', label: 'Browse Home' },
     ]);
     return;
   }
-  grid.innerHTML = state.liked.map(m => makeCard(m, m.type || 'movie')).join('');
+  grid.innerHTML = liked.map(m => makeCard(m, m.type || 'movie')).join('');
 }
 
 function renderRecentSection() {
   const sec = document.getElementById('lib-recent-sec');
   const grid = document.getElementById('lib-recent-grid');
   if (!grid) return;
+  if (getActiveTasteState() !== state) { if (sec) sec.style.display = 'none'; grid.innerHTML = ''; return; }
 
   const items = [...state.recentlyViewed]
     .sort((a, b) => (b.viewedAt || 0) - (a.viewedAt || 0))
@@ -220,8 +228,26 @@ function renderRecentSection() {
     const days = Math.floor(hours / 24);
     return days < 30 ? `${days}d ago` : new Date(timestamp).toLocaleDateString();
   };
-  grid.innerHTML = items.map(m => makeCard(m, m.type || m.media_type || 'movie', { compact: true, showProgress: false })
+  grid.innerHTML = items.map(m => makeCard(m, m.type || m.media_type || 'movie', { compact: true, showProgress: false, removableRecent: true })
     .replace('<div class="card-poster">', `<div class="card-poster"><span class="recent-time-badge">${esc(relative(m.viewedAt))}</span>`)).join('');
+  grid.querySelectorAll('[data-action="remove-recent"]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const key = `${button.dataset.type}:${button.dataset.id}`;
+      const index = state.recentlyViewed.findIndex(item => mediaKey(item) === key);
+      if (index < 0) return;
+      const [removed] = state.recentlyViewed.splice(index, 1);
+      persist('recentlyViewed');
+      renderRecentSection();
+      const undoId = undoManager.record({ label: 'Removed from Recently Viewed', title: removed.title || removed.name || '', icon: 'history', undo: () => {
+        state.recentlyViewed.splice(Math.min(index, state.recentlyViewed.length), 0, removed);
+        persist('recentlyViewed');
+        renderRecentSection();
+      } });
+      toast('Removed from Recently Viewed', 'history', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
+    });
+  });
 }
 
 /* ── SEE ALL PAGE ────────────────────────────────────────────────── */
@@ -333,12 +359,20 @@ export function clearSection(key, label) {
 }
 
 export function clearAllData() {
-  const keys = ['watchlist', 'liked', 'loved', 'disliked', 'recentlyViewed', 'continueWatching',
+  const keys = ['watchlist', 'liked', 'loved', 'disliked', 'watched', 'recentlyViewed', 'continueWatching', 'recentSearches',
     'prefLikes', 'prefDislikes', 'prefGenres', 'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'tasteSkips'];
   keys.forEach(k => {
     state[k] = Array.isArray(state[k]) ? [] : {};
     persist(k);
   });
+  state.kidsTaste = { liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {} };
+  persist('kidsTaste');
+  const profileId = getActiveProfileId() || 'default';
+  [`sv_stats_v1_${profileId}`, `sv_clips_seen_v1_${profileId}`, `sv_kids_pin_v1_${profileId}`, 'sv_search_log']
+    .forEach(key => localStorage.removeItem(key));
+  const localKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+  localKeys.filter(key => key?.startsWith(`sv_clips_dwell_v2_${profileId}_`)).forEach(key => localStorage.removeItem(key));
+  undoManager.clearForProfile(profileId);
   renderLibrary();
   toast('All data cleared', 'delete_forever');
 }

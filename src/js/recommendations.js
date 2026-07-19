@@ -1,6 +1,7 @@
-import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey } from './state.js';
+import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey, getActiveTasteState } from './state.js';
 import { tmdb, aniQuery, normalizeAnime } from './api.js';
 import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from './ui.js';
+import { filterSafeItems, isAnimeContent } from './contentSafety.js';
 
 /* Shared between the title-referencing rows ("Because you liked X",
    "Because you watched X", "More Like X") so the SAME title never anchors
@@ -19,6 +20,21 @@ const _claim = (items, cap = 14) =>
 /* Day seed for occasional rows — title-referencing rows shouldn't ALL show
    every day. Each family takes turns so the home page feels different. */
 const _daySeed = Math.floor(Date.now() / 86400000);
+const _kidsMode = () => {
+  try { return !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; }
+  catch { return false; }
+};
+const _animePreference = () => {
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    return settings.animePreference || (settings.hideAnime ? 'no' : 'neutral');
+  } catch { return 'neutral'; }
+};
+const _verified = async items => {
+  let filtered = items || [];
+  if (_animePreference() === 'no') filtered = filtered.filter(item => !isAnimeContent(item));
+  return _kidsMode() ? filterSafeItems(filtered, { kidsMode: true, maxLevel: 3 }) : filtered;
+};
 
 // Map TMDB vote_average to approximate age threshold (rough heuristic)
 // This supplements the full certification check done in openMedia
@@ -45,18 +61,19 @@ export async function loadForYou() {
   rowEl.innerHTML = skelCards(8);
 
   try {
-    const dislikedIds = new Set(state.disliked.map(mediaKey));
-    const likedIds = new Set([...state.liked, ...state.prefLikes].map(mediaKey));
+    const taste = getActiveTasteState();
+    const dislikedIds = new Set((taste.disliked || []).map(mediaKey));
+    const likedIds = new Set([...(taste.liked || []), ...(taste.prefLikes || [])].map(mediaKey));
 
-    const genreIds = state.prefGenres.length
+    const genreIds = !_kidsMode() && state.prefGenres.length
       ? state.prefGenres.slice(0, 4).join('|')
-      : '28|35|18|878|12';
+      : _kidsMode() ? '10751|16|10762|35|12' : '28|35|18|878|12';
 
     // Fetch liked-item recommendations + genre discover + trending in parallel
     const candidates = [
-      ...state.loved.filter(x => x.id && x.type !== 'anime').slice(0, 2),
-      ...state.prefLikes.filter(x => x.id && x.type !== 'anime').slice(0, 2),
-      ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 2),
+      ...(taste.loved || []).filter(x => x.id && x.type !== 'anime').slice(0, 2),
+      ...(taste.prefLikes || []).filter(x => x.id && x.type !== 'anime').slice(0, 2),
+      ...(taste.liked || []).filter(x => x.id && x.type !== 'anime').slice(0, 2),
     ];
     const dedupedCandidates = candidates.filter((x, i, a) => a.findIndex(y => mediaKey(y) === mediaKey(x)) === i).slice(0, 3);
 
@@ -112,13 +129,14 @@ export async function loadForYou() {
     const watchedIds = new Set(state.watched.map(mediaKey));
     const seen = new Set();
     const tolerance = state._repeatTolerance || 'medium';
-    const pool = [...tagMovies, ...tagShows, ...recItems, ...discover, ...discoverTv].filter(m => {
+    const verifiedCandidates = await _verified([...tagMovies, ...tagShows, ...recItems, ...discover, ...discoverTv]);
+    const pool = verifiedCandidates.filter(m => {
       const candidateKey = mediaKey(m);
       if (!m.id || seen.has(candidateKey)) return false;
       seen.add(candidateKey);
       if (!passesAgeFilter(m)) return false;
       // Central safety: age rating, kid mode, and disliked genres (app.js)
-      if (window._svSafeItem && !window._svSafeItem(m)) return false;
+      if (!_kidsMode() && window._svSafeItem && !window._svSafeItem(m)) return false;
       const key = mediaKey(m);
       if (dislikedIds.has(key) || likedIds.has(key) || trendingRowIds.has(key) || recentIds.has(key) || watchedIds.has(key)) return false;
       // Apply impression filter to For You row too
@@ -164,9 +182,10 @@ export async function loadForYou() {
       // the SAME safety gate as everything else (age/kid mode/dislikes/
       // watched/disliked items). A fallback must never leak mature titles.
       const fallback = await tmdb('/movie/top_rated', { page: Math.floor(Math.random() * 3) + 1 });
-      const fallbackItems = (fallback.results || [])
+      const verifiedFallback = await _verified((fallback.results || []).map(m => ({ ...m, media_type: 'movie' })));
+      const fallbackItems = verifiedFallback
         .filter(m => m?.id &&
-          (!window._svSafeItem || window._svSafeItem(m)) &&
+          (_kidsMode() || !window._svSafeItem || window._svSafeItem(m)) &&
           !dislikedIds.has(mediaKey(m)) && !watchedIds.has(mediaKey(m)))
         .slice(0, 18);
       if (fallbackItems.length) {
@@ -182,9 +201,10 @@ export async function loadForYou() {
     if (items.length < 8) {
       try {
         const extra = await tmdb('/trending/movie/week');
-        const extraItems = (extra.results || [])
+        const verifiedExtra = await _verified((extra.results || []).map(m => ({ ...m, media_type: 'movie' })));
+        const extraItems = verifiedExtra
           .filter(m => m?.id && !items.some(x => x.id === m.id) &&
-            (!window._svSafeItem || window._svSafeItem(m)) &&
+            (_kidsMode() || !window._svSafeItem || window._svSafeItem(m)) &&
             !dislikedIds.has(mediaKey(m)) && !watchedIds.has(mediaKey(m)))
           .slice(0, 18 - items.length);
         items.push(..._claim(extraItems, 18 - items.length));
@@ -203,10 +223,11 @@ export async function loadBecauseYouLiked() {
   // Occasional row: shows 2 of every 3 days (skips when daySeed % 3 === 2)
   if (_daySeed % 3 === 2) return;
   // Collect candidates: prefLikes first, then top liked items
+  const taste = getActiveTasteState();
   const candidates = [
-    ...state.loved.filter(x => x.id && x.type !== 'anime'),
-    ...state.prefLikes.filter(x => x.id && x.type !== 'anime'),
-    ...state.liked.filter(x => x.id && x.type !== 'anime').slice(0, 5),
+    ...(taste.loved || []).filter(x => x.id && x.type !== 'anime'),
+    ...(taste.prefLikes || []).filter(x => x.id && x.type !== 'anime'),
+    ...(taste.liked || []).filter(x => x.id && x.type !== 'anime').slice(0, 5),
   ];
 
   // Dedupe by id + skip titles already anchoring another row
@@ -289,9 +310,10 @@ export async function loadBecauseYouLiked() {
        ...(simD.status === 'fulfilled' ? simD.value.results || [] : [])].forEach(m => {
         if (m.id && !mSeen.has(m.id)) { mSeen.add(m.id); merged.push(m); }
       });
-      const results = _claim(merged.filter(m =>
+      const verifiedMerged = await _verified(merged.map(m => ({ ...m, media_type: type })));
+      const results = _claim(verifiedMerged.filter(m =>
         m.id !== item.id && // never show the anchor inside its own row
-        !state.disliked.some(d => d.id === m.id)), 14);
+        !(taste.disliked || []).some(d => d.id === m.id)), 14);
 
       if (results.length < 10) {
         console.warn(`[SV BYL] "${item.title}" row too thin (${results.length} < 10) — hidden`);
@@ -315,9 +337,10 @@ export async function loadGenreTrending() {
   if (!sec || !row) return;
 
   // Need at least one preferred genre or watched/liked content to derive one
-  const prefGenres = state.prefGenres || [];
+  const taste = getActiveTasteState();
+  const prefGenres = _kidsMode() ? [] : (state.prefGenres || []);
   const likedGenres = {};
-  [...(state.liked || []), ...(state.watched || [])].forEach(item => {
+  [...(taste.liked || []), ...(_kidsMode() ? [] : (state.watched || []))].forEach(item => {
     (item.genre_ids || []).forEach(g => { likedGenres[g] = (likedGenres[g] || 0) + 1; });
   });
 
@@ -338,8 +361,8 @@ export async function loadGenreTrending() {
   row.innerHTML = skelCards(8);
 
   try {
-    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
-    const watchedIds  = new Set((state.watched  || []).map(x => x.id));
+    const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
+    const watchedIds  = new Set((_kidsMode() ? [] : (state.watched || [])).map(x => x.id));
     const [mv, tv] = await Promise.allSettled([
       tmdb('/discover/movie', { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 50 }),
       tmdb('/discover/tv',    { sort_by:'popularity.desc', with_genres: genreId, 'vote_count.gte': 20 }),
@@ -348,7 +371,8 @@ export async function loadGenreTrending() {
     const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
     const mixed = []; const ml=movies.length, sl=shows.length;
     for (let i=0;i<Math.max(ml,sl);i++) { if(movies[i])mixed.push(movies[i]); if(shows[i])mixed.push(shows[i]); }
-    const filtered = _claim(mixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)), 18);
+    const verifiedMixed = await _verified(mixed);
+    const filtered = _claim(verifiedMixed.filter(m => !dislikedIds.has(m.id) && !watchedIds.has(m.id)), 18);
     if (filtered.length < 10) {
       console.warn(`[SV GenreTrending] too thin (${filtered.length} < 10) — hidden`);
       sec.style.display='none'; return;
@@ -366,9 +390,10 @@ export async function loadDeepCuts() {
   const row = document.getElementById('row-deep-cuts');
   if (!sec || !row) return;
 
-  const watchedIds  = new Set((state.watched  || []).map(x => x.id));
-  const likedIds    = new Set((state.liked    || []).map(x => x.id));
-  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+  const taste = getActiveTasteState();
+  const watchedIds  = new Set((_kidsMode() ? [] : (state.watched || [])).map(x => x.id));
+  const likedIds    = new Set((taste.liked || []).map(x => x.id));
+  const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
   const recentIds   = new Set((state.recentlyViewed || []).map(x => x.id));
 
   // Need some history to determine "unseen"
@@ -385,7 +410,8 @@ export async function loadDeepCuts() {
     ]);
     const movies = mv.status==='fulfilled' ? (mv.value.results||[]).map(x=>({...x,media_type:'movie'})) : [];
     const shows  = tv.status==='fulfilled' ? (tv.value.results||[]).map(x=>({...x,media_type:'tv'})) : [];
-    const all = _claim([...movies,...shows]
+    const verifiedAll = await _verified([...movies, ...shows]);
+    const all = _claim(verifiedAll
       .filter(m => !watchedIds.has(m.id) && !likedIds.has(m.id) && !dislikedIds.has(m.id) && !recentIds.has(m.id))
       .sort((a,b) => (b.vote_average||0) - (a.vote_average||0)), 18);
     if (all.length < 10) {
@@ -409,6 +435,7 @@ export async function loadHistoryMix() {
   if (_daySeed % 3 === 1) { sec.style.display = 'none'; return; }
 
   // Pull from recently watched (not just liked) — top 4 unique items
+  if (_kidsMode()) { sec.style.display = 'none'; return; }
   const history = [
     ...(state.watched || []).slice().reverse().slice(0, 4),
     ...(state.recentlyViewed || []).slice(0, 4),
@@ -461,7 +488,9 @@ export async function loadBecauseYouWatched() {
   if (_daySeed % 2 === 0) return;
   // Take top 2 recently-watched items — skipping any title that already
   // anchors a "Because you liked" or "More Like" row
-  const likedIds = new Set([...(state.prefLikes||[]), ...(state.liked||[])].map(x => x.id));
+  if (_kidsMode()) return;
+  const taste = getActiveTasteState();
+  const likedIds = new Set([...(taste.prefLikes || []), ...(taste.liked || [])].map(x => x.id));
   const candidates = (state.watched || [])
     .slice().reverse()
     .filter(x => x.id && !likedIds.has(x.id) && !_usedTitleIds.has(x.id) && x.type !== 'anime')
@@ -517,8 +546,9 @@ export async function loadBecauseYouWatched() {
         ...(recD.status === 'fulfilled' ? recD.value.results || [] : []),
         ...(simD.status === 'fulfilled' ? simD.value.results || [] : []),
       ].filter(m => m.id && !mSeen.has(m.id) && mSeen.add(m.id));
-      const results = _claim(merged
-        .filter(m => m.id !== item.id && !(state.disliked||[]).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
+      const verifiedMerged = await _verified(merged.map(m => ({ ...m, media_type: type })));
+      const results = _claim(verifiedMerged
+        .filter(m => m.id !== item.id && !(taste.disliked || []).some(d => d.id===m.id) && !(state.watched||[]).some(w=>w.id===m.id)), 14);
       if (results.length < 10) {
         console.warn(`[SV BYW] "${item.title || item.name}" row too thin (${results.length} < 10) — hidden`);
         sec.style.display='none'; continue;

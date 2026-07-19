@@ -5,6 +5,7 @@ import { initSearchPipeline, prepareQuery, svFlag } from './search/searchPipelin
 import { recordSearchStat } from './stats.js';
 import { rankResults } from './search/ranking.js';
 import { titleScore } from './search/fuzzy.js';
+import { filterSafeItems, isAnimeContent } from './contentSafety.js';
 
 let _debounce = null;
 let _sfActive = 'all';
@@ -1323,14 +1324,19 @@ export async function doSearch(q) {
     // Filter anime from search results if hideAnime is enabled
     try {
       const svSettings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
-      if (svSettings.hideAnime) items = items.filter(m => m._type !== 'anime' && m.media_type !== 'anime');
+      if ((svSettings.animePreference || (svSettings.hideAnime ? 'no' : 'neutral')) === 'no') {
+        items = items.filter(m => !isAnimeContent(m));
+      }
     } catch {}
-    // Kid-safety search demotion: with a restrictive age rating, likely-
-    // mature results sink toward the bottom — UNLESS they're a really
-    // close title match (still findable, just not surfaced casually)
+    // Kid-Guided is fail-closed: close title matches never bypass a verified
+    // family rating. Adult profiles keep the softer maturity ordering.
     try {
+      const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+      if (settings.kidsMode) {
+        items = await filterSafeItems(items, { kidsMode: true, maxLevel: 3 });
+      }
       const lvl = { 'TV-Y': 0, 'TV-Y7': 1, 'G': 2, 'TV-G': 2, 'PG': 3, 'TV-PG': 3, 'PG-13': 4, 'TV-14': 4 }[state.ageRating];
-      if (lvl !== undefined && lvl <= 4) {
+      if (!settings.kidsMode && lvl !== undefined && lvl <= 4) {
         const mature = m => m.adult || (lvl <= 3 && (m.genre_ids || []).includes(27));
         const closeMatch = m => titleScore(effectiveQ, m.title || m.name || '') >= 88;
         const safe = [], demoted = [];
@@ -1624,7 +1630,12 @@ async function fetchSearchPage(q, page) {
   // Return combined — person results come AFTER main results (deduped)
   const allKeys = new Set(all.map(_mediaKey));
   const dedupedPersonResults = _personResults.filter(x => x.id && !allKeys.has(_mediaKey(x)));
-  return _filterByProvider([...all, ...dedupedPersonResults]);
+  let combined = await _filterByProvider([...all, ...dedupedPersonResults]);
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    if (settings.kidsMode) combined = await filterSafeItems(combined, { kidsMode: true, maxLevel: 3 });
+  } catch {}
+  return combined;
 }
 
 async function loadMoreSearchResults() {

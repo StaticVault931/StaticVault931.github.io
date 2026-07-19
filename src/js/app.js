@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, getReaction, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore, getActiveTasteState } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
   fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
@@ -27,6 +27,24 @@ import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayN
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 import { initSuperSearch, closeSuperSearch } from './superSearch.js';
 import { initTasteCalibration } from './tasteCalibration.js';
+import { resolveContentSafety, filterSafeItems, isAnimeContent } from './contentSafety.js';
+import { parseCleanRoute, titlePath, personPath, collectionPath, SITE_ORIGIN } from './routes.js';
+import { undoManager } from './undoManager.js';
+import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.js';
+import { parseBackupText } from './backup.js';
+
+let _onboardingPreloadGeneration = 0;
+async function preloadOnboardingHomeMetadata() {
+  const generation = ++_onboardingPreloadGeneration;
+  const requests = [
+    tmdb('/trending/movie/week'),
+    tmdb('/trending/tv/week'),
+    tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 200 }),
+    tmdb('/discover/tv', { sort_by: 'popularity.desc', 'vote_count.gte': 100 }),
+  ];
+  await Promise.allSettled(requests);
+  return generation === _onboardingPreloadGeneration;
+}
 
 /* ── THEMES ──────────────────────────────────────────────────────── */
 const THEMES = ['dark', 'midnight', 'warm', 'ocean', 'mist', 'light'];
@@ -98,7 +116,7 @@ const LEGAL_CONTENT = {
       <p>StaticVault931 ("we", "us", "our") is committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights regarding that data. By using StaticVault931 you agree to this policy.</p>
       <h3>2. Data We Collect</h3>
       <p><strong>Locally stored data (never leaves your device):</strong></p>
-      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Feed preferences (genres, languages, content rating, liked/disliked titles, kid-guided mode)<br>• Language preferences (interface, metadata, and preferred trailer language)<br>• Profiles (names, colors, avatars) and per-profile data<br>• Continue-watching progress<br>• Recent searches and a local search log (last 100 searches, used to improve search)<br>• Row statistics (which rows are shown, clicked, or skipped — used to pick better rows)<br>• Theme, display, and accessibility settings<br>• Provider preferences</p>
+      <p>• Watchlist, liked titles, disliked titles, and watch history<br>• Separate adult and Kid-Guided taste signals, saves, watched titles, and skips<br>• Feed preferences (genres, languages, content rating, liked/disliked titles, Kid-Guided mode)<br>• Language preferences (interface, metadata, and preferred trailer language)<br>• Profiles (names, colors, avatars) and per-profile data<br>• Optional salted Kid-Guided PIN and recovery-code hashes; the PIN and recovery code themselves are not stored<br>• Continue-watching progress<br>• Recent searches and a local search log (last 100 searches, used to improve search)<br>• Row statistics (which rows are shown, clicked, or skipped — used to pick better rows)<br>• Theme, display, and accessibility settings<br>• Provider preferences</p>
       <p>All of the above is stored exclusively in your browser's <code>localStorage</code> and <code>sessionStorage</code>. It is never transmitted to StaticVault931 or any third party by us.</p>
       <h3>3. Third-Party Services</h3>
       <p><strong>The Movie Database (TMDB):</strong> We query the TMDB API for movie, TV show, and metadata. TMDB may log API requests. See <a href="https://www.themoviedb.org/privacy-policy" target="_blank" rel="noopener">TMDB Privacy Policy</a>.</p>
@@ -119,7 +137,7 @@ const LEGAL_CONTENT = {
       <h3>5. Analytics</h3>
       <p>StaticVault931 uses <strong>Google Analytics 4 (GA4)</strong> to understand aggregate usage patterns (pageviews, session counts, general regions). This helps us improve the site. Google Analytics sets cookies in your browser. You can opt out using <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. We do not use any other analytics platform (Mixpanel, Amplitude, etc.).</p>
       <h3>6. Children's Privacy & Kid Safety</h3>
-      <p>StaticVault931 is not directed at children under 13 and we do not knowingly collect data from children. The content-rating filter and Kid-Guided Mode refine what is shown but are <strong>guidance tools, not parental locks</strong> — a parent or guardian is responsible for supervising younger viewers. If you believe a child has used the service inappropriately, please contact us.</p>
+      <p>StaticVault931 is not directed at children under 13 and we do not knowingly collect data from children. Kid-Guided Mode conservatively shows only titles with a verified family rating and hides unclear ratings. The optional local PIN is a device-level deterrent, not an online account lock, and a parent or guardian remains responsible for supervision. If both the PIN and recovery code are lost, recovery requires clearing local site data or restoring a backup.</p>
       <h3>7. Your Rights</h3>
       <p>Because all data is stored locally in your browser, you can delete it at any time via Library → Reset All Data, or by clearing your browser's storage for this site.</p>
       <h3>8. Contact</h3>
@@ -234,11 +252,12 @@ const SV_SETTINGS = [
   { id: 'personalizeContent', label: 'Personalized Feed',     desc: 'Tailor rows to your genres, likes, and viewing habits',       default: true,  icon: 'auto_awesome',     group: 'Content' },
   { id: 'superSearch',       label: 'Super Search',           desc: 'Use Ctrl+F or Cmd+F to find titles, descriptions, and controls on the current screen', default: true, icon: 'pageview', group: 'Content', keywords: 'control ctrl command cmd f find current page screen local search' },
   { id: 'featureTips',       label: 'Feature Tips',           desc: 'Occasional tip rows on Home that point out features you haven\'t tried yet', default: true, icon: 'tips_and_updates', group: 'Content', keywords: 'tips hints suggestions discover features banner' },
-  { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Refines everything for kids: G-level rows, kid-safe trending & search. Not a lock — an adult should still supervise.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g-rated' },
+  { id: 'kidsMode',          label: 'Kid-Guided Mode',        desc: 'Only shows titles with a verified family rating. Unclear ratings stay hidden.', default: false, icon: 'child_care', group: 'Content', keywords: 'kids children safe family parental guided g pg rated' },
+  { id: 'animePreference',   label: 'Anime Preference',       desc: 'Boost anime, keep it neutral, or hide it throughout discovery', default: 'neutral', icon: 'animation', group: 'Content', type: 'select', options: ['yes', 'neutral', 'no'], optLabels: ['Yes, show me more', 'Neutral', 'No, hide anime'], keywords: 'anime animation japanese hide preference' },
   // Language (UI text only — content audio is whatever providers have)
   { id: 'uiLanguage',        label: 'Interface Language',     desc: 'Language for app menus and buttons (not movie audio)',        default: 'auto', icon: 'language', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Auto (browser)', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'language idioma langue translate locale interface' },
-  { id: 'metaLanguage',      label: 'Titles & Descriptions',  desc: 'Language for movie/show titles and overviews from TMDB',      default: 'auto', icon: 'translate', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Match interface', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'metadata titles descriptions overview language tmdb' },
-  { id: 'trailerLanguage',   label: 'Preferred Trailer Audio', desc: 'Prefer trailers in this language when a title has one — falls back to the default trailer otherwise', default: 'auto', icon: 'subtitles', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'pt', 'fr', 'ja'], optLabels: ['Match interface', 'English', 'Español', 'Português (BR)', 'Français', '日本語'], keywords: 'trailer audio dub subtitle language' },
+  { id: 'metaLanguage',      label: 'Titles & Descriptions',  desc: 'Language for movie/show titles and overviews from TMDB',      default: 'auto', icon: 'translate', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'hi', 'zh'], optLabels: ['Match interface', 'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean', 'Hindi', 'Chinese'], keywords: 'metadata titles descriptions overview language tmdb' },
+  { id: 'trailerLanguage',   label: 'Preferred Trailer Audio', desc: 'Prefer trailers in this language when a title has one — falls back to the default trailer otherwise', default: 'auto', icon: 'subtitles', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'hi', 'zh'], optLabels: ['Match interface', 'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean', 'Hindi', 'Chinese'], keywords: 'trailer audio dub subtitle language' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
   { id: 'repeatContent',     label: 'Repeat Tolerance',       desc: 'How often to re-show content you\'ve already seen',           default: 'medium', icon: 'repeat',        group: 'Content', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
   { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
@@ -250,7 +269,6 @@ const SV_SETTINGS = [
   // Account
   { id: 'showAccountsOnStart', label: 'Show Profiles on Start', desc: 'Show profile selector every time you open the app',            default: false, icon: 'manage_accounts',  group: 'Account' },
   // Content filtering
-  { id: 'hideAnime',  label: 'Hide Anime Everywhere',   desc: 'Remove anime from home feed and search (still available in Anime tab)', default: false, icon: 'block', group: 'Content' },
   { id: 'hideTabClips',   label: 'Hide Clips Tab',       desc: 'Remove the Clips tab from the navigation bar',                           default: false, icon: 'hide_source', group: 'Content' },
   { id: 'hideTabAnime',   label: 'Hide Anime Tab',        desc: 'Remove the Anime tab from the navigation bar',                           default: false, icon: 'hide_source', group: 'Content' },
   // Playback — hover trailers
@@ -449,8 +467,7 @@ const SHORTCUTS = [
    of whatever page the crawler saw first, and Google refused to index
    them individually. */
 function _setPersonSEO(personId, person) {
-  const base = 'https://staticvault931.github.io/';
-  const url = `${base}?person=${personId}`;
+  const url = `${SITE_ORIGIN}${personPath(personId, person?.name || '')}`;
   const name = person?.name || `Person #${personId}`;
   const dept = person?.known_for_department || 'Acting';
   const known = (person?.combined_credits?.cast || [])
@@ -738,6 +755,11 @@ async function _runMix() {
       };
     }));
     if (my !== _mixToken) return;
+    if (getSetting('kidsMode')) {
+      await Promise.all(perSeed.map(async result => {
+        if (result.status === 'fulfilled') result.value.items = await filterSafeItems(result.value.items, _safetyContext());
+      }));
+    }
 
     const seedIds = new Set(seeds.map(_mixKey));
     const seedGenres = new Set([
@@ -784,7 +806,9 @@ async function _runMix() {
           sort_by: 'popularity.desc',
           'vote_count.gte': 50,
         });
-        return (data.results || []).map(item => ({ ...item, media_type: type }));
+        let items = (data.results || []).map(item => ({ ...item, media_type: type }));
+        if (getSetting('kidsMode')) items = await filterSafeItems(items, _safetyContext());
+        return items;
       }));
       keywordPools.forEach(pool => {
         if (pool.status !== 'fulfilled') return;
@@ -833,7 +857,9 @@ async function _runMix() {
       const d = await tmdb(`/discover/${dType}`, dParams).catch(() => null);
       if (my !== _mixToken) return;
       const have = new Set(blended.map(b => _mixKey(b.item)));
-      (d?.results || []).forEach(m => {
+      let backfillItems = (d?.results || []).map(m => ({ ...m, media_type: dType }));
+      if (getSetting('kidsMode')) backfillItems = await filterSafeItems(backfillItems, _safetyContext());
+      backfillItems.forEach(m => {
         const item = { ...m, media_type: dType };
         const key = _mixKey(item);
         if (have.has(key) || seedIds.has(key) || dislikedIds.has(key) || watchedIds.has(key)) return;
@@ -1102,7 +1128,11 @@ document.addEventListener('contextmenu', e => {
     };
   }
   const t = item.media_type === 'tv' ? 'tv' : item.media_type === 'anime' ? 'anime' : 'movie';
-  const undoable = (msg, icon, doIt, undoIt) => { doIt(); toast(msg, icon, { actionLabel: 'Undo', onAction: undoIt }); };
+  const undoable = (msg, icon, doIt, undoIt) => {
+    doIt();
+    const undoId = undoManager.record({ label: msg, title: item.title || item.name || '', icon, undo: undoIt });
+    toast(msg, icon, { actionLabel: 'Undo', duration: 10000, onAction: () => undoManager.undo(undoId) });
+  };
   const syncTile = st => { if (tileEl) { const fn = window._svObSetTile; fn ? fn(tileEl, st) : null; } };
 
   const entries = [
@@ -1119,7 +1149,7 @@ document.addEventListener('contextmenu', e => {
       () => { setReaction(item, 'none'); syncTile('none'); }) },
     { icon: 'thumb_down', label: 'Not my taste', run: () => undoable('Hidden from recommendations', 'thumb_down',
       () => { addDislike(item); syncTile('disliked'); },
-      () => { state.disliked = state.disliked.filter(d => mediaKey(d) !== mediaKey(item)); persist('disliked'); state.prefDislikes = state.prefDislikes.filter(d => mediaKey(d) !== mediaKey(item)); persist('prefDislikes'); syncTile('none'); }) },
+      () => { setReaction(item, 'none'); syncTile('none'); }) },
     { icon: 'done_all', label: isWatched(item.id) ? 'Unmark watched' : 'Mark as watched', run: () => {
       const was = isWatched(item.id);
       undoable(was ? 'Unmarked watched' : 'Marked as watched', 'done_all',
@@ -1131,6 +1161,16 @@ document.addEventListener('contextmenu', e => {
         () => toggleWatchlist(item), () => toggleWatchlist(item));
     } },
   ];
+  if (card && document.body.classList.contains('test-mode')) {
+    const provider = card.dataset.source || 'Unknown source';
+    const endpoint = card.dataset.endpoint || 'Endpoint unavailable';
+    const cache = card.dataset.cache ? `, cache ${card.dataset.cache}` : '';
+    entries.unshift(
+      { icon: 'database', label: `${item.title || 'Title'} - ${provider}${cache}`, run: () => {} },
+      { icon: 'api', label: endpoint, run: () => {} },
+      '-',
+    );
+  }
   _ctxShow(entries, e.clientX, e.clientY);
 });
 
@@ -1216,9 +1256,11 @@ function initRightClickReset() {
      the observer helpers are defined at module scope below) ─────── */
 let _cardLogoObserver = null;
 let _cardLogoMutObs   = null;
+let _cardCertObserver = null;
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  undoManager.init({ getProfileId: getActiveProfileId, announce: toast });
   // Reset provider fail states every reload so previously-broken providers can be retried
   localStorage.removeItem('sv_provider_working');
 
@@ -1263,16 +1305,20 @@ let _cardLogoMutObs   = null;
   initSearch();
   loadGenresUI();
   initCardLogoObserver(); // lazy-load TMDB title treatment logos when setting is on
+  initCertificationObserver();
 
   // Inject pages first, then start data loading in the same RAF so row elements
   // exist when loadHomeRows() tries to put skeletons in them.
   const _startSp = new URLSearchParams(location.search);
-  const _isDirectWatch = _startSp.get('id') && (_startSp.get('watch') || _startSp.get('type'));
+  const _cleanRoute = parseCleanRoute(location.pathname);
+  const _hasLegacyRoute = ['watch', 'type', 'id', 'page', 'search', 'person', 'collection'].some(key => _startSp.has(key));
+  const _route = _hasLegacyRoute ? null : _cleanRoute;
+  const _isDirectWatch = _route?.kind === 'title' || (_startSp.get('id') && (_startSp.get('watch') || _startSp.get('type')));
 
   requestAnimationFrame(() => {
     injectPages(); // create all page/row elements
 
-    if (!_isDirectWatch) {
+    if (!_isDirectWatch && localStorage.getItem('sv_onboarded')) {
       loadHero().catch(() => {});
       loadHomeRows().catch(() => {});
 
@@ -1292,6 +1338,8 @@ let _cardLogoMutObs   = null;
           loadHomeRows().catch(() => {});
         }
       }, 12000);
+    } else if (!_isDirectWatch) {
+      preloadOnboardingHomeMetadata().catch(() => {});
     }
   });
 
@@ -1313,10 +1361,10 @@ let _cardLogoMutObs   = null;
 
   // URL param deep-link — supports ?watch=type&name=slug&id=X, ?id=X&type=Y, ?page=X
   const sp = new URLSearchParams(location.search);
-  const watchId = sp.get('id');
-  const watchType = sp.get('watch') || sp.get('type');
+  const watchId = sp.get('id') || (_route?.kind === 'title' ? String(_route.id) : null);
+  const watchType = sp.get('watch') || sp.get('type') || (_route?.kind === 'title' ? _route.type : null);
   const watchStart = sp.get('start') ? parseInt(sp.get('start')) : null;
-  const pageParam = sp.get('page');
+  const pageParam = sp.get('page') || (_route?.kind === 'page' ? _route.page : null);
   const searchParam = sp.get('search');
   const modeParam = sp.get('mode');
 
@@ -1345,7 +1393,7 @@ let _cardLogoMutObs   = null;
       const numId = +watchId;
       if (isNaN(numId) || numId <= 0) { location.replace('/404.html'); return; }
       try {
-        if (modeParam === 'info') {
+        if (_route?.kind === 'title' || modeParam === 'info') {
           await openInfoPage(numId, watchType);
         } else {
           await openMedia(numId, watchType);
@@ -1361,6 +1409,12 @@ let _cardLogoMutObs   = null;
         // Otherwise just stay on home page
       }
     }, 400);
+  } else if (_route?.kind === 'person') {
+    document.getElementById('loading-screen')?.classList.add('out');
+    setTimeout(() => openPersonPage(_route.id), 300);
+  } else if (_route?.kind === 'collection') {
+    document.getElementById('loading-screen')?.classList.add('out');
+    setTimeout(() => openCollectionPage(_route.id, 'Collection'), 300);
   } else if (pageParam === 'provider' && sp.get('id') && sp.get('name')) {
     const pid = +sp.get('id');
     const pname = decodeURIComponent(sp.get('name'));
@@ -1386,6 +1440,12 @@ let _cardLogoMutObs   = null;
     if (personId > 0) {
       document.getElementById('loading-screen')?.classList.add('out');
       setTimeout(() => openPersonPage(personId), 400);
+    }
+  } else if (sp.get('collection')) {
+    const collectionId = +sp.get('collection');
+    if (collectionId > 0) {
+      document.getElementById('loading-screen')?.classList.add('out');
+      setTimeout(() => openCollectionPage(collectionId, 'Collection'), 400);
     }
   }
 
@@ -1519,10 +1579,19 @@ async function maybeShowOnboarding() {
           </section>
 
           <section class="ob-stage-sec">
+            <div class="ob-label"><span class="material-icons-round">animation</span>Do you like anime?</div>
+            <div class="ob-chips" id="ob-anime-pref" role="group" aria-label="Anime preference">
+              <button type="button" class="ob-chip" data-anime-pref="yes">Yes</button>
+              <button type="button" class="ob-chip" data-anime-pref="neutral">Neutral</button>
+              <button type="button" class="ob-chip" data-anime-pref="no">No</button>
+            </div>
+          </section>
+
+          <section class="ob-stage-sec">
             <label class="ob-kids-row" for="ob-kids-toggle" style="margin-top:0">
               <span class="material-icons-round" style="color:#fbbf24">child_care</span>
               <span class="ob-kids-text"><b>Kid-Guided Mode</b><br>
-                <small>Refines everything to hide inappropriate content — G-level rows, kid-safe trending and search. Guidance, not a lock: an adult should supervise.</small></span>
+                <small>Shows only titles with verified G, PG, TV-Y, TV-Y7, TV-G, or TV-PG ratings. Unclear ratings stay hidden for safety.</small></span>
               <input type="checkbox" id="ob-kids-toggle" class="ob-kids-check">
             </label>
           </section>
@@ -1538,6 +1607,7 @@ async function maybeShowOnboarding() {
       </div>
 
       <div class="ob-footer">
+        <button class="ob-more" id="ob-import" type="button"><span class="material-icons-round">upload_file</span> Import backup</button>
         <button class="ob-more" id="ob-back" style="display:none">← Back</button>
         <button class="ob-done" id="ob-next">Next →</button>
         <button class="ob-done" id="ob-done" style="display:none">Start watching</button>
@@ -1583,8 +1653,31 @@ async function maybeShowOnboarding() {
     ob.querySelector('.ob-inner').scrollTop = 0;
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
-  nextBtn.addEventListener('click', () => { gotoStep(2); ob._loadRelevantFaces?.(); });
+  nextBtn.addEventListener('click', () => {
+    gotoStep(2);
+    ob._loadRelevantFaces?.();
+    _onboardingPreloadGeneration++;
+    loadHero().catch(() => {});
+    loadHomeRows().catch(() => {});
+  });
   backBtn.addEventListener('click', () => gotoStep(1));
+
+  const animeButtons = [...ob.querySelectorAll('[data-anime-pref]')];
+  const syncAnimePreference = () => animeButtons.forEach(button => {
+    const selected = button.dataset.animePref === getSetting('animePreference');
+    button.classList.toggle('picked', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  syncAnimePreference();
+  animeButtons.forEach(button => button.addEventListener('click', () => {
+    setSetting('animePreference', button.dataset.animePref);
+    syncAnimePreference();
+  }));
+  ob.querySelector('#ob-import')?.addEventListener('click', () => document.getElementById('btn-import-data')?.click());
+  document.addEventListener('sv:backup-imported', () => {
+    ob.remove();
+    setTimeout(() => maybeShowOnboarding(), 0);
+  }, { once: true });
 
   // Right-click reset (dispatched by the global contextmenu handler)
   ob.addEventListener('sv:reset', e => {
@@ -1716,23 +1809,25 @@ async function maybeShowOnboarding() {
     // liked titles first; popular actors only as the no-picks fallback
     ob._loadRelevantFaces = async () => {
       try {
-        const picks = [...likedTitles.values()].slice(0, 3);
+        const pickMap = new Map();
+        [...likedTitles.values(), ...(getActiveTasteState().liked || []), ...(getActiveTasteState().loved || [])]
+          .forEach(item => pickMap.set(mediaKey(item), item));
+        const picks = [...pickMap.values()].slice(0, 4);
+        let related = [];
         if (picks.length) {
           const credits = await Promise.allSettled(picks.map(x =>
             tmdb(`/${x.media_type === 'tv' ? 'tv' : 'movie'}/${x.id}/credits`)));
           const seenIds = new Set();
-          const faces = credits
+          related = credits
             .flatMap(r => r.status === 'fulfilled' ? (r.value?.cast || []).slice(0, 6) : [])
             .filter(pn => pn.profile_path && !pn.adult && !seenIds.has(pn.id) && seenIds.add(pn.id))
             .slice(0, 18);
-          if (faces.length >= 5) {
-            if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
-            return;
-          }
         }
-        // Two pages: the popular-person feed loses many entries to the
-        // adult/no-photo filter, and a half-empty gallery row looks broken
-        const faces = await _obPopularFaces();
+        const popular = await _obPopularFaces();
+        const seenIds = new Set();
+        const faces = [...related, ...popular]
+          .filter(person => !seenIds.has(person.id) && seenIds.add(person.id))
+          .slice(0, 18);
         if (document.getElementById('ob-profile-avatars')) renderAvatars(faces);
       } catch {}
     };
@@ -1760,9 +1855,16 @@ async function maybeShowOnboarding() {
           if (my === _avToken) renderAvatars(faces);
           return;
         }
-        const d = await tmdb('/search/person', { query: q }).catch(() => null);
+        const [d, popular] = await Promise.all([
+          tmdb('/search/person', { query: q }).catch(() => null),
+          _obPopularFaces().catch(() => []),
+        ]);
         if (my !== _avToken) return;
-        renderAvatars((d?.results || []).filter(pn => pn.profile_path && !pn.adult).slice(0, 18));
+        const seenIds = new Set();
+        const faces = [...(d?.results || []).filter(pn => pn.profile_path && !pn.adult), ...popular]
+          .filter(person => !seenIds.has(person.id) && seenIds.add(person.id))
+          .slice(0, 18);
+        renderAvatars(faces);
       }, 280);
     });
     avatarsEl.addEventListener('click', e => {
@@ -1793,7 +1895,10 @@ async function maybeShowOnboarding() {
   const kidsToggle = ob.querySelector('#ob-kids-toggle');
   if (kidsToggle) {
     kidsToggle.checked = !!getSetting('kidsMode');
-    kidsToggle.addEventListener('change', () => setSetting('kidsMode', kidsToggle.checked));
+    kidsToggle.addEventListener('change', () => {
+      setSetting('kidsMode', kidsToggle.checked);
+      if (kidsToggle.checked) pickedAge = 'PG';
+    });
   }
 
   // Accessibility chips (multi-toggle, applied instantly so users can see;
@@ -2024,6 +2129,7 @@ async function maybeShowOnboarding() {
   const searchResults = ob.querySelector('#ob-search-results');
   let obSearchT = null;
   searchInput.addEventListener('input', () => {
+    if (svExpOn('ob-top-search')) return;
     clearTimeout(obSearchT);
     const q = searchInput.value.trim();
     if (q.length < 2) { searchResults.innerHTML = ''; return; }
@@ -2156,7 +2262,7 @@ async function maybeShowOnboarding() {
       if (dislikedGenres.size) persist('prefGenreDislikes');
       state.prefLangs = [...pickedLangs];
       persist('prefLangs');
-      state.ageRating = pickedAge;
+      state.ageRating = getSetting('kidsMode') ? 'PG' : pickedAge;
       persist('ageRating');
       likedTitles.forEach(item => {
         setReaction({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null, genre_ids: item.genre_ids || [], original_language: item.original_language || '' }, 'love');
@@ -2378,21 +2484,29 @@ async function loadHero(attempt = 0) {
     // mode, and disliked genres. A PG profile with horror disliked must
     // never open the site to an R-rated horror banner.
     const heroOk = x => x.backdrop_path && _ageSafeItem(x) && _prefSafeItem(x);
-    const all = movRes.status === 'fulfilled'
-      ? (movRes.value.results || []).filter(heroOk)
+    let moviePool = movRes.status === 'fulfilled'
+      ? (movRes.value.results || []).map(x => ({ ...x, media_type: 'movie' }))
       : [];
-    const tvItems = tvRes.status === 'fulfilled'
-      ? (tvRes.value.results || []).filter(heroOk).slice(0, 3)
+    let tvPool = tvRes.status === 'fulfilled'
+      ? (tvRes.value.results || []).map(x => ({ ...x, media_type: 'tv' }))
       : [];
+    if (getSetting('kidsMode')) {
+      [moviePool, tvPool] = await Promise.all([
+        filterSafeItems(moviePool, _safetyContext()),
+        filterSafeItems(tvPool, _safetyContext()),
+      ]);
+    }
+    const all = moviePool.filter(heroOk);
+    const tvItems = tvPool.filter(heroOk).slice(0, 3);
 
     let items = [...all.slice(0, 5), ...tvItems].slice(0, 8);
-    // G-level: hero comes ONLY from certification-verified discover
-    if (_effAgeLevel() <= 2) items = [];
     // Restrictive profiles may thin the pool — top up with capped discover
     if (items.length < 4 && _effAgeLevel() <= 4) {
       const extra = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'vote_count.gte': 300 }).catch(() => null);
       const have = new Set(items.map(m => m.id));
-      (extra?.results || []).forEach(m => {
+      let extraItems = (extra?.results || []).map(m => ({ ...m, media_type: 'movie' }));
+      if (getSetting('kidsMode')) extraItems = await filterSafeItems(extraItems, _safetyContext());
+      extraItems.forEach(m => {
         if (items.length < 8 && !have.has(m.id) && heroOk(m)) { have.add(m.id); items.push({ ...m, media_type: 'movie' }); }
       });
     }
@@ -2518,8 +2632,23 @@ function shouldShow(id) {
 /* Effective maturity level: the profile's age rating, hard-capped at G
    when Kid-Guided Mode is on. */
 function _effAgeLevel() {
-  if (getSetting('kidsMode')) return 2; // kid-guided → everything G-ish
+  if (getSetting('kidsMode')) return 3; // verified G/PG/TV-PG family ceiling
   return AGE_LEVELS[state.ageRating] ?? 4;
+}
+
+function _safetyContext() {
+  return { kidsMode: !!getSetting('kidsMode'), maxLevel: _effAgeLevel() };
+}
+
+async function _allowRequestedContent(id, type) {
+  if (!getSetting('kidsMode')) return true;
+  const result = await resolveContentSafety({ id, type, media_type: type }, _safetyContext());
+  if (result.allowed) return true;
+  const message = result.reason === 'unknown-rating'
+    ? 'This title is hidden because its family rating could not be verified.'
+    : 'This title is outside the Kid-Guided family rating limit.';
+  toast(message, 'verified_user', { duration: 10000 });
+  return false;
 }
 
 /* Kid-safety heuristic for rows that CAN'T be certification-filtered at
@@ -2529,7 +2658,11 @@ function _effAgeLevel() {
      PG   : no horror, no thriller, no crime, no war, no mystery-horror
      PG-13: no horror unless clearly mainstream-safe, no adult flag */
 function _ageSafeItem(m) {
+  if (getSetting('animePreference') === 'no' && isAnimeContent(m)) return false;
   const lvl = _effAgeLevel();
+  if (getSetting('kidsMode')) {
+    return !!m?._safetyVerified && ['G', 'PG', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG'].includes(m.certification);
+  }
   if (lvl >= 5) return true; // R / no limit
   if (m.adult) return false;
   const g = m.genre_ids || [];
@@ -2601,14 +2734,18 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
     Promise.resolve().then(fetchFn),
     new Promise((_, reject) => setTimeout(() => reject(new Error('Row request timed out')), 15000)),
   ])
-    .then(items => {
+    .then(async items => {
       recordRowStat('loadTime', rowId, performance.now() - _t0);
+      if (getSetting('kidsMode') && items?.length) {
+        items = await filterSafeItems(items, _safetyContext());
+      }
       if (!items || !items.length) {
         if (attempt < _ROW_RETRY_DELAYS.length) {
           return new Promise(resolve => setTimeout(resolve, _ROW_RETRY_DELAYS[attempt]))
             .then(() => _loadRow(rowId, secId, fetchFn, type, attempt + 1));
         }
-        const cached = _getRowCache(rowId, true);
+        let cached = _getRowCache(rowId, true);
+        if (cached?.length && getSetting('kidsMode')) cached = await filterSafeItems(cached, _safetyContext());
         if (cached?.length) {
           renderRow(rowId, cached.slice(0, _ROW_MAX), type);
           if (sec) sec.style.display = '';
@@ -2680,13 +2817,14 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       final.forEach(m => _markShown(m));
       scheduledisambiguateTitles();
     })
-    .catch(err => {
+    .catch(async err => {
       if (attempt < _ROW_RETRY_DELAYS.length) {
         console.warn(`[SV Row] "${rowId}" attempt ${attempt + 1} failed; retrying`, err?.message || err);
         return new Promise(resolve => setTimeout(resolve, _ROW_RETRY_DELAYS[attempt]))
           .then(() => _loadRow(rowId, secId, fetchFn, type, attempt + 1));
       }
-      const cached = _getRowCache(rowId, true);
+      let cached = _getRowCache(rowId, true);
+      if (cached?.length && getSetting('kidsMode')) cached = await filterSafeItems(cached, _safetyContext());
       if (cached?.length) {
         console.warn(`[SV Row] "${rowId}" failed; showing stale cache`, err?.message || err);
         renderRow(rowId, cached.slice(0, _ROW_MAX), type);
@@ -3638,7 +3776,7 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
     .map(r => r.id);
   const stdActive = new Set([...STD_ALWAYS, ...stdSelected]);
 
-  const hideAnime = getSetting('hideAnime') || getSetting('kidsMode'); // kid mode: no anime rows
+  const hideAnime = getSetting('animePreference') === 'no';
   // Show/hide sections based on selection; always hide anime rows if hideAnime is on
   STD_ROW_POOL.forEach(r => {
     const sec = document.getElementById(r.sec);
@@ -4090,7 +4228,7 @@ function loadCuratedRows(prefG2, prefGenreStr2, pRng2) {
   });
   const activeIds = new Set([...alwaysShow, ...selected]);
 
-  const _hideAnime = getSetting('hideAnime') || getSetting('kidsMode'); // kid mode: no anime rows
+  const _hideAnime = getSetting('animePreference') === 'no';
   // Hide sections not in active set; also hide anime catalog rows if hideAnime is on
   ROW_CATALOG.forEach(r => {
     const sec = document.getElementById(r.sec);
@@ -4499,8 +4637,17 @@ async function loadAnimePage() {
 }
 
 /* ── GENRES UI ───────────────────────────────────────────────────── */
-function loadGenresUI() {
-  buildGenreChips('genre-scroll', GENRES, (id, name) => {
+async function loadGenresUI() {
+  let localizedGenres = GENRES;
+  if (!tmdbLang().startsWith('en')) {
+    const [movies, shows] = await Promise.allSettled([tmdb('/genre/movie/list'), tmdb('/genre/tv/list')]);
+    const names = new Map();
+    [movies, shows].forEach(result => {
+      if (result.status === 'fulfilled') (result.value?.genres || []).forEach(genre => names.set(genre.id, genre.name));
+    });
+    localizedGenres = GENRES.map(genre => ({ ...genre, name: names.get(genre.id) || genre.name }));
+  }
+  buildGenreChips('genre-scroll', localizedGenres, (id, name) => {
     if (state.activeGenreId === id) {
       state.activeGenreId = null;
       document.getElementById('genre-results-section')?.style && (document.getElementById('genre-results-section').style.display = 'none');
@@ -4716,8 +4863,9 @@ function buildAgeRatingUI() {
   container.innerHTML = ALL_RATINGS.map(({ r, level, desc }) => {
     const active = AGE_LEVELS[state.ageRating] === level;
     const allowed = level <= curLevel;
+    const disabled = getSetting('kidsMode') && level > 3;
     return `<button class="age-btn${active ? ' on' : ''}${allowed ? ' age-allowed' : ''}"
-      data-age="${r}" data-level="${level}" title="${desc}">
+      data-age="${r}" data-level="${level}" title="${disabled ? 'Unavailable while Kid-Guided is on' : desc}" ${disabled ? 'disabled aria-disabled="true"' : ''}>
       <span class="age-btn-code">${r}</span>
       <span class="age-btn-hint">${desc}</span>
     </button>`;
@@ -4725,6 +4873,7 @@ function buildAgeRatingUI() {
 
   container.querySelectorAll('.age-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (getSetting('kidsMode') && +btn.dataset.level > 3) return;
       state.ageRating = btn.dataset.age;
       persist('ageRating');
       buildAgeRatingUI(); // re-render
@@ -4762,14 +4911,73 @@ function _applyAgeBasedPreferences(rating) {
 function getSetting(id) {
   const defaults = Object.fromEntries(SV_SETTINGS.map(s => [s.id, s.default]));
   const saved = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+  if (id === 'animePreference' && !(id in saved)) return saved.hideAnime ? 'no' : 'neutral';
   return id in saved ? saved[id] : defaults[id];
 }
 
 function setSetting(id, val) {
   const saved = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+  if (id === 'kidsMode' && val && !saved.kidsMode) {
+    localStorage.setItem('sv_pre_kids_age', state.ageRating || 'PG-13');
+    state.ageRating = 'PG';
+    persist('ageRating');
+    toast('Kid-Guided only shows titles with a verified family rating. Titles with unclear ratings stay hidden for safety.', 'verified_user', { duration: 10000 });
+  } else if (id === 'kidsMode' && !val && saved.kidsMode) {
+    const previous = localStorage.getItem('sv_pre_kids_age');
+    if (previous && AGE_LEVELS[previous] !== undefined) {
+      state.ageRating = previous;
+      persist('ageRating');
+    }
+    localStorage.removeItem('sv_pre_kids_age');
+  }
+  if (id === 'animePreference') saved.hideAnime = val === 'no';
   saved[id] = val;
   localStorage.setItem('sv_settings', JSON.stringify(saved));
   applySetting(id, val);
+}
+
+async function requestKidsPinUnlock(reason = 'continue') {
+  const profileId = getActiveProfileId();
+  if (!hasKidsPin(profileId)) return true;
+  const secret = window.prompt(`Enter the Kid-Guided PIN or recovery code to ${reason}.`);
+  if (secret == null) return false;
+  const result = await verifyKidsPin(profileId, secret);
+  if (result.ok) {
+    if (result.method === 'recovery') {
+      removeKidsPin(profileId);
+      toast('Recovery code accepted. PIN protection was removed and can be set up again.', 'lock_open', { duration: 10000 });
+    }
+    return true;
+  }
+  if (result.reason === 'cooldown') {
+    toast(`Too many attempts. Try again in ${Math.max(1, Math.ceil(result.retryAfter / 1000))} seconds.`, 'lock_clock', { duration: 10000 });
+  } else {
+    toast('That PIN or recovery code is not correct.', 'lock', { duration: 10000 });
+  }
+  return false;
+}
+
+async function configureKidsPin() {
+  const profileId = getActiveProfileId();
+  if (hasKidsPin(profileId)) {
+    if (!await requestKidsPinUnlock('remove PIN protection')) return;
+    removeKidsPin(profileId);
+    toast('Kid-Guided PIN removed', 'lock_open');
+    buildSettingsUI();
+    return;
+  }
+  const pin = window.prompt('Create a 4 to 8 digit Kid-Guided PIN. This protects settings on this device only.');
+  if (pin == null) return;
+  const confirmPin = window.prompt('Enter the same PIN again.');
+  if (pin !== confirmPin) { toast('PINs did not match', 'warning'); return; }
+  try {
+    const recovery = await setKidsPin(profileId, pin);
+    window.alert(`Save this one-time recovery code somewhere private:\n\n${recovery}\n\nThis is device-level protection, not an online account lock. If both codes are lost, recovery requires clearing this site's local data or restoring a backup.`);
+    toast('Kid-Guided PIN enabled', 'enhanced_encryption');
+    buildSettingsUI();
+  } catch (error) {
+    toast(error.message || 'Could not create PIN', 'warning');
+  }
 }
 
 function applySetting(id, val) {
@@ -4786,7 +4994,14 @@ function applySetting(id, val) {
   if (id === 'reduceTransparency') document.body.classList.toggle('sv-no-transparency', !!val);
   if (id === 'bigTargets')         document.body.classList.toggle('sv-big-targets', !!val);
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
-  if (id === 'kidsMode') { _clearRowCache(); } // safety change → fresh rows
+  if (id === 'kidsMode') {
+    document.body.classList.toggle('sv-kids-mode', !!val);
+    _clearRowCache();
+    document.querySelectorAll('.card-row').forEach(row => { row.innerHTML = ''; });
+    setTimeout(() => { _homeLoading = false; }, 0);
+    buildAgeRatingUI();
+  }
+  if (id === 'animePreference') _clearRowCache();
   if (id === 'featureTips') _placeTipRows(); // re-place or clear immediately
   if (id === 'uiLanguage' || id === 'metaLanguage') {
     applyUITranslations();
@@ -4855,7 +5070,7 @@ function applySetting(id, val) {
     // Use setTimeout so initCardLogoObserver is guaranteed to be defined
     setTimeout(() => initCardLogoObserver(), 0);
   }
-  if (id === 'disableAgeFilter') { if (val) { state.ageRating = 'NC-17'; persist('ageRating'); } }
+  if (id === 'disableAgeFilter') { if (val && !getSetting('kidsMode')) { state.ageRating = 'NC-17'; persist('ageRating'); } }
   if (id === 'disableSandbox') {
     const frame = document.getElementById('player-frame');
     if (frame) {
@@ -5103,18 +5318,34 @@ function buildSettingsUI() {
       return `<div class="sv-setting-wrap" data-sid="${esc(s.id)}" data-sgroup="${esc(groupName)}" data-find="${esc(find)}" data-slabel="${esc(s.label.toLowerCase())}" data-skw="${esc((s.keywords || '').toLowerCase())}">${renderSetting(s)}</div>`;
     }).join('');
   }
+  if (getSetting('kidsMode')) {
+    const configured = hasKidsPin(getActiveProfileId());
+    html += `<div class="settings-group-header" data-sgroup="Account">Kid-Guided protection</div>
+      <div class="sv-setting-wrap" data-sid="kidsPin" data-sgroup="Account" data-find="kids pin parental lock recovery device protection">
+        <div class="sv-setting-row">
+          <span class="material-icons-round sv-setting-icon">${configured ? 'enhanced_encryption' : 'lock_open'}</span>
+          <div class="sv-setting-info">
+            <span class="sv-setting-label">${configured ? 'PIN protection is on' : 'Add a Kid-Guided PIN'}</span>
+            <span class="sv-setting-desc">Protect leaving this profile and turning off Kid-Guided on this device.</span>
+          </div>
+          <button type="button" class="btn-secondary" data-kids-pin>${configured ? 'Remove PIN' : 'Set PIN'}</button>
+        </div>
+      </div>`;
+  }
   grid.innerHTML = html;
   _wireSettingsSearch(grid);
 
   grid.querySelectorAll('.sv-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.dataset.setting;
       const newVal = !getSetting(id);
+      if (id === 'kidsMode' && !newVal && !await requestKidsPinUnlock('turn off Kid-Guided')) return;
       setSetting(id, newVal);
       btn.classList.toggle('on', newVal);
       btn.setAttribute('aria-checked', String(newVal));
     });
   });
+  grid.querySelector('[data-kids-pin]')?.addEventListener('click', configureKidsPin);
 
   grid.querySelectorAll('.sv-setting-sel').forEach(sel => {
     sel.addEventListener('change', () => {
@@ -5432,6 +5663,7 @@ function setupAC(inputId, dropId, onSelect) {
 
 /* ── OPEN MEDIA / MODAL ──────────────────────────────────────────── */
 export async function openMedia(id, type, hint = {}) {
+  if (!await _allowRequestedContent(id, type)) return;
   // Redirect to info page if that's the user's default preference
   // On mobile (≤720px), info page is the default to prevent accidental playback
   const isMobile = window.innerWidth <= 720;
@@ -5660,6 +5892,9 @@ async function loadRelated(id, type, details) {
     } else {
       const d = await tmdb(`/${type}/${id}/recommendations`);
       items = (d.results || []).slice(0, 12);
+    }
+    if (getSetting('kidsMode')) {
+      items = await filterSafeItems(items.map(item => ({ ...item, media_type: type })), _safetyContext());
     }
     renderRelated(items, type);
   } catch {
@@ -6001,6 +6236,10 @@ function initEventDelegation() {
     if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
   });
   document.getElementById('warn-allow-type-btn')?.addEventListener('click', () => {
+    if (getSetting('kidsMode')) {
+      toast('Turn off Kid-Guided with an adult before changing the family rating limit.', 'lock', { duration: 8000 });
+      return;
+    }
     // Raise content rating to match this specific content
     const aw = document.getElementById('age-warn');
     if (!aw) return;
@@ -6013,6 +6252,10 @@ function initEventDelegation() {
     if (state.currentMedia) loadPlayer(state.currentMedia.useId || state.currentMedia.id, state.currentMedia.type, 1, 1);
   });
   document.getElementById('warn-allow-all-btn')?.addEventListener('click', () => {
+    if (getSetting('kidsMode')) {
+      toast('Unlock All Content is unavailable while Kid-Guided is on.', 'lock', { duration: 8000 });
+      return;
+    }
     state.ageRating = 'NC-17';
     persist('ageRating');
     document.getElementById('age-warn').style.display = 'none';
@@ -6327,6 +6570,7 @@ function initEventDelegation() {
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
       tasteSkips:       state.tasteSkips,
+      kidsTaste:        state.kidsTaste,
       // Row system diagnostics — engagement, cooldowns, daily stats,
       // selection history. All local-only; leaves the device only in this
       // manual export.
@@ -6381,11 +6625,7 @@ function initEventDelegation() {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const data = JSON.parse(e.target.result);
-        if (data.version !== 2 && !data.watchlist) {
-          toast('Invalid backup file', 'error');
-          return;
-        }
+        const data = parseBackupText(e.target.result);
 
         const choice = await showChoice(
           'Import Data',
@@ -6427,6 +6667,13 @@ function initEventDelegation() {
           if (data.continueWatching) { Object.assign(state.continueWatching, data.continueWatching); persist('continueWatching'); }
           if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
           if (data.tasteSkips)       { Object.assign(state.tasteSkips, data.tasteSkips); persist('tasteSkips'); }
+          if (data.kidsTaste) {
+            ['liked', 'loved', 'disliked', 'watched', 'watchlist', 'prefLikes', 'prefDislikes'].forEach(field => {
+              state.kidsTaste[field] = merge(state.kidsTaste[field] || [], data.kidsTaste[field] || []);
+            });
+            Object.assign(state.kidsTaste.tasteSkips, data.kidsTaste.tasteSkips || {});
+            persist('kidsTaste');
+          }
           if (data.featureState) {
             const featureKeys = {
               mixSeeds: 'sv_mix_seeds',
@@ -6467,10 +6714,12 @@ function initEventDelegation() {
           loadHero().catch(() => {});
           loadHomeRows().catch(() => {});
           toast(`Created profile "${newName}" with imported data!`, 'person');
+          document.dispatchEvent(new CustomEvent('sv:backup-imported'));
         } else {
           applyData();
           renderLibrary();
           toast('Data merged into current profile!', 'check_circle');
+          document.dispatchEvent(new CustomEvent('sv:backup-imported'));
         }
       } catch (err) {
         toast(`Import failed: ${err.message || 'Invalid file'}`, 'error');
@@ -6575,21 +6824,24 @@ function initEventDelegation() {
 /* ── LIKE/WATCHLIST HELPERS ──────────────────────────────────────── */
 function handleLike(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
+  const previousReaction = getReaction(id, type);
+  const taste = getActiveTasteState();
+  const hadPreference = (taste.prefLikes || []).some(entry => mediaKey(entry) === mediaKey(item));
   const reaction = cycleReaction(item);
   const added = reaction === 'like' || reaction === 'love';
   if (added) {
     // Auto-add to "Titles I Love" in CYF — ONLY with valid, complete data
     const numId = +item.id;
     const hasTitle = !!(item.title || item.name);
-    if (isValidItem(item) && hasTitle && !state.prefLikes.some(x => x.id == id)) {
-      state.prefLikes.push({
+    if (isValidItem(item) && hasTitle && !taste.prefLikes.some(x => mediaKey(x) === mediaKey(item))) {
+      taste.prefLikes.push({
         id: numId,
         type: item.type || type,
         title: (item.title || item.name || '').trim(),
         poster: item.poster_path ? imgUrl(item.poster_path, 'w92') : '',
         score: 4,
       });
-      persist('prefLikes');
+      getSetting('kidsMode') ? persist('kidsTaste') : persist('prefLikes');
     }
   }
   // Note: removing a like does NOT auto-remove from prefLikes — must be done manually
@@ -6600,15 +6852,28 @@ function handleLike(id, type, btn, metaOverride) {
     btn.querySelector('.material-icons-round').textContent = isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt';
     btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
   }
-  toast(reaction === 'love' ? 'Loved. This strongly shapes recommendations.' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline');
+  const label = reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked' : 'Reaction removed';
+  const undoId = undoManager.record({ label, title: item.title || item.name || '', icon: reaction === 'love' ? 'favorite' : 'thumb_up', undo: () => {
+    setReaction(item, previousReaction);
+    if (!hadPreference) {
+      taste.prefLikes = (taste.prefLikes || []).filter(entry => mediaKey(entry) !== mediaKey(item));
+      getSetting('kidsMode') ? persist('kidsTaste') : persist('prefLikes');
+    }
+    refreshCardBadges(id);
+  } });
+  toast(reaction === 'love' ? 'Loved. This strongly shapes recommendations.' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   return reaction;
 }
 
 function handleWatched(id, type, btn, card) {
   const item = buildItemMeta(id, type);
   const added = toggleWatched(item);
-  if (added) toast('Marked as watched', 'visibility');
-  else toast('Removed from watched', 'visibility_off');
+  const label = added ? 'Marked as watched' : 'Removed from watched';
+  const undoId = undoManager.record({ label, title: item.title || '', icon: 'visibility', undo: () => {
+    toggleWatched(item);
+    refreshCardBadges(id);
+  } });
+  toast(label, added ? 'visibility' : 'visibility_off', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   if (btn) {
     btn.classList.toggle('done', isWatched(id));
     btn.querySelector('.material-icons-round').textContent = isWatched(id) ? 'visibility' : 'visibility_off';
@@ -6632,8 +6897,12 @@ function handleWatched(id, type, btn, card) {
 function handleWatchlist(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
   const added = toggleWatchlist(item);
-  if (added) toast('Saved to Watchlist', 'bookmark_added');
-  else toast('Removed from Watchlist', 'bookmark_remove');
+  const label = added ? 'Saved to Watchlist' : 'Removed from Watchlist';
+  const undoId = undoManager.record({ label, title: item.title || '', icon: 'bookmark', undo: () => {
+    toggleWatchlist(item);
+    refreshCardBadges(id);
+  } });
+  toast(label, added ? 'bookmark_added' : 'bookmark_remove', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   refreshCardBadges(id);
   if (btn) {
     btn.classList.toggle('saved', isInWatchlist(id));
@@ -6734,10 +7003,7 @@ function slugify(str) {
 }
 
 function buildMediaUrl(id, type, title, year) {
-  // Descriptive URL: ?watch=movie&name=inception-2010&id=550
-  const titlePart = slugify(title || '');
-  const slug = year ? `${titlePart}-${year}` : titlePart;
-  return `${location.origin}${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}`;
+  return `${location.origin}${titlePath(type, id, title, year)}`;
 }
 
 function updatePageSEO(title, type, overview, poster) {
@@ -6755,10 +7021,7 @@ function updatePageSEO(title, type, overview, poster) {
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
   document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
   document.querySelector('meta[property="og:url"]')?.setAttribute('content', location.href);
-  // Watch pages canonical → info page (more content, better for SEO)
-  const infoCanonical = location.href.includes('mode=info')
-    ? location.href
-    : location.href + (location.href.includes('?') ? '&mode=info' : '?mode=info');
+  const infoCanonical = location.href.split('?')[0];
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', infoCanonical);
   document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', fullTitle);
   document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
@@ -7103,6 +7366,7 @@ function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
 }
 
 export async function openInfoPage(id, type, hint = {}) {
+  if (!await _allowRequestedContent(id, type)) return;
   clearHoverTrailer(); // stop hover trailer before opening info page
   // Close other overlays first — only one overlay open at a time
   document.getElementById('person-overlay')?.classList.remove('open');
@@ -7584,8 +7848,7 @@ export async function openInfoPage(id, type, hint = {}) {
 
     // Update URL — info page IS the canonical; watch pages point here
     const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
-    const slug = slugify(`${title} ${yr}`);
-    const infoUrl = `${location.pathname}?watch=${encodeURIComponent(type)}&name=${encodeURIComponent(slug)}&id=${id}&mode=info`;
+    const infoUrl = titlePath(type, id, title, yr);
     history.pushState({ id, type, mode: 'info' }, title, infoUrl);
 
     // Info page IS the canonical — full content, unique per item
@@ -8017,15 +8280,22 @@ export async function openCompanyPage(companyId, companyName) {
 
 /* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
 export async function openCollectionPage(collectionId, collectionName) {
+  const initialPath = collectionPath(collectionId, collectionName);
+  history.pushState({ collectionId }, '', initialPath);
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${SITE_ORIGIN}${initialPath}`);
   _openCompanyOverlay({
     name: collectionName,
     subtitle: 'Film Collection',
     defaultCompact: true, // collections look better as a grid
     fetchFn: async () => {
       const col = await tmdb(`/collection/${collectionId}`);
-      const movies = (col.parts || [])
+      let movies = (col.parts || [])
         .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1)
         .map(m => ({...m, media_type:'movie'}));
+      if (getSetting('kidsMode')) movies = await filterSafeItems(movies, _safetyContext());
+      const resolvedPath = collectionPath(collectionId, col.name || collectionName);
+      history.replaceState({ collectionId }, '', resolvedPath);
+      document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${SITE_ORIGIN}${resolvedPath}`);
 
       // Build a readable subtitle: "X Films · Year–Year"
       const years = movies.map(m => +(m.release_date||'').slice(0,4)).filter(Boolean);
@@ -8686,7 +8956,7 @@ export async function openPersonPage(personId) {
   }
 
   ov._personId = personId;
-  history.pushState({ personId }, '', `${location.pathname}?person=${personId}`);
+  history.pushState({ personId }, '', personPath(personId, 'person'));
   _setPersonSEO(personId, null); // unique canonical immediately — data refines it below
 
   const nameEl  = document.getElementById('person-name');
@@ -8704,6 +8974,10 @@ export async function openPersonPage(personId) {
 
   try {
     const person = await tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' });
+    if (getSetting('kidsMode') && person.combined_credits) {
+      person.combined_credits.cast = await filterSafeItems(person.combined_credits.cast || [], _safetyContext());
+      person.combined_credits.crew = await filterSafeItems(person.combined_credits.crew || [], _safetyContext());
+    }
 
     if (nameEl)  nameEl.textContent = person.name || '';
     _setPersonSEO(personId, person); // full unique metadata now that we have the data
@@ -8738,7 +9012,9 @@ export async function openPersonPage(personId) {
     const deptLabel = dept === 'Acting' ? 'actor' : dept === 'Directing' ? 'director' : dept === 'Writing' ? 'writer' : dept.toLowerCase();
     const birthBits = [person.birthday ? `born ${person.birthday}` : null, person.place_of_birth].filter(Boolean).join(' in ');
     const personDesc = `${person.name}${birthBits ? ` (${birthBits})` : ''} — ${deptLabel}${knownFor.length ? ` known for ${knownFor.join(', ')}` : ''}. Full filmography, biography, and where to watch on StaticVault931.`;
-    const personUrl = `https://staticvault931.github.io/?person=${personId}`;
+    const resolvedPersonPath = personPath(personId, person.name);
+    const personUrl = `${SITE_ORIGIN}${resolvedPersonPath}`;
+    history.replaceState({ personId }, '', resolvedPersonPath);
 
     document.title = `${person.name} — ${knownFor[0] ? `${knownFor[0]} & More` : 'Films & TV'} — StaticVault931`;
     document.querySelector('meta[name="description"]')?.setAttribute('content', personDesc.slice(0, 300));
@@ -8779,7 +9055,7 @@ export async function openPersonPage(personId) {
   }
 }
 
-function loadPersonCredits(personId, type) {
+async function loadPersonCredits(personId, type) {
   const ov = document.getElementById('person-overlay');
   const grid = document.getElementById('person-grid');
   if (!grid || !ov._credits) return;
@@ -9234,9 +9510,10 @@ function renderProfilesGrid() {
   grid.querySelector('#profiles-grid-add')?.addEventListener('click', () => openProfileEditor(null));
 
   grid.querySelectorAll('.profile-card-main').forEach(card => {
-    card.addEventListener('click', e => {
+    card.addEventListener('click', async e => {
       const pid = card.dataset.pid;
       if (pid === getActiveProfileId()) { closeProfilesOverlay(); return; }
+      if (getSetting('kidsMode') && !await requestKidsPinUnlock('switch profiles')) return;
       switchProfile(pid);
       updateProfileHeaderBtn();
       applyAllSettings(); // re-apply the new profile's display/player settings
@@ -9306,7 +9583,11 @@ function openProfileEditor(profileId) {
     kidsChk.checked = !!getSetting('kidsMode');
     if (!kidsChk._svWired) {
       kidsChk._svWired = true;
-      kidsChk.addEventListener('change', () => {
+      kidsChk.addEventListener('change', async () => {
+        if (!kidsChk.checked && !await requestKidsPinUnlock('turn off Kid-Guided')) {
+          kidsChk.checked = true;
+          return;
+        }
         setSetting('kidsMode', kidsChk.checked);
         buildSettingsUI(); // keep the Settings page toggle in sync visually
         toast(kidsChk.checked ? 'Kid-Guided Mode on — feed refined for kids' : 'Kid-Guided Mode off', 'child_care');
@@ -9588,6 +9869,16 @@ let _testCodeTimer = null;
 const TEST_CODE = 'iopiop';
 
 function initTestMode() {
+  document.addEventListener('mouseover', event => {
+    if (!document.body.classList.contains('test-mode')) return;
+    const card = event.target.closest?.('.card[data-id][data-type]');
+    if (!card || card.dataset.devSourceReady) return;
+    const provider = card.dataset.source || 'Unknown source';
+    const endpoint = card.dataset.endpoint || 'endpoint unavailable';
+    const cache = card.dataset.cache ? `, cache ${card.dataset.cache}` : '';
+    card.title = `${card.dataset.title || 'Title'} - ${provider} (${endpoint}${cache})`;
+    card.dataset.devSourceReady = '1';
+  });
   // Step 1: Click footer logo/bottom 5 times within 2.5 seconds to arm
   let _footerClicks = 0;
   let _footerTimer = null;
@@ -10462,6 +10753,53 @@ function initCardLogoObserver() {
   _cardLogoMutObs.observe(document.body, { childList: true, subtree: true });
 }
 
+function initCertificationObserver() {
+  _cardCertObserver?.disconnect();
+  _cardCertObserver = new IntersectionObserver(entries => {
+    entries.forEach(async entry => {
+      if (!entry.isIntersecting) return;
+      const card = entry.target;
+      _cardCertObserver.unobserve(card);
+      if (card.dataset.certification || getSetting('kidsMode')) return;
+      const result = await resolveContentSafety({
+        id: +card.dataset.id,
+        type: card.dataset.type,
+        media_type: card.dataset.type,
+      }, { requireRating: true, maxLevel: 6 }).catch(() => null);
+      if (!result?.verified || !card.isConnected) return;
+      card.dataset.certification = result.rating;
+      let badges = card.querySelector('.card-badges');
+      if (!badges) {
+        badges = document.createElement('div');
+        badges.className = 'card-badges';
+        card.querySelector('.card-poster')?.appendChild(badges);
+      }
+      if (badges && !badges.querySelector('.badge-cert')) {
+        const badge = document.createElement('span');
+        badge.className = 'card-badge badge-cert';
+        badge.title = `Content rating from ${result.source || 'metadata provider'}`;
+        badge.textContent = result.rating;
+        badges.appendChild(badge);
+      }
+    });
+  }, { rootMargin: '120px' });
+
+  const observe = root => {
+    if (root.matches?.('.card[data-id][data-type]:not([data-cert-observed])')) {
+      root.dataset.certObserved = '1';
+      _cardCertObserver.observe(root);
+    }
+    root.querySelectorAll?.('.card[data-id][data-type]:not([data-cert-observed])').forEach(card => {
+      card.dataset.certObserved = '1';
+      _cardCertObserver.observe(card);
+    });
+  };
+  observe(document);
+  new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+    if (node.nodeType === 1) observe(node);
+  }))).observe(document.body, { childList: true, subtree: true });
+}
+
 /* ── ACCESSIBILITY ───────────────────────────────────────────────── */
 function initA11y() {
   // ── Focus trap helper ──────────────────────────────────────────
@@ -10719,13 +11057,11 @@ function initHoverTrailer() {
     addDislike(item);
     const icon = document.querySelector('#nc-dislike .material-icons-round');
     if (icon) icon.textContent = 'thumb_down';
-    toast('Hidden from recommendations', 'thumb_down', { actionLabel: 'Undo', onAction: () => {
-      state.disliked = state.disliked.filter(d => mediaKey(d) !== mediaKey(item));
-      persist('disliked');
-      state.prefDislikes = state.prefDislikes.filter(d => mediaKey(d) !== mediaKey(item));
-      persist('prefDislikes');
+    const undoId = undoManager.record({ label: 'Hidden from recommendations', title: item.title || '', icon: 'thumb_down', undo: () => {
+      setReaction(item, 'none');
       if (icon) icon.textContent = 'thumb_down_off_alt';
     } });
+    toast('Hidden from recommendations', 'thumb_down', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   });
   document.getElementById('nc-watched')?.addEventListener('click', e => {
     e.stopPropagation();
@@ -10736,10 +11072,12 @@ function initHoverTrailer() {
     const nowWatched = toggleWatched(item);
     const icon = document.querySelector('#nc-watched .material-icons-round');
     if (icon) icon.textContent = nowWatched ? 'done_all' : 'check_circle_outline';
-    toast(nowWatched ? 'Marked as watched' : 'Unmarked watched', 'done_all', { actionLabel: 'Undo', onAction: () => {
+    const label = nowWatched ? 'Marked as watched' : 'Unmarked watched';
+    const undoId = undoManager.record({ label, title: item.title || '', icon: 'done_all', undo: () => {
       toggleWatched(item);
       if (icon) icon.textContent = isWatched(id) ? 'done_all' : 'check_circle_outline';
     } });
+    toast(label, 'done_all', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   });
   // Mute toggle — user gesture, so browsers always honor the unmute
   document.getElementById('nc-mute')?.addEventListener('click', e => {
@@ -11032,12 +11370,19 @@ let _trailersLoading = false;
 let _trailersLoaded = false;
 let _trailersItems = [];
 
-// Dwell-time genre scoring (genreId → score delta, stored in sessionStorage)
-const _clipsDwellPrefs = (() => {
-  try { return new Map(JSON.parse(sessionStorage.getItem('sv_clips_dwell') || '[]')); } catch { return new Map(); }
-})();
+// Dwell-time genre scoring is isolated by profile and by Kid-Guided mode.
+const _clipsDwellMaps = new Map();
+const _clipsDwellKey = () => `sv_clips_dwell_v2_${getActiveProfileId() || 'default'}_${getSetting('kidsMode') ? 'kids' : 'adult'}`;
+function _clipsDwellPrefs() {
+  const key = _clipsDwellKey();
+  if (!_clipsDwellMaps.has(key)) {
+    try { _clipsDwellMaps.set(key, new Map(JSON.parse(localStorage.getItem(key) || '[]'))); }
+    catch { _clipsDwellMaps.set(key, new Map()); }
+  }
+  return _clipsDwellMaps.get(key);
+}
 function _saveClipsDwellPrefs() {
-  try { sessionStorage.setItem('sv_clips_dwell', JSON.stringify([..._clipsDwellPrefs])); } catch {}
+  try { localStorage.setItem(_clipsDwellKey(), JSON.stringify([..._clipsDwellPrefs()])); } catch {}
 }
 
 const _clipsSeenKey = () => `sv_clips_seen_v1_${getActiveProfileId() || 'default'}`;
@@ -11075,14 +11420,15 @@ function _stopClipPlayClock(slide) {
 function _scoreClipItem(item) {
   // Genre ids arrive as numbers from TMDB but may be stored as strings or
   // numbers in prefs — index both forms so matches never silently fail
-  const prefGenres = new Set((state.prefGenres || []).flatMap(g => [g, String(g), +g]));
-  const dislikedIds = new Set((state.disliked || []).map(x => x.id));
+  const taste = getActiveTasteState();
+  const prefGenres = new Set((getSetting('kidsMode') ? [] : (state.prefGenres || [])).flatMap(g => [g, String(g), +g]));
+  const dislikedIds = new Set((taste.disliked || []).map(x => x.id));
   const genreIds = item.genre_ids || [];
   let score = 0;
   score += getTasteScore(item) * 1.25;
   genreIds.forEach(g => {
     if (prefGenres.has(String(g))) score += 2.5;
-    score += (_clipsDwellPrefs.get(g) || 0) * 1.5; // amplify dwell signal
+    score += (_clipsDwellPrefs().get(g) || 0) * 1.5; // amplify dwell signal
   });
   // Strong boost: watchlisted (user wants to watch but hasn't yet — perfect clip)
   if ((state.watchlist || []).some(w => w.id === item.id)) score += 4;
@@ -11427,7 +11773,7 @@ async function initTrailersFeed() {
           if (delta !== 0) {
             slide.dataset.dwellScored = '1';
             genreIds.forEach(g => {
-              _clipsDwellPrefs.set(g, Math.max(-5, Math.min(5, (_clipsDwellPrefs.get(g) || 0) + delta)));
+              _clipsDwellPrefs().set(g, Math.max(-5, Math.min(5, (_clipsDwellPrefs().get(g) || 0) + delta)));
             });
             _saveClipsDwellPrefs();
           }
@@ -11501,9 +11847,11 @@ async function _loadMoreTrailers() {
       shows  = (r2.status === 'fulfilled' ? r2.value.results || [] : []).map(m => ({ ...m, _type: 'tv' }));
     } else {
       // After page 2: blend trending + genre-targeted based on dwell prefs + user preferences
-      const topDwellGenres = [..._clipsDwellPrefs.entries()]
+      const topDwellGenres = [..._clipsDwellPrefs().entries()]
         .filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([g]) => g);
-      const prefGenres = (state.prefGenres || []).slice(0, 2).map(Number);
+      const taste = getActiveTasteState();
+      const kidGenres = (taste.liked || []).flatMap(item => item.genre_ids || []);
+      const prefGenres = (getSetting('kidsMode') ? kidGenres : (state.prefGenres || [])).slice(0, 2).map(Number);
       const genreIds = [...new Set([...topDwellGenres, ...prefGenres])].slice(0, 2);
 
       const baseRequests = [
@@ -11527,14 +11875,23 @@ async function _loadMoreTrailers() {
     }
 
     // Merge, deduplicate, filter excluded, then sort by personalization score
+    if (getSetting('kidsMode')) {
+      [movies, shows] = await Promise.all([
+        filterSafeItems(movies.map(m => ({ ...m, media_type: 'movie' })), _safetyContext()),
+        filterSafeItems(shows.map(m => ({ ...m, media_type: 'tv' })), _safetyContext()),
+      ]);
+      movies = movies.map(m => ({ ...m, _type: 'movie' }));
+      shows = shows.map(m => ({ ...m, _type: 'tv' }));
+    }
     const existIds = new Set(_trailersItems.map(i => `${i._type}-${i.id}`));
     const watchlistIds = new Set((state.watchlist || []).map(w => w.id));
     const recentIds = new Set((state.recentlyViewed || []).map(r => r.id));
 
-    const dislikedIds = new Set((state.disliked || []).map(x => x.id));
-    const watchedIds = new Set((state.watched || []).map(x => x.id));
+    const activeTaste = getActiveTasteState();
+    const dislikedIds = new Set((activeTaste.disliked || []).map(x => x.id));
+    const watchedIds = new Set((getSetting('kidsMode') ? [] : (state.watched || [])).map(x => x.id));
     const clipsSeen = _getClipsSeen();
-    const hideAnimeClips = !!(getSetting('hideAnime') || getSetting('kidsMode') || localStorage.getItem('sv_clips_noanime') === '1');
+    const hideAnimeClips = !!(getSetting('animePreference') === 'no' || localStorage.getItem('sv_clips_noanime') === '1');
     let combined = [...movies, ...shows].filter(i => {
       if (existIds.has(`${i._type}-${i.id}`)) return false;
       // Never show disliked content in clips
@@ -11588,7 +11945,7 @@ function _buildTrailerSlide(item) {
 
   slide.innerHTML = `
     ${backdropPath ? `<img class="trailer-slide-poster" src="${backdropPath}" alt="${esc(title)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'">` : ''}
-    <iframe class="trailer-slide-iframe" allow="autoplay; fullscreen; encrypted-media" allowfullscreen title="${esc(title)} clip" style="opacity:0;transition:opacity .4s"></iframe>
+    <iframe class="trailer-slide-iframe" sandbox="allow-scripts allow-same-origin allow-presentation" allow="autoplay; fullscreen; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="${esc(title)} clip" style="opacity:0;transition:opacity .4s"></iframe>
     <span class="material-icons-round trailer-slide-pause-ind"></span>
     <div class="trailer-slide-gradient"></div>
     <div class="trailer-slide-content">
@@ -11680,6 +12037,7 @@ function _buildTrailerSlide(item) {
       });
     } else if (action === 'like') {
       const likeItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '', genre_ids: item.genre_ids || [], original_language: item.original_language || '' };
+      const previousReaction = getReaction(id, type);
       const reaction = cycleReaction(likeItem);
       recordClipSession({ action: reaction });
       const icon = btn.querySelector('.material-icons-round');
@@ -11687,13 +12045,27 @@ function _buildTrailerSlide(item) {
       btn.classList.toggle('on', isLiked(id));
       btn.classList.toggle('loved', isLoved(id));
       btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
-      toast(reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline');
+      const label = reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked' : 'Reaction removed';
+      const undoId = undoManager.record({ label, title, icon: reaction === 'love' ? 'favorite' : 'thumb_up', undo: () => {
+        setReaction(likeItem, previousReaction);
+        const active = getReaction(id, type);
+        if (icon) icon.textContent = active === 'love' ? 'favorite' : active === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
+        btn.classList.toggle('on', active !== 'none');
+        btn.classList.toggle('loved', active === 'love');
+      } });
+      toast(reaction === 'like' ? 'Liked. Tap again to Love it.' : label, reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'wl') {
       const wlItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       toggleWatchlist(wlItem);
       const icon = btn.querySelector('.material-icons-round');
       if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
       btn.classList.toggle('on', isInWatchlist(id));
+      const undoId = undoManager.record({ label: isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', title, icon: 'bookmark', undo: () => {
+        toggleWatchlist(wlItem);
+        if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
+        btn.classList.toggle('on', isInWatchlist(id));
+      } });
+      toast(isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', 'bookmark', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'watched') {
       const watchedItem = { id, type, media_type: type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       const nowWatched = toggleWatched(watchedItem);
@@ -11701,21 +12073,30 @@ function _buildTrailerSlide(item) {
       if (icon) icon.textContent = nowWatched ? 'done_all' : 'check_circle_outline';
       btn.classList.toggle('on', nowWatched);
       if (nowWatched) {
+        const undoId = undoManager.record({ label: 'Marked as already watched', title, icon: 'done_all', undo: () => {
+          if (isWatched(id, type)) toggleWatched(watchedItem);
+          if (icon) icon.textContent = 'check_circle_outline';
+          btn.classList.remove('on');
+        } });
         toast('Marked as already watched', 'done_all', {
           actionLabel: 'Undo',
-          onAction: () => {
-            if (isWatched(id)) toggleWatched(watchedItem);
-            toast('Watched mark removed', 'undo');
-          },
+          onAction: () => undoManager.undo(undoId),
         });
         _clipsNavSlide(1);
+      } else {
+        const undoId = undoManager.record({ label: 'Unmarked watched', title, icon: 'done_all', undo: () => {
+          if (!isWatched(id, type)) toggleWatched(watchedItem);
+          if (icon) icon.textContent = 'done_all';
+          btn.classList.add('on');
+        } });
+        toast('Unmarked watched', 'done_all', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
       }
     } else if (action === 'dislike') {
       recordClipSession({ action: 'dislike' });
       // Down-weight genres and remove slide
       const genreIds = (slide.dataset.genres || '').split(',').filter(Boolean).map(Number);
       genreIds.forEach(g => {
-        _clipsDwellPrefs.set(g, Math.max(-5, (_clipsDwellPrefs.get(g) || 0) - 2));
+        _clipsDwellPrefs().set(g, Math.max(-5, (_clipsDwellPrefs().get(g) || 0) - 2));
       });
       _saveClipsDwellPrefs();
       const dislikeItem = { id, type, media_type: type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
@@ -11734,20 +12115,19 @@ function _buildTrailerSlide(item) {
       }, 320);
       toast('Showing less like this', 'thumb_down', {
         actionLabel: 'Undo',
-        onAction: () => {
+        onAction: () => undoManager.undo(undoId),
+      });
+      const undoId = undoManager.record({ label: 'Showing less like this', title, icon: 'thumb_down', undo: () => {
           clearTimeout(removeTimer);
-          state.disliked = (state.disliked || []).filter(x => x.id != id);
-          persist('disliked');
-          genreIds.forEach(g => _clipsDwellPrefs.set(g, Math.min(5, (_clipsDwellPrefs.get(g) || 0) + 2)));
+          setReaction(dislikeItem, 'none');
+          genreIds.forEach(g => _clipsDwellPrefs().set(g, Math.min(5, (_clipsDwellPrefs().get(g) || 0) + 2)));
           _saveClipsDwellPrefs();
           if (!slide.isConnected && parent) parent.insertBefore(slide, nextSibling);
           slide.style.opacity = '';
           slide.style.transform = '';
           slide.style.transition = '';
           _clipsGoTo(Math.max(0, _clipsIdx), { instant: true });
-          toast('Not interested removed', 'undo');
-        },
-      });
+      } });
     }
   });
 

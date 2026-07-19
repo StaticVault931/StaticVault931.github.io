@@ -1,0 +1,100 @@
+# Dependencies
+node_modules/
+
+# Generated builds and caches
+dist/
+build/
+coverage/
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# Test and browser output
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+screenshots/
+videos/
+
+# Environment files and local configuration
+.env
+.env.*
+!.env.example
+*.local
+config.local.*
+settings.local.*
+
+# Secrets, credentials, and signing material
+secrets/
+private/
+credentials/
+.npmrc
+.pypirc
+.netrc
+*.secret
+*.secrets
+*.pem
+*.key
+*.cer
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+service-account*.json
+credentials*.json
+auth.local.json
+
+# User exports, backups, and local databases
+backups/
+exports/
+staticvault-backup*.json
+staticvault-export*.json
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Local AI and editor state
+.claude/
+.codex/
+.agents/
+.vscode/
+.idea/
+launch.json
+*.code-workspace
+
+# Temporary files and logs
+tmp/
+temp/
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.stackdump
+
+# Local/original assets not intended for deployment
+logo-orignal.png
+logo-original.png
+assets/logo-original.png
+
+# Operating system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor swap and backup files
+*~
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej

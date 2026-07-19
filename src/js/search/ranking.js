@@ -3,7 +3,7 @@
    signals into one comparable score. Higher = shown first. */
 
 import { titleScore } from './fuzzy.js';
-import { state } from '../state.js';
+import { state, getActiveTasteState, getTasteScore, mediaKey } from '../state.js';
 
 /* Score one result item against the query. 0–~200 range. */
 export function scoreResult(item, query) {
@@ -17,17 +17,23 @@ export function scoreResult(item, query) {
 
   // User relevance
   let user = 0;
-  const id = item.id;
-  if (id) {
-    if ((state.watchlist || []).some(x => x.id === id)) user += 8;
-    if ((state.liked || []).some(x => x.id === id)) user += 6;
-    if (state.continueWatching?.[id]) user += 8;
-    if ((state.disliked || []).some(x => x.id === id)) user -= 20;
+  const taste = getActiveTasteState();
+  const key = mediaKey(item);
+  let kidsMode = false;
+  try { kidsMode = !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; } catch {}
+  if (item.id) {
+    if ((taste.watchlist || []).some(entry => mediaKey(entry) === key)) user += 8;
+    if ((taste.liked || []).some(entry => mediaKey(entry) === key)) user += 6;
+    if ((taste.loved || []).some(entry => mediaKey(entry) === key)) user += 10;
+    if ((taste.watched || []).some(entry => mediaKey(entry) === key)) user += 5;
+    if (!kidsMode && (state.continueWatching?.[key] || state.continueWatching?.[item.id])) user += 8;
+    if ((taste.disliked || []).some(entry => mediaKey(entry) === key)) user -= 20;
   }
   // Preferred genres nudge
-  if (state.prefGenres?.length && item.genre_ids?.length) {
+  if (!kidsMode && state.prefGenres?.length && item.genre_ids?.length) {
     user += item.genre_ids.filter(g => state.prefGenres.includes(g)).length * 1.5;
   }
+  user += Math.max(-8, Math.min(8, getTasteScore(item) * 0.7));
 
   // Keyword/fuzzy-fallback results rank below direct matches
   const fallbackPenalty = (item._keyword ? 25 : 0) + (item._fuzzy ? 10 : 0);
