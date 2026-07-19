@@ -42,6 +42,8 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
       - name: Notify IndexNow when public content changed
+        continue-on-error: true
+        timeout-minutes: 2
         env:
           INDEXNOW_ALL: ${{ github.event_name == 'workflow_dispatch' }}
         run: node scripts/submit-indexnow.mjs
