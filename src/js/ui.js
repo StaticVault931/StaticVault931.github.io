@@ -105,7 +105,7 @@ export function makeCard(m, type, opts = {}) {
   const showOverlayRating = true;
 
   // Use <a> so Google can crawl and index individual titles via ?watch= deep links
-  const cardHref = titlePath(type, id, title);
+  const cardHref = titlePath(type, id, title, year);
   const provenance = m._provenance || {};
 
   return `<article class="card${compact ? ' card-compact' : ''}"

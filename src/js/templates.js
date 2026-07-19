@@ -113,8 +113,14 @@ export function injectOverlays() {
     <div class="nc-action-row">
       <button class="nc-btn nc-btn-play" id="nc-play" title="Play" aria-label="Play"><span class="material-icons-round">play_arrow</span></button>
       <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save" aria-label="Save to watchlist"><span class="material-icons-round">add</span></button>
-      <button class="nc-btn nc-btn-like" id="nc-like" title="Like" aria-label="Like"><span class="material-icons-round">thumb_up_off_alt</span></button>
-      <button class="nc-btn nc-btn-dislike" id="nc-dislike" title="Not my taste" aria-label="Not my taste"><span class="material-icons-round">thumb_down_off_alt</span></button>
+      <div class="nc-reaction-picker">
+        <button class="nc-btn nc-btn-like" id="nc-like" title="React" aria-label="React to this title" aria-haspopup="true" aria-expanded="false"><span class="material-icons-round">thumb_up_off_alt</span></button>
+        <div class="nc-reaction-flyout" role="group" aria-label="Choose a reaction">
+          <button class="nc-reaction-choice" id="nc-dislike" data-reaction="dislike" aria-label="Dislike"><span class="material-icons-round">thumb_down_off_alt</span><small>Dislike</small></button>
+          <button class="nc-reaction-choice" id="nc-react-like" data-reaction="like" aria-label="Like"><span class="material-icons-round">thumb_up_off_alt</span><small>Like</small></button>
+          <button class="nc-reaction-choice" id="nc-love" data-reaction="love" aria-label="Love"><span class="material-icons-round">favorite_border</span><small>Love</small></button>
+        </div>
+      </div>
       <button class="nc-btn nc-btn-watched" id="nc-watched" title="Already watched" aria-label="Mark as already watched"><span class="material-icons-round">check_circle_outline</span></button>
       <button class="nc-btn nc-btn-mute" id="nc-mute" title="Sound on/off" aria-label="Sound on or off"><span class="material-icons-round">volume_off</span></button>
       <button class="nc-btn nc-btn-more" id="nc-more" title="More info" aria-label="More info"><span class="material-icons-round">expand_more</span></button>
@@ -455,6 +461,7 @@ export function injectOverlays() {
   <div id="profiles-panel">
     <div class="profiles-header">
       <h2>Who's watching?</h2>
+      <button id="profiles-export-all" aria-label="Export all profiles" title="Export every profile and its local data"><span class="material-icons-round">archive</span></button>
       <button id="profiles-close" aria-label="Close"><span class="material-icons-round">close</span></button>
     </div>
     <div class="profiles-grid" id="profiles-grid"></div>
@@ -519,6 +526,7 @@ export function injectOverlays() {
           <button class="ma primary" id="profile-save-btn">Save</button>
           <button class="ma" id="profile-onboard-btn" title="Open the taste picker again — your current preferences stay"><span class="material-icons-round" style="font-size:1rem">tune</span> Onboarding</button>
           <button class="ma" id="profile-onboard-reset-btn" title="Clear ALL taste preferences (genres, languages, loved/hidden titles) and redo onboarding fresh"><span class="material-icons-round" style="font-size:1rem">restart_alt</span> Reset &amp; Redo</button>
+          <button class="ma" id="profile-export-btn" style="display:none" title="Export only this profile and its local data"><span class="material-icons-round" style="font-size:1rem">download</span> Export Profile</button>
           <button class="ma danger" id="profile-delete-btn" style="display:none"><span class="material-icons-round" style="font-size:1rem">delete</span> Delete</button>
         </div>
       </div>

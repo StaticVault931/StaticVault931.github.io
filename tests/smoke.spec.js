@@ -50,12 +50,14 @@ test.describe('StaticVault931 smoke', () => {
       safety.clearContentSafetyCache();
       const first = await safety.resolveContentSafety({ id: 901, type: 'movie' }, { kidsMode: true });
       const second = await safety.resolveContentSafety({ id: 901, type: 'movie' }, { kidsMode: true });
+      const stricterProfile = await safety.resolveContentSafety({ id: 901, type: 'movie' }, { kidsMode: true, maxLevel: 2 });
       const unknown = await safety.resolveContentSafety({ id: 902, type: 'movie' }, { kidsMode: true });
-      return { first, second, unknown };
+      return { first, second, stricterProfile, unknown };
     });
     expect(requests).toBe(1);
     expect(result.first).toMatchObject({ allowed: true, verified: true, rating: 'PG' });
     expect(result.second).toMatchObject({ allowed: true, verified: true, rating: 'PG' });
+    expect(result.stricterProfile).toMatchObject({ allowed: false, verified: true, rating: 'PG' });
     expect(result.unknown).toMatchObject({ allowed: false, verified: false, reason: 'unknown-rating' });
   });
 
@@ -93,6 +95,7 @@ test.describe('StaticVault931 smoke', () => {
       } else await route.fulfill({ json: { results: [] } });
     });
     await page.goto('/?watch=movie&id=903&mode=info', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('body')).toHaveClass(/sv-kids-mode/);
     await expect(page.locator('#toast')).toContainText('outside the Kid-Guided family rating limit', { timeout: 5000 });
     await expect(page.locator('#info-overlay')).not.toHaveClass(/open/);
   });
@@ -322,12 +325,46 @@ test.describe('StaticVault931 smoke', () => {
         parsedProvider: route.parseCleanRoute('/provider/9-amazon-prime-video/'),
         browse: route.browsePath('row-trending', 'Trending Now'),
         parsedBrowse: route.parseCleanRoute('/browse/row-trending/trending-now/'),
+        tasteProfile: route.libraryViewPath('taste-profile'),
+        parsedTasteProfile: route.parseCleanRoute('/library/taste-profile/'),
+        title: route.titlePath('movie', 1083381, 'Backrooms', '2026'),
       };
     });
     expect(routes.provider).toBe('/provider/9-amazon-prime-video/');
     expect(routes.parsedProvider).toMatchObject({ kind: 'provider', id: 9, slug: 'amazon-prime-video' });
     expect(routes.browse).toBe('/browse/row-trending/trending-now/');
     expect(routes.parsedBrowse).toMatchObject({ kind: 'browse', key: 'row-trending', slug: 'trending-now' });
+    expect(routes.tasteProfile).toBe('/library/taste-profile/');
+    expect(routes.parsedTasteProfile).toMatchObject({ kind: 'page', page: 'library', view: 'taste-profile' });
+    expect(routes.title).toBe('/title/movie/1083381-backrooms-2026/');
+  });
+
+  test('fresh visitors only receive automatic onboarding on Home', async ({ page }) => {
+    await page.goto('/clips/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(800);
+    await expect(page.locator('#onboard-screen')).toHaveCount(0);
+  });
+
+  test('crawlable card links include the release year used by title canonicals', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const href = await page.evaluate(async () => {
+      const ui = await import('/src/js/ui.js');
+      const host = document.createElement('div');
+      host.innerHTML = ui.makeCard({ id: 986056, title: 'Thunderbolts', release_date: '2025-05-02' }, 'movie');
+      return host.querySelector('.card-main-link')?.getAttribute('href');
+    });
+    expect(href).toBe('/title/movie/986056-thunderbolts-2025/');
+  });
+
+  test('Home hero resolves to visible content when trending data succeeds', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.route('https://api.themoviedb.org/**', route => route.fulfill({ json: { results: [{
+      id: 444, title: 'Hero Test', release_date: '2024-01-01', backdrop_path: '/hero.jpg',
+      overview: 'A visible hero.', vote_average: 8, vote_count: 2000, genre_ids: [12], media_type: 'movie',
+    }] } }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hero-title')).toHaveText('Hero Test', { timeout: 8000 });
+    await expect(page.locator('#hero-bg')).toHaveAttribute('style', /hero\.jpg/);
   });
 
   test('right-click reactions expose filled and outline state icons', async ({ page }) => {

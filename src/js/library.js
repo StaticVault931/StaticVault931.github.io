@@ -4,6 +4,30 @@ import { getStats, getFavorites, lifetimeSummary } from './stats.js';
 import { GENRES } from './state.js';
 import { undoManager } from './undoManager.js';
 import { getActiveProfileId } from './profiles.js';
+import { libraryViewPath, pagePath } from './routes.js';
+
+function syncSectionExpander(grid, total, limit, label, view, rerender) {
+  let button = document.getElementById(`${grid.id}-expand`);
+  if (total <= limit) { button?.remove(); return; }
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.id = `${grid.id}-expand`;
+    button.className = 'see-all-btn lib-section-expand';
+    grid.after(button);
+    button.addEventListener('click', () => {
+      grid.dataset.expanded = grid.dataset.expanded === 'true' ? 'false' : 'true';
+      const expanded = grid.dataset.expanded === 'true';
+      history.pushState({ page: 'library', view: expanded ? view : null }, '', expanded ? libraryViewPath(view) : pagePath('library'));
+      rerender();
+      document.getElementById(grid.id.replace('-grid', ''))?.scrollIntoView({ block: 'start' });
+    });
+  }
+  const expanded = grid.dataset.expanded === 'true';
+  button.innerHTML = expanded
+    ? '<span class="material-icons-round">expand_less</span> Show less'
+    : `<span class="material-icons-round">grid_view</span> View all ${total} ${label}`;
+}
 
 /* ── RENDER LIBRARY PAGE ─────────────────────────────────────────── */
 /* Library stats banner — your viewing at a glance (reads the local
@@ -178,13 +202,17 @@ function renderWatchlistSection() {
 
   grid.classList.toggle('lib-grid-empty', !watchlist.length);
   if (!watchlist.length) {
+    syncSectionExpander(grid, 0, 18, 'saved titles', 'watchlist', renderWatchlistSection);
     grid.innerHTML = emptyState('bookmark_add', 'Nothing saved yet — tap the bookmark on any title.', [
       { action: 'go-home', label: 'Browse Trending' },
       { action: 'go-search', label: 'Search' },
     ]);
     return;
   }
-  grid.innerHTML = watchlist.map(m => makeCard(m, m.type || 'movie')).join('');
+  const limit = 18;
+  const visible = grid.dataset.expanded === 'true' ? watchlist : watchlist.slice(0, limit);
+  grid.innerHTML = visible.map(m => makeCard(m, m.type || 'movie')).join('');
+  syncSectionExpander(grid, watchlist.length, limit, 'saved titles', 'watchlist', renderWatchlistSection);
 }
 
 function renderLikedSection() {
@@ -194,12 +222,16 @@ function renderLikedSection() {
 
   grid.classList.toggle('lib-grid-empty', !liked.length);
   if (!liked.length) {
+    syncSectionExpander(grid, 0, 18, 'liked titles', 'liked', renderLikedSection);
     grid.innerHTML = emptyState('favorite_border', 'Nothing liked yet — tap ❤ on any title to shape your feed.', [
       { action: 'go-home', label: 'Browse Home' },
     ]);
     return;
   }
-  grid.innerHTML = liked.map(m => makeCard(m, m.type || 'movie')).join('');
+  const limit = 18;
+  const visible = grid.dataset.expanded === 'true' ? liked : liked.slice(0, limit);
+  grid.innerHTML = visible.map(m => makeCard(m, m.type || 'movie')).join('');
+  syncSectionExpander(grid, liked.length, limit, 'liked titles', 'liked', renderLikedSection);
 }
 
 function renderRecentSection() {
@@ -208,17 +240,20 @@ function renderRecentSection() {
   if (!grid) return;
   if (getActiveTasteState() !== state) { if (sec) sec.style.display = 'none'; grid.innerHTML = ''; return; }
 
-  const items = [...state.recentlyViewed]
+  const allItems = [...state.recentlyViewed]
     .sort((a, b) => (b.viewedAt || 0) - (a.viewedAt || 0))
     .filter((item, index, all) => all.findIndex(other => mediaKey(other) === mediaKey(item)) === index)
     .slice(0, 60);
-  if (!items.length) {
+  if (!allItems.length) {
+    syncSectionExpander(grid, 0, 5, 'recent titles', 'recent', renderRecentSection);
     if (sec) sec.style.display = 'none';
     return;
   }
   if (sec) sec.style.display = '';
 
   grid.classList.add('lib-grid-compact');
+  const limit = 5;
+  const items = grid.dataset.expanded === 'true' ? allItems : allItems.slice(0, limit);
   const relative = timestamp => {
     if (!timestamp) return 'Viewed earlier';
     const minutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60000));
@@ -230,6 +265,7 @@ function renderRecentSection() {
   };
   grid.innerHTML = items.map(m => makeCard(m, m.type || m.media_type || 'movie', { compact: true, showProgress: false, removableRecent: true })
     .replace('<div class="card-poster">', `<div class="card-poster"><span class="recent-time-badge">${esc(relative(m.viewedAt))}</span>`)).join('');
+  syncSectionExpander(grid, allItems.length, limit, 'recent titles', 'recent', renderRecentSection);
   grid.querySelectorAll('[data-action="remove-recent"]').forEach(button => {
     button.addEventListener('click', event => {
       event.preventDefault();

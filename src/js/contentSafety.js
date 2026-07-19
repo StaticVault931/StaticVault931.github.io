@@ -73,7 +73,8 @@ export function evaluateCertifications(ratings = [], { kidsMode = false, maxLeve
 
 export async function resolveContentSafety(item, context = {}) {
   const kidsMode = !!context.kidsMode;
-  const maxLevel = kidsMode ? 3 : Number.isFinite(context.maxLevel) ? context.maxLevel : 6;
+  const requestedLevel = Number.isFinite(context.maxLevel) ? context.maxLevel : (kidsMode ? 3 : 6);
+  const maxLevel = kidsMode ? Math.min(requestedLevel, 3) : requestedLevel;
   if (!item?.id || item.adult) {
     return { allowed: false, verified: !!item?.adult, rating: null, source: item?.adult ? 'TMDB' : null, reason: item?.adult ? 'adult-flag' : 'invalid-item' };
   }
@@ -84,9 +85,13 @@ export async function resolveContentSafety(item, context = {}) {
 
   const type = mediaType(item);
   const key = `${type}:${Number(item.id)}`;
+  const applyContext = record => {
+    const evaluated = evaluateCertifications([record?.rating], { kidsMode, maxLevel });
+    return { ...evaluated, source: record?.source || null, checkedAt: record?.checkedAt || Date.now() };
+  };
   const cached = cacheGet(key);
-  if (cached) return cached;
-  if (inFlight.has(key)) return inFlight.get(key);
+  if (cached) return applyContext(cached);
+  if (inFlight.has(key)) return applyContext(await inFlight.get(key));
 
   const task = withSlot(async () => {
     const ratings = [];
@@ -104,17 +109,17 @@ export async function resolveContentSafety(item, context = {}) {
         if (omdbRating) { ratings.push(omdbRating); sources.push('OMDb'); }
       }
     } catch {}
-    const result = evaluateCertifications(ratings, { kidsMode, maxLevel });
-    const resolved = { ...result, source: sources.join(' + ') || null, checkedAt: Date.now() };
-    cacheSet(key, resolved);
-    return resolved;
+    const strictest = evaluateCertifications(ratings, { kidsMode: false, maxLevel: 6 });
+    const evidence = { rating: strictest.rating, source: sources.join(' + ') || null, checkedAt: Date.now() };
+    cacheSet(key, evidence);
+    return evidence;
   }).finally(() => inFlight.delete(key));
   inFlight.set(key, task);
-  return task;
+  return applyContext(await task);
 }
 
 export async function filterSafeItems(items, context = {}) {
-  if (!context.kidsMode) return (items || []).filter(item => item?.id && !item.adult);
+  if (!context.kidsMode && !context.requireRating) return (items || []).filter(item => item?.id && !item.adult);
   const checks = await Promise.all((items || []).map(async item => ({ item, result: await resolveContentSafety(item, context) })));
   return checks.filter(entry => entry.result.allowed).map(entry => ({
     ...entry.item,

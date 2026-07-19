@@ -10,7 +10,7 @@ import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRa
   wikidataSPARQL, getFilmAwards,
   fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
   fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
-import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS } from './router.js';
+import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS, updatePageMeta } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
 import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, scrollRowEl, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched, resetTitleRowAnchors } from './recommendations.js';
@@ -18,7 +18,7 @@ import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAuto
 import { svFlag, setSvFlag } from './search/searchPipeline.js';
 import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
-import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, updateProfile, deleteProfile, exportProfilesSnapshot, restoreProfilesSnapshot, MAX_PROFILES } from './profiles.js';
+import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, getProfileSettings, updateProfile, deleteProfile, exportProfilesSnapshot, restoreProfilesSnapshot, MAX_PROFILES } from './profiles.js';
 import { selectRowsForToday } from './rows/rowSelector.js';
 import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
@@ -28,7 +28,7 @@ import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, rec
 import { initSuperSearch, closeSuperSearch } from './superSearch.js';
 import { initTasteCalibration } from './tasteCalibration.js';
 import { resolveContentSafety, filterSafeItems, isAnimeContent } from './contentSafety.js';
-import { parseCleanRoute, titlePath, personPath, collectionPath, providerPath, searchPath, pagePath, routeLabel, SITE_ORIGIN } from './routes.js';
+import { parseCleanRoute, titlePath, personPath, collectionPath, providerPath, searchPath, pagePath, libraryViewPath, routeLabel, SITE_ORIGIN } from './routes.js';
 import { undoManager } from './undoManager.js';
 import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.js';
 import { parseBackupText } from './backup.js';
@@ -1296,7 +1296,7 @@ let _cardCertObserver = null;
     e.preventDefault();
     window._svOpenOnboarding
       ? window._svOpenOnboarding()
-      : (localStorage.removeItem('sv_onboarded'), maybeShowOnboarding());
+      : (localStorage.removeItem('sv_onboarded'), maybeShowOnboarding({ force: true }));
   });
   // Show profile selector on start if setting is enabled
   if (getSetting('showAccountsOnStart')) {
@@ -1442,7 +1442,18 @@ let _cardCertObserver = null;
     };
     setTimeout(() => _triggerSearch(), 0);
   } else if (pageParam) {
-    setTimeout(() => goPage(pageParam, { history: 'replace' }), 100);
+    setTimeout(() => {
+      goPage(pageParam, { history: 'replace' });
+      if (pageParam === 'library' && _route?.view) {
+        const tabName = _route.view === 'taste-profile' ? 'prefs' : 'library';
+        document.querySelector(`[data-lib-tab="${tabName}"]`)?.click();
+        const grid = document.getElementById(`lib-${_route.view}-grid`);
+        if (grid) grid.dataset.expanded = 'true';
+        renderLibrary();
+        setTimeout(() => document.getElementById(`lib-${_route.view}`)?.scrollIntoView({ block: 'start' }), 100);
+        history.replaceState({ page: 'library', view: _route.view }, '', libraryViewPath(_route.view));
+      }
+    }, 100);
   } else if (sp.get('person')) {
     const personId = +sp.get('person');
     if (personId > 0) {
@@ -1460,7 +1471,8 @@ let _cardCertObserver = null;
   // Handle browser back/forward
   window.addEventListener('popstate', e => {
     if (e.state?.mode === 'info' && e.state?.id) {
-      openInfoPage(e.state.id, e.state.type);
+      _overlayReturnUrl = e.state.returnUrl || null;
+      openInfoPage(e.state.id, e.state.type, { _skipHistory: true });
     } else if (e.state?.id && e.state?.type) {
       openMedia(e.state.id, e.state.type);
     } else if (e.state?.personId) {
@@ -1509,9 +1521,14 @@ function dismissLoadingScreen() {
    Shown once, right after the loading screen on a brand-new install.
    Doubles as a curtain while the home rows load behind it. Picks feed
    prefGenres + liked titles, then dissolves into the CYF page. */
-async function maybeShowOnboarding() {
+async function maybeShowOnboarding({ force = false } = {}) {
   if (localStorage.getItem('sv_onboarded')) return;
   if (document.getElementById('onboard-screen')) return;
+  const route = parseCleanRoute(location.pathname);
+  const isHomeRoute = location.pathname === '/' || (route?.kind === 'page' && route.page === 'home');
+  const hasRoutedQuery = ['watch', 'type', 'id', 'page', 'q', 'search', 'person', 'collection']
+    .some(key => new URLSearchParams(location.search).has(key));
+  if (!force && (!isHomeRoute || hasRoutedQuery)) return;
   // NOTE: the flag is set when the user finishes or skips — NOT here.
   // A mid-onboarding refresh brings it right back.
 
@@ -1554,6 +1571,14 @@ async function maybeShowOnboarding() {
               <div class="ob-chips" id="ob-chips"></div>
             </div>
             <div class="ob-block">
+              <div class="ob-label"><span class="material-icons-round">animation</span>Do you like anime?</div>
+              <div class="ob-chips" id="ob-anime-pref" role="group" aria-label="Anime preference">
+                <button type="button" class="ob-chip" data-anime-pref="yes">Yes</button>
+                <button type="button" class="ob-chip" data-anime-pref="neutral">Neutral</button>
+                <button type="button" class="ob-chip" data-anime-pref="no">No</button>
+              </div>
+            </div>
+            <div class="ob-block">
               <div class="ob-label"><span class="material-icons-round">translate</span>Languages you watch in</div>
               <div class="ob-chips" id="ob-langs"></div>
               <div class="ob-hint">Pick more than one and you'll get rows like "Titles in French"</div>
@@ -1584,15 +1609,6 @@ async function maybeShowOnboarding() {
             <div class="ob-label"><span class="material-icons-round">face</span>Choose a picture</div>
             <input type="search" class="ob-search ob-avatar-search-top" id="ob-avatar-search" placeholder="Search any actor for your picture…" autocomplete="off" aria-label="Search actors for a profile picture">
             <div class="ob-avatar-strip ob-chips" id="ob-profile-avatars" aria-label="Profile pictures"></div>
-          </section>
-
-          <section class="ob-stage-sec">
-            <div class="ob-label"><span class="material-icons-round">animation</span>Do you like anime?</div>
-            <div class="ob-chips" id="ob-anime-pref" role="group" aria-label="Anime preference">
-              <button type="button" class="ob-chip" data-anime-pref="yes">Yes</button>
-              <button type="button" class="ob-chip" data-anime-pref="neutral">Neutral</button>
-              <button type="button" class="ob-chip" data-anime-pref="no">No</button>
-            </div>
           </section>
 
           <section class="ob-stage-sec">
@@ -1684,7 +1700,7 @@ async function maybeShowOnboarding() {
   ob.querySelector('#ob-import')?.addEventListener('click', () => document.getElementById('btn-import-data')?.click());
   document.addEventListener('sv:backup-imported', () => {
     ob.remove();
-    setTimeout(() => maybeShowOnboarding(), 0);
+    setTimeout(() => maybeShowOnboarding({ force: true }), 0);
   }, { once: true });
 
   // Right-click reset (dispatched by the global contextmenu handler)
@@ -1758,6 +1774,7 @@ async function maybeShowOnboarding() {
     if (!chip) return;
     pickedAge = chip.dataset.age;
     agesEl.querySelectorAll('.ob-chip').forEach(c => c.classList.toggle('picked', c.dataset.age === pickedAge));
+    ob._refreshForRating?.(pickedAge);
   });
 
   // Profile card (step 2) — prefilled from the ACTIVE profile: name,
@@ -1902,7 +1919,11 @@ async function maybeShowOnboarding() {
     kidsToggle.checked = !!getSetting('kidsMode');
     kidsToggle.addEventListener('change', () => {
       setSetting('kidsMode', kidsToggle.checked);
-      if (kidsToggle.checked) pickedAge = 'PG';
+      if (kidsToggle.checked) {
+        pickedAge = 'PG';
+        agesEl.querySelectorAll('.ob-chip').forEach(chip => chip.classList.toggle('picked', chip.dataset.age === pickedAge));
+        ob._refreshForRating?.(pickedAge);
+      }
     });
   }
 
@@ -1944,6 +1965,7 @@ async function maybeShowOnboarding() {
       </span>
     </div>`;
   const allItems = new Map(); // id → item, for lookups from both grid + search
+  let onboardingItems = [];
 
   const setTileState = (tile, next) => {
     const item = allItems.get(+tile.dataset.oid);
@@ -1970,6 +1992,39 @@ async function maybeShowOnboarding() {
   window._svObSetTile = setTileState;
 
   const grid = ob.querySelector('#ob-grid');
+  const renderOnboardingItems = items => {
+    grid.innerHTML = items.map((item, index) => tileHtml(item, index)).join('');
+    const prevLiked = new Set([...(state.liked || []), ...(state.prefLikes || [])].map(item => +item.id));
+    const prevDisliked = new Set([...(state.disliked || []), ...(state.prefDislikes || [])].map(item => +item.id));
+    grid.querySelectorAll('.ob-tile[data-oid]').forEach(tile => {
+      const id = +tile.dataset.oid;
+      if (likedTitles.has(id) || prevLiked.has(id)) setTileState(tile, 'liked');
+      else if (dislikedTitles.has(id) || prevDisliked.has(id)) setTileState(tile, 'disliked');
+    });
+    ob._fitGrid?.();
+    ob._applyGridFilter?.();
+  };
+  let ratingRefreshToken = 0;
+  ob._refreshForRating = async rating => {
+    if (!onboardingItems.length) return;
+    const token = ++ratingRefreshToken;
+    const maxLevel = Math.min(AGE_LEVELS[rating] ?? 6, 6);
+    grid.setAttribute('aria-busy', 'true');
+    grid.innerHTML = '<div class="ob-tile ob-skel"></div>'.repeat(35);
+    const safe = await filterSafeItems(onboardingItems, { requireRating: true, maxLevel }).catch(() => []);
+    if (token !== ratingRefreshToken || !document.getElementById('onboard-screen')) return;
+    const allowed = new Set(safe.map(item => `${item.media_type || item.type || 'movie'}:${item.id}`));
+    let removedPicks = 0;
+    for (const [id, item] of [...likedTitles, ...dislikedTitles]) {
+      if (allowed.has(`${item.media_type || item.type || 'movie'}:${id}`)) continue;
+      if (likedTitles.delete(id)) removedPicks++;
+      if (dislikedTitles.delete(id)) removedPicks++;
+    }
+    renderOnboardingItems(safe);
+    syncDone();
+    if (removedPicks) toast(`${removedPicks} selection${removedPicks === 1 ? '' : 's'} hidden by the new content rating`, 'verified_user', { duration: 8000 });
+    grid.removeAttribute('aria-busy');
+  };
   grid.addEventListener('click', e => {
     const tile = e.target.closest('.ob-tile');
     if (!tile?.dataset.oid) return;
@@ -2117,18 +2172,9 @@ async function maybeShowOnboarding() {
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
     const mixed = dedupedPool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
+    onboardingItems = mixed;
     mixed.forEach(x => allItems.set(x.id, x));
-    grid.innerHTML = mixed.map((x, i) => tileHtml(x, i)).join('');
-    // Redo-friendly: titles this profile already rated arrive pre-marked
-    const prevLiked = new Set([...(state.liked || []), ...(state.prefLikes || [])].map(x => +x.id));
-    const prevDisliked = new Set([...(state.disliked || []), ...(state.prefDislikes || [])].map(x => +x.id));
-    grid.querySelectorAll('.ob-tile[data-oid]').forEach(t => {
-      const id = +t.dataset.oid;
-      if (prevLiked.has(id)) setTileState(t, 'liked');
-      else if (prevDisliked.has(id)) setTileState(t, 'disliked');
-    });
-    ob._fitGrid?.();          // size to the screen — complete rows only
-    ob._applyGridFilter?.();  // top-search experiment: re-apply live filter
+    renderOnboardingItems(mixed);
   } catch (err) {
     console.warn('[SV Onboarding] tile fetch failed:', err?.message || err);
     grid.innerHTML = '<p style="opacity:.6;font-size:.85rem">Couldn\'t load titles — pick genres instead.</p>';
@@ -2642,7 +2688,7 @@ function shouldShow(id) {
 /* Effective maturity level: the profile's age rating, hard-capped at G
    when Kid-Guided Mode is on. */
 function _effAgeLevel() {
-  if (getSetting('kidsMode')) return 3; // verified G/PG/TV-PG family ceiling
+  if (getSetting('kidsMode')) return Math.min(AGE_LEVELS[state.ageRating] ?? 3, 3);
   return AGE_LEVELS[state.ageRating] ?? 4;
 }
 
@@ -2690,6 +2736,7 @@ function _ageSafeItem(m) {
 /* Hard preference filter: any title carrying a genre the user DISLIKES
    never appears in a row. (They said no — believe them.) */
 function _prefSafeItem(m) {
+  if (getSetting('kidsMode')) return true;
   const dis = state.prefGenreDislikes || [];
   if (!dis.length) return true;
   return !(m.genre_ids || []).some(g => dis.includes(g) || dis.includes(String(g)));
@@ -2699,7 +2746,7 @@ function filterByImpressions(items) {
   const safe = items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m));
   // Keep at least 6 items even if all are "seen" — prevents empty rows.
   // NEVER backfill with unsafe items — a thin safe row beats an unsafe one.
-  const filtered = safe.filter(m => shouldShow(m.id));
+  const filtered = getSetting('kidsMode') ? safe : safe.filter(m => shouldShow(m.id));
   return filtered.length >= 4 ? filtered : safe.slice(0, Math.max(filtered.length + 4, 8));
 }
 
@@ -2776,7 +2823,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // their titles so every later row avoids repeating them.
       const RAW_ROWS = rowId === 'row-trending' || rowId === 'row-top10';
       // Cross-session dedup: only filter in maximum repeat tolerance mode
-      const shownData = (getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
+      const shownData = (!getSetting('kidsMode') && getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
       const deduped = RAW_ROWS
         ? impressionFiltered.filter(m => m.id)
         : impressionFiltered.filter(m => m.id && !_homeItemSeen(m) && !shownData[mediaKey(m)]);
@@ -4990,7 +5037,7 @@ async function configureKidsPin() {
   }
 }
 
-function applySetting(id, val) {
+function applySetting(id, val, { refresh = true } = {}) {
   if (id === 'repeatContent') state._repeatTolerance = val;
   if (id === 'textSize') {
     document.body.classList.toggle('sv-text-large', val === 'large');
@@ -5006,9 +5053,18 @@ function applySetting(id, val) {
   if (id === 'focusOutlines')      document.body.classList.toggle('sv-focus-outlines', !!val);
   if (id === 'kidsMode') {
     document.body.classList.toggle('sv-kids-mode', !!val);
-    _clearRowCache();
-    document.querySelectorAll('.card-row').forEach(row => { row.innerHTML = ''; });
-    setTimeout(() => { _homeLoading = false; }, 0);
+    if (refresh) {
+      _clearRowCache();
+      document.querySelectorAll('.card-row').forEach(row => { row.innerHTML = ''; });
+      const hero = document.getElementById('hero');
+      if (hero) hero.style.visibility = 'hidden';
+      _homeLoading = false;
+      if (localStorage.getItem('sv_onboarded')) {
+        loadHero().finally(() => { if (hero) hero.style.visibility = ''; }).catch(() => {});
+        loadHomeRows().catch(() => {});
+        if (state.currentPage === 'clips') initTrailersFeed().catch(() => {});
+      }
+    }
     buildAgeRatingUI();
   }
   if (id === 'animePreference') _clearRowCache();
@@ -5190,7 +5246,7 @@ async function loadStreamPage() {
 }
 
 function applyAllSettings() {
-  SV_SETTINGS.forEach(s => applySetting(s.id, getSetting(s.id)));
+  SV_SETTINGS.forEach(s => applySetting(s.id, getSetting(s.id), { refresh: false }));
 }
 
 /* ── SETTINGS SEARCH ─────────────────────────────────────────────────
@@ -5674,6 +5730,7 @@ function setupAC(inputId, dropId, onSelect) {
 /* ── OPEN MEDIA / MODAL ──────────────────────────────────────────── */
 export async function openMedia(id, type, hint = {}) {
   if (!await _allowRequestedContent(id, type)) return;
+  _rememberOverlayReturnRoute();
   // Redirect to info page if that's the user's default preference
   // On mobile (≤720px), info page is the default to prevent accidental playback
   const isMobile = window.innerWidth <= 720;
@@ -5732,7 +5789,7 @@ export async function openMedia(id, type, hint = {}) {
 
     // Update URL + page meta for SEO + sharing
     const mediaUrl = buildMediaUrl(id, type, title, year);
-    history.pushState({ id, type }, title, mediaUrl);
+    history.pushState({ id, type, returnUrl: _overlayReturnUrl }, title, mediaUrl);
     const ogImg = details.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
       : null;
@@ -5929,7 +5986,7 @@ export function closeModal() {
   cancelProviderTimer();
 
   document.getElementById('trailer-fallback-btn')?.remove();
-  resetPageSEO();
+  _restoreOverlayRoute();
   // Stop any Watch Together countdown
   if (_wtTick) { clearInterval(_wtTick); _wtTick = null; }
 
@@ -6174,7 +6231,7 @@ function initEventDelegation() {
     if (action === 'modal-play') playNow();
     else if (action === 'modal-trailer') {
       const key = btn.dataset.key;
-      if (key) openTrailerOverlay(key, title, state.currentMedia?.details);
+      if (key) playTrailerInWatchArea(key, title);
     }
     else if (action === 'modal-watchlist') { handleWatchlist(id, type, null, meta); renderModalActions(state.currentMedia); }
     else if (action === 'modal-like') { handleLike(id, type, null, meta); renderModalActions(state.currentMedia); }
@@ -6229,6 +6286,10 @@ function initEventDelegation() {
     if (tabName === 'prefs') {
       renderLibrary();
     }
+    const tabPath = tabName === 'mix'
+      ? pagePath('mix')
+      : tabName === 'prefs' ? libraryViewPath('taste-profile') : pagePath('library');
+    history.pushState({ page: tabName === 'mix' ? 'mix' : 'library', libraryTab: tabName }, '', tabPath);
   });
 
   // Library provider buttons → open provider page (not search)
@@ -6564,8 +6625,10 @@ function initEventDelegation() {
   document.getElementById('btn-export-data')?.addEventListener('click', () => {
     const exportData = {
       version: 4,
+      exportScope: 'all-profiles',
       exportedAt: new Date().toISOString(),
       profilesSnapshot: exportProfilesSnapshot(),
+      profileExtras: _profileExportExtras(getProfiles().map(profile => profile.id)),
       watchlist:        state.watchlist,
       liked:            state.liked,
       loved:            state.loved,
@@ -6618,16 +6681,8 @@ function initEventDelegation() {
         };
       })(),
     };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `staticvault-backup-${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('Data exported!', 'download');
+    _downloadBackupData(exportData, `staticvault-all-profiles-${new Date().toISOString().slice(0,10)}.json`);
+    toast(`Exported all ${getProfiles().length} profiles`, 'download');
   });
 
   // Import data
@@ -6709,6 +6764,7 @@ function initEventDelegation() {
             toast(`No profile slots available. This device supports up to ${MAX_PROFILES}.`, 'error');
             return;
           }
+          _restoreProfileExtras(data.profileExtras, restored.idMap);
           updateProfileHeaderBtn();
           applyAllSettings();
           renderLibrary();
@@ -6733,6 +6789,11 @@ function initEventDelegation() {
           const newProf = createProfile(newName);
           if (!newProf) { toast('Could not create profile', 'error'); return; }
           switchProfile(newProf.id);
+          const sourceProfileId = data.profilesSnapshot?.activeProfileId || data.profilesSnapshot?.profiles?.[0]?.id;
+          if (sourceProfileId) _restoreProfileExtras(data.profileExtras, { [sourceProfileId]: newProf.id });
+          else if (data.usageStats && typeof data.usageStats === 'object') {
+            localStorage.setItem(`sv_stats_v1_${newProf.id}`, JSON.stringify(data.usageStats));
+          }
           updateProfileHeaderBtn();
           applyAllSettings();
           applyData();
@@ -6851,6 +6912,24 @@ function initEventDelegation() {
   cardObserver.observe(document.getElementById('page-home') || document.body, { childList: true, subtree: true });
 }
 
+function playTrailerInWatchArea(key, title = 'Trailer') {
+  const frame = document.getElementById('player-frame');
+  const loading = document.getElementById('player-loading');
+  if (!frame || !/^[A-Za-z0-9_-]{6,20}$/.test(String(key || ''))) {
+    toast('This trailer is not available', 'videocam_off');
+    return;
+  }
+  cancelProviderTimer();
+  if (loading) {
+    loading.classList.remove('hidden');
+    loading.innerHTML = '<div class="spin"></div><p>Loading trailer…</p>';
+  }
+  frame.title = `${title} trailer`;
+  frame.onload = () => loading?.classList.add('hidden');
+  frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  toast('Trailer is playing in the watch area', 'theaters');
+}
+
 /* ── LIKE/WATCHLIST HELPERS ──────────────────────────────────────── */
 function handleLike(id, type, btn, metaOverride) {
   const item = metaOverride || buildItemMeta(id, type);
@@ -6893,6 +6972,43 @@ function handleLike(id, type, btn, metaOverride) {
   } });
   toast(reaction === 'love' ? 'Loved. This strongly shapes recommendations.' : reaction === 'like' ? 'Liked. Tap again to Love it.' : 'Reaction removed', reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
   return reaction;
+}
+
+function handleExactReaction(id, type, requested, metaOverride) {
+  const item = metaOverride || buildItemMeta(id, type);
+  const previous = isDisliked(id, type) ? 'dislike' : getReaction(id, type);
+  const next = previous === requested ? 'none' : requested;
+  if (next === 'dislike') addDislike(item);
+  else setReaction(item, next);
+  refreshCardBadges(id);
+  _syncHoverReactionIcons(id, type);
+  const label = next === 'love' ? 'Loved' : next === 'like' ? 'Liked' : next === 'dislike' ? 'Not interested' : 'Reaction removed';
+  const undoId = undoManager.record({ label, title: item.title || item.name || '', icon: next === 'love' ? 'favorite' : next === 'dislike' ? 'thumb_down' : 'thumb_up', undo: () => {
+    if (previous === 'dislike') addDislike(item);
+    else setReaction(item, previous);
+    refreshCardBadges(id);
+    _syncHoverReactionIcons(id, type);
+  } });
+  toast(label, next === 'love' ? 'favorite' : next === 'dislike' ? 'thumb_down' : next === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
+  return next;
+}
+
+function _syncHoverReactionIcons(id, type) {
+  const reaction = isDisliked(id, type) ? 'dislike' : getReaction(id, type);
+  const config = {
+    dislike: ['nc-dislike', 'thumb_down', 'thumb_down_off_alt'],
+    like: ['nc-react-like', 'thumb_up', 'thumb_up_off_alt'],
+    love: ['nc-love', 'favorite', 'favorite_border'],
+  };
+  Object.entries(config).forEach(([name, [elementId, activeIcon, idleIcon]]) => {
+    const button = document.getElementById(elementId);
+    button?.classList.toggle('active', reaction === name);
+    const icon = button?.querySelector('.material-icons-round');
+    if (icon) icon.textContent = reaction === name ? activeIcon : idleIcon;
+    button?.setAttribute('aria-pressed', String(reaction === name));
+  });
+  const trigger = document.querySelector('#nc-like .material-icons-round');
+  if (trigger) trigger.textContent = reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
 }
 
 function handleWatched(id, type, btn, card) {
@@ -7036,6 +7152,20 @@ function buildMediaUrl(id, type, title, year) {
   return `${location.origin}${titlePath(type, id, title, year)}`;
 }
 
+let _overlayReturnUrl = null;
+function _rememberOverlayReturnRoute() {
+  if (_overlayReturnUrl) return;
+  if (parseCleanRoute(location.pathname)?.kind === 'title') return;
+  _overlayReturnUrl = `${location.pathname}${location.search}${location.hash}`;
+}
+
+function _restoreOverlayRoute() {
+  const target = _overlayReturnUrl || pagePath(state.currentPage || 'home');
+  _overlayReturnUrl = null;
+  history.replaceState({ page: state.currentPage || 'home' }, '', target);
+  updatePageMeta(state.currentPage || 'home');
+}
+
 function updatePageSEO(title, type, overview, poster) {
   const typeLabel = type === 'tv' ? 'TV Show' : type === 'anime' ? 'Anime' : 'Movie';
   const fullTitle = title
@@ -7075,15 +7205,7 @@ function updatePageSEO(title, type, overview, poster) {
 }
 
 function resetPageSEO() {
-  document.title = 'StaticVault931 — Free Movies, TV Shows & Anime';
-  document.querySelector('meta[name="description"]')?.setAttribute('content', 'Watch movies, TV shows, and anime free online. Personalized recommendations, no account needed.');
-  document.querySelector('meta[property="og:title"]')?.setAttribute('content', 'StaticVault931 — Free Movies, TV Shows & Anime');
-  document.querySelector('meta[property="og:type"]')?.setAttribute('content', 'website');
-  document.querySelector('meta[property="og:url"]')?.setAttribute('content', 'https://staticvault931.github.io/');
-  document.querySelector('link[rel="canonical"]')?.setAttribute('href', 'https://staticvault931.github.io/');
-  const ldEl = document.getElementById('jsonld-media');
-  if (ldEl) ldEl.textContent = '';
-  history.replaceState(null, '', location.pathname);
+  updatePageMeta(state.currentPage || 'home');
 }
 
 /* ── SHARE ───────────────────────────────────────────────────────── */
@@ -7397,6 +7519,8 @@ function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
 
 export async function openInfoPage(id, type, hint = {}) {
   if (!await _allowRequestedContent(id, type)) return;
+  const directTitleRoute = parseCleanRoute(location.pathname)?.kind === 'title';
+  _rememberOverlayReturnRoute();
   clearHoverTrailer(); // stop hover trailer before opening info page
   // Close other overlays first — only one overlay open at a time
   document.getElementById('person-overlay')?.classList.remove('open');
@@ -7879,7 +8003,9 @@ export async function openInfoPage(id, type, hint = {}) {
     // Update URL — info page IS the canonical; watch pages point here
     const yr = String(details.release_date || details.first_air_date || '').slice(0, 4);
     const infoUrl = titlePath(type, id, title, yr);
-    history.pushState({ id, type, mode: 'info' }, title, infoUrl);
+    const routeState = { id, type, mode: 'info', returnUrl: _overlayReturnUrl };
+    if (directTitleRoute || hint._skipHistory) history.replaceState(routeState, title, infoUrl);
+    else history.pushState(routeState, title, infoUrl);
 
     // Info page IS the canonical — full content, unique per item
     const ogImg = details.backdrop_path ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}` : null;
@@ -9198,7 +9324,7 @@ export function closeInfoPage() {
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
   state.currentInfoMedia = null;
-  resetPageSEO();
+  _restoreOverlayRoute();
 }
 
 /* ── TRAILER OVERLAY (multi-key fallback) ───────────────────────── */
@@ -9443,6 +9569,63 @@ function _applyAvatarCropPreview() {
   if (img) img.style.cssText = `width:100%;height:100%;object-fit:cover;${_avatarCropStyle(_readAvatarCropControls())}`;
 }
 
+function _readStoredJson(key, fallback = null) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
+  catch { return fallback; }
+}
+
+function _profileExportExtras(profileIds) {
+  return Object.fromEntries(profileIds.map(profileId => [profileId, {
+    usageStats: _readStoredJson(`sv_stats_v1_${profileId}`, {}),
+    clipsSeen: _readStoredJson(`sv_clips_seen_v1_${profileId}`, []),
+  }]));
+}
+
+function _restoreProfileExtras(extras, idMap) {
+  if (!extras || typeof extras !== 'object') return;
+  Object.entries(idMap || {}).forEach(([sourceId, targetId]) => {
+    const extra = extras[sourceId];
+    if (!extra || typeof extra !== 'object') return;
+    if (extra.usageStats && typeof extra.usageStats === 'object' && JSON.stringify(extra.usageStats).length < 2_000_000) {
+      localStorage.setItem(`sv_stats_v1_${targetId}`, JSON.stringify(extra.usageStats));
+    }
+    if (Array.isArray(extra.clipsSeen)) {
+      localStorage.setItem(`sv_clips_seen_v1_${targetId}`, JSON.stringify(extra.clipsSeen.slice(0, 5000)));
+    }
+  });
+}
+
+function _downloadBackupData(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function _exportSingleProfile(profileId) {
+  const snapshot = exportProfilesSnapshot();
+  const profile = snapshot.profiles.find(item => item.id === profileId);
+  const profileData = snapshot.profileData[profileId];
+  if (!profile || !profileData) { toast('This profile has no exportable data yet', 'warning'); return; }
+  const extras = _profileExportExtras([profileId]);
+  const backup = {
+    version: 4,
+    exportScope: 'profile',
+    exportedAt: new Date().toISOString(),
+    ...profileData,
+    profilesSnapshot: { activeProfileId: profileId, profiles: [{ ...profile }], profileData: { [profileId]: profileData } },
+    profileExtras: extras,
+    usageStats: extras[profileId].usageStats,
+  };
+  _downloadBackupData(backup, `staticvault-profile-${slugify(profile.name) || 'profile'}-${new Date().toISOString().slice(0, 10)}.json`);
+  toast(`Exported ${profile.name}`, 'download');
+}
+
 function initProfilesUI() {
   document.getElementById('profile-header-btn')?.addEventListener('click', openProfilesOverlay);
   document.getElementById('profiles-close')?.addEventListener('click', closeProfilesOverlay);
@@ -9454,8 +9637,17 @@ function initProfilesUI() {
     if (e.target === document.getElementById('profile-editor-overlay')) closeProfileEditor();
   });
   document.getElementById('profiles-add-btn')?.addEventListener('click', () => openProfileEditor(null));
+  document.getElementById('profiles-export-all')?.addEventListener('click', async () => {
+    if (getSetting('kidsMode') && !await requestKidsPinUnlock('export all profiles')) return;
+    closeProfilesOverlay();
+    document.getElementById('btn-export-data')?.click();
+  });
   document.getElementById('profile-save-btn')?.addEventListener('click', saveProfileFromEditor);
   document.getElementById('profile-delete-btn')?.addEventListener('click', deleteProfileFromEditor);
+  document.getElementById('profile-export-btn')?.addEventListener('click', () => {
+    const profileId = _editingProfileId || getActiveProfileId();
+    if (profileId) _exportSingleProfile(profileId);
+  });
   // "Onboarding": just go BACK to the taste picker — preferences stay
   const _openOnboardingFor = (targetId) => {
     closeProfileEditor();
@@ -9465,7 +9657,7 @@ function initProfilesUI() {
       updateProfileHeaderBtn();
     }
     localStorage.removeItem('sv_onboarded');
-    maybeShowOnboarding();
+    maybeShowOnboarding({ force: true });
   };
   document.getElementById('profile-onboard-btn')?.addEventListener('click', () => {
     _openOnboardingFor(_editingProfileId || getActiveProfileId());
@@ -9566,7 +9758,8 @@ function renderProfilesGrid() {
     card.addEventListener('click', async e => {
       const pid = card.dataset.pid;
       if (pid === getActiveProfileId()) { closeProfilesOverlay(); return; }
-      if (getSetting('kidsMode') && !await requestKidsPinUnlock('switch profiles')) return;
+      const targetIsKids = !!getProfileSettings(pid).kidsMode;
+      if (getSetting('kidsMode') && !targetIsKids && !await requestKidsPinUnlock('switch to an unrestricted profile')) return;
       switchProfile(pid);
       updateProfileHeaderBtn();
       applyAllSettings(); // re-apply the new profile's display/player settings
@@ -9590,7 +9783,9 @@ function renderProfilesGrid() {
     });
   });
   grid.querySelectorAll('.profile-card-edit-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
+      if (getSetting('kidsMode') && btn.dataset.pid !== getActiveProfileId()
+        && !await requestKidsPinUnlock('edit another profile')) return;
       closeProfilesOverlay();
       openProfileEditor(btn.dataset.pid);
     });
@@ -9606,10 +9801,12 @@ function openProfileEditor(profileId) {
   const nameInput = document.getElementById('profile-name-input');
   const preview = document.getElementById('profile-avatar-preview');
   const deleteBtn = document.getElementById('profile-delete-btn');
+  const exportBtn = document.getElementById('profile-export-btn');
   const colorRow = document.getElementById('profile-color-row');
   if (title) title.textContent = profile ? 'Edit Profile' : 'New Profile';
   if (nameInput) { nameInput.value = profile?.name || ''; setTimeout(() => nameInput.focus(), 100); }
   if (deleteBtn) deleteBtn.style.display = profile && getProfiles().length > 1 ? '' : 'none';
+  if (exportBtn) exportBtn.style.display = profile ? '' : 'none';
   const color = profile?.color || '#e50914';
   const currentAvatar = profile?.avatar || '';
   const crop = _normalizeAvatarCrop(profile?.avatarCrop);
@@ -9719,7 +9916,7 @@ function saveProfileFromEditor() {
       renderProfilesGrid();
       closeProfilesOverlay();
       localStorage.removeItem('sv_onboarded');
-      maybeShowOnboarding();
+      maybeShowOnboarding({ force: true });
     }
   }).catch(() => {});
 }
@@ -11050,7 +11247,7 @@ function initHoverTrailer() {
   const nc = document.getElementById('netflix-card');
   if (nc) {
     nc.addEventListener('click', e => {
-      if (e.target.closest('#nc-wl') || e.target.closest('#nc-like')) return;
+      if (e.target.closest('#nc-wl') || e.target.closest('.nc-reaction-picker')) return;
       const card = _hoverCurrentCard; // ← SAVE before clearHoverTrailer() nulls it
       if (!card) return;
       clearHoverTrailer();
@@ -11092,30 +11289,21 @@ function initHoverTrailer() {
   });
   document.getElementById('nc-like')?.addEventListener('click', e => {
     e.stopPropagation();
-    if (!_hoverCurrentCard) return;
-    const id = +_hoverCurrentCard.dataset.id;
-    const type = _hoverCurrentCard.dataset.type;
-    handleLike(id, type, null, buildItemMeta(id, type));
-    const icon = document.querySelector('#nc-like .material-icons-round');
-    if (icon) icon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+    const picker = e.currentTarget.closest('.nc-reaction-picker');
+    const open = !picker?.classList.contains('open');
+    picker?.classList.toggle('open', open);
+    e.currentTarget.setAttribute('aria-expanded', String(open));
   });
-  // Hover card: dislike + watched — the big card should offer everything
-  // a right-click does, with undo in the toast
-  document.getElementById('nc-dislike')?.addEventListener('click', e => {
+  document.querySelectorAll('.nc-reaction-choice').forEach(button => button.addEventListener('click', e => {
     e.stopPropagation();
     if (!_hoverCurrentCard) return;
     const id = +_hoverCurrentCard.dataset.id;
     const type = _hoverCurrentCard.dataset.type;
-    const item = buildItemMeta(id, type);
-    addDislike(item);
-    const icon = document.querySelector('#nc-dislike .material-icons-round');
-    if (icon) icon.textContent = 'thumb_down';
-    const undoId = undoManager.record({ label: 'Hidden from recommendations', title: item.title || '', icon: 'thumb_down', undo: () => {
-      setReaction(item, 'none');
-      if (icon) icon.textContent = 'thumb_down_off_alt';
-    } });
-    toast('Hidden from recommendations', 'thumb_down', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
-  });
+    handleExactReaction(id, type, button.dataset.reaction, buildItemMeta(id, type));
+    const picker = button.closest('.nc-reaction-picker');
+    picker?.classList.remove('open');
+    document.getElementById('nc-like')?.setAttribute('aria-expanded', 'false');
+  }));
   document.getElementById('nc-watched')?.addEventListener('click', e => {
     e.stopPropagation();
     if (!_hoverCurrentCard) return;
@@ -11160,6 +11348,8 @@ function clearHoverTrailer() {
   const nc = document.getElementById('netflix-card');
   if (nc) {
     nc.classList.remove('visible');
+    nc.querySelector('.nc-reaction-picker')?.classList.remove('open');
+    document.getElementById('nc-like')?.setAttribute('aria-expanded', 'false');
     // Blur any focused button first — aria-hidden on a focused element
     // breaks assistive tech (and logs console warnings)
     if (nc.contains(document.activeElement)) document.activeElement.blur();
@@ -11198,11 +11388,8 @@ async function showNetflixCard(card) {
   const genresEl = document.getElementById('nc-genres');
   const backdrop = document.getElementById('nc-backdrop');
   const frame = document.getElementById('nc-frame');
-  const likeIcon = document.querySelector('#nc-like .material-icons-round');
   const wlIcon = document.querySelector('#nc-wl .material-icons-round');
-  // Sync the two-state icons to this title's current standing
-  const dislikeIcon = document.querySelector('#nc-dislike .material-icons-round');
-  if (dislikeIcon) dislikeIcon.textContent = isDisliked(+card.dataset.id) ? 'thumb_down' : 'thumb_down_off_alt';
+  _syncHoverReactionIcons(id, type);
   const watchedIcon = document.querySelector('#nc-watched .material-icons-round');
   if (watchedIcon) watchedIcon.textContent = isWatched(+card.dataset.id) ? 'done_all' : 'check_circle_outline';
 
@@ -11234,7 +11421,6 @@ async function showNetflixCard(card) {
       backdrop.style.background = `linear-gradient(135deg, var(--s3) 0%, var(--s2) 100%)`;
     }
   }
-  if (likeIcon) likeIcon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
   if (wlIcon) wlIcon.textContent = isInWatchlist(id) ? 'check' : 'add';
   if (genresEl) genresEl.innerHTML = '<span class="nc-genre-chip nc-loading">Loading…</span>';
   if (metaEl) {
@@ -12022,7 +12208,7 @@ function _buildTrailerSlide(item) {
             <span class="material-icons-round">${(_trailersMuted || _clipsVolume === 0) ? 'volume_off' : _clipsVolume < 50 ? 'volume_down' : 'volume_up'}</span>
           </button>
           <input type="range" class="clips-vol-slider" min="0" max="100" value="${_clipsVolume}"
-            aria-label="Trailer volume" aria-orientation="vertical" data-action="volume">
+            aria-label="Trailer volume" aria-orientation="vertical" orient="vertical" data-action="volume">
         </div>
         <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
           <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
@@ -12033,8 +12219,8 @@ function _buildTrailerSlide(item) {
         <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}${isLoved(id) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id) ? 'Loved. Activate to clear' : isLiked(id) ? 'Liked. Activate to love' : 'Like'}">
           <span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
-        <button class="trailer-icon-btn trailer-icon-dislike" data-action="dislike" title="Not Interested (X)" aria-label="Not interested">
-          <span class="material-icons-round">thumb_down_off_alt</span>
+        <button class="trailer-icon-btn trailer-icon-dislike${isDisliked(id) ? ' on' : ''}" data-action="dislike" title="Not Interested (X)" aria-label="Not interested" aria-pressed="${isDisliked(id)}">
+          <span class="material-icons-round">${isDisliked(id) ? 'thumb_down' : 'thumb_down_off_alt'}</span>
         </button>
       </div>
     </div>`;

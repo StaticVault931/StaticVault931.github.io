@@ -71,11 +71,13 @@ function titleRecords(records) {
     const id = Number(url.searchParams.get('id'));
     if (!['movie', 'tv', 'anime'].includes(type) || !id) continue;
     const imageName = record.imageTitle?.replace(/\s+-\s+Watch.*$/i, '').trim();
-    const routeName = String(url.searchParams.get('name') || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    const rawRouteName = String(url.searchParams.get('name') || '');
+    const routeName = rawRouteName.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
     const name = imageName || routeName || `${type} ${id}`;
+    const releaseYear = rawRouteName.match(/(?:^|-)((?:19|20)\d{2})$/)?.[1] || '';
     const key = `${type}:${id}`;
     if (!found.has(key) || url.searchParams.get('mode') === 'info') {
-      found.set(key, { type, id, name, slug: slug(name), image: record.image || '' });
+      found.set(key, { type, id, name, year: releaseYear, slug: slug(`${name}${releaseYear ? ` ${releaseYear}` : ''}`), image: record.image || '' });
     }
   }
   return [...found.values()];
@@ -115,7 +117,8 @@ function shell({ title, description, canonical, type = 'WebPage', image = '', no
   }
   const list = items.length ? `<section><h2>Featured titles</h2><ul>${items.map(item => `<li><a href="${esc(item.url)}">${esc(item.name)}</a></li>`).join('')}</ul></section>` : '';
   const boot = `fetch('/index.html').then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(h=>{document.open();document.write(h.replace('<head>','<head><base href="/">'));document.close()}).catch(()=>{})`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}">${image ? `<meta property="og:image" content="${esc(image)}">` : ''}<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a> / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
+  const socialImage = image || `${ORIGIN}/assets/icons/favicon.png`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="StaticVault931"><meta property="og:locale" content="en_US"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}"><meta property="og:image" content="${esc(socialImage)}"><meta property="og:image:alt" content="${esc(title)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@StaticQuasar931"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${esc(socialImage)}"><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a> / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
   return serialize(parse(html));
 }
 
@@ -158,44 +161,59 @@ for (const [route, title, description, type, items] of publicPages) {
 const privatePages = [
   ['search', 'Search', 'Search movies, shows, anime, people, and topics.'],
   ['library', 'My Library', 'Your private watchlist, reactions, and viewing activity.'],
+  ['library/watchlist', 'Watchlist', 'Your private saved titles.'],
+  ['library/liked', 'Liked Titles', 'Titles liked by this private profile.'],
+  ['library/recent', 'Recently Viewed', 'Titles recently viewed by this private profile.'],
+  ['library/taste-profile', 'Taste Profile', 'A private summary of this profile\'s discovery preferences.'],
   ['customize', 'Customize Your Feed', 'Adjust your private discovery and accessibility preferences.'],
 ];
 for (const [route, title, description] of privatePages) {
   await writeRoute(route, shell({ title: `${title} | StaticVault931`, description, canonical: `${ORIGIN}/${route}/`, noindex: true }));
 }
 
-const urls = [{ loc: `${ORIGIN}/`, lastmod }, ...publicPages.map(([route]) => ({ loc: `${ORIGIN}/${route}/`, lastmod }))];
+const urlGroups = new Map([
+  ['pages', [{ loc: `${ORIGIN}/`, lastmod }, ...publicPages.map(([route]) => ({ loc: `${ORIGIN}/${route}/`, lastmod }))]],
+  ['movies', []],
+  ['tv', []],
+  ['anime', []],
+  ['people', []],
+  ['providers', []],
+]);
 for (const item of titles) {
   const route = `title/${item.type}/${item.id}-${item.slug}`;
   const canonical = `${ORIGIN}/${route}/`;
   const description = `View details, related titles, and viewing options for ${item.name} on StaticVault931.`;
   const schemaType = item.type === 'movie' ? 'Movie' : 'TVSeries';
   await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, type: schemaType, image: item.image }));
-  urls.push({ loc: canonical, lastmod });
+  urlGroups.get(item.type === 'movie' ? 'movies' : item.type).push({ loc: canonical, lastmod });
 }
 for (const person of people) {
   const route = `person/${person.id}-${person.slug}`;
   const canonical = `${ORIGIN}/${route}/`;
   const description = `Explore ${person.name}'s movies, television credits, collaborators, and related titles on StaticVault931.`;
   await writeRoute(route, shell({ title: `${person.name} | StaticVault931`, description, canonical, type: 'Person', image: person.image }));
-  urls.push({ loc: canonical, lastmod });
+  urlGroups.get('people').push({ loc: canonical, lastmod });
 }
 for (const [id, name] of PROVIDERS) {
   const route = `provider/${id}-${slug(name)}`;
   const canonical = `${ORIGIN}/${route}/`;
   const description = `Browse movies and television shows available through ${name} in the United States.`;
   await writeRoute(route, shell({ title: `${name} | StaticVault931`, description, canonical, type: 'CollectionPage' }));
-  urls.push({ loc: canonical, lastmod });
+  urlGroups.get('providers').push({ loc: canonical, lastmod });
 }
 
 const sitemapDir = path.join(OUT, 'sitemaps');
 await mkdir(sitemapDir, { recursive: true });
 const parts = [];
-for (let start = 0; start < urls.length; start += CHUNK) {
-  const name = `public-${String(parts.length + 1).padStart(2, '0')}.xml`;
-  await writeFile(path.join(sitemapDir, name), sitemapXml(urls.slice(start, start + CHUNK)));
-  parts.push(name);
+for (const [group, groupUrls] of urlGroups) {
+  for (let start = 0; start < groupUrls.length; start += CHUNK) {
+    const suffix = groupUrls.length > CHUNK ? `-${String(Math.floor(start / CHUNK) + 1).padStart(2, '0')}` : '';
+    const name = `${group}${suffix}.xml`;
+    await writeFile(path.join(sitemapDir, name), sitemapXml(groupUrls.slice(start, start + CHUNK)));
+    parts.push(name);
+  }
 }
+const urls = [...urlGroups.values()].flat();
 const index = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${parts.map(name => `  <sitemap><loc>${ORIGIN}/sitemaps/${name}</loc><lastmod>${lastmod}</lastmod></sitemap>`).join('\n')}\n</sitemapindex>\n`;
 await writeFile(path.join(OUT, 'sitemap.xml'), index);
 await writeFile(path.join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);

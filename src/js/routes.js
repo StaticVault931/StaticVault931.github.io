@@ -26,6 +26,12 @@ export function searchPath(query = '') {
   return value ? `/search/?q=${encodeURIComponent(value)}` : PAGE_PATHS.search;
 }
 
+const LIBRARY_VIEWS = new Set(['watchlist', 'liked', 'recent', 'taste-profile']);
+export function libraryViewPath(view = '') {
+  const safe = String(view || '').toLowerCase();
+  return LIBRARY_VIEWS.has(safe) ? `/library/${safe}/` : PAGE_PATHS.library;
+}
+
 export function providerPath(id, name = '') {
   return `/provider/${Number(id)}-${slugifyRoute(name || 'streaming-service')}/`;
 }
@@ -57,7 +63,9 @@ export function parseCleanRoute(pathname = '/') {
   const path = pathname.replace(/\/{2,}/g, '/');
   const page = Object.entries(PAGE_PATHS).find(([, value]) => value === path)?.[0];
   if (page) return { kind: 'page', page };
-  let match = path.match(/^\/title\/(movie|tv|anime)\/(\d+)(?:-[^/]*)?\/?$/i);
+  let match = path.match(/^\/library\/(watchlist|liked|recent|taste-profile)\/?$/i);
+  if (match) return { kind: 'page', page: 'library', view: match[1].toLowerCase() };
+  match = path.match(/^\/title\/(movie|tv|anime)\/(\d+)(?:-[^/]*)?\/?$/i);
   if (match) return { kind: 'title', type: match[1].toLowerCase(), id: Number(match[2]) };
   match = path.match(/^\/person\/(\d+)(?:-[^/]*)?\/?$/i);
   if (match) return { kind: 'person', id: Number(match[1]) };

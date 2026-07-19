@@ -1815,6 +1815,51 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 .nc-btn-play:hover { background: rgba(255,255,255,.85); }
 .nc-btn-more { margin-left: auto; }
+.nc-reaction-picker { position: relative; flex: 0 0 auto; }
+.nc-reaction-flyout {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 5px);
+  display: flex;
+  gap: .25rem;
+  padding: .35rem;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 6px;
+  background: rgba(18,18,20,.98);
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .1s, transform .1s, visibility 0s linear .1s;
+  z-index: 8;
+}
+.nc-reaction-picker:hover .nc-reaction-flyout,
+.nc-reaction-picker:focus-within .nc-reaction-flyout,
+.nc-reaction-picker.open .nc-reaction-flyout {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+  transition-delay: 0s;
+}
+.nc-reaction-choice {
+  width: 48px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  cursor: pointer;
+}
+.nc-reaction-choice:hover,
+.nc-reaction-choice:focus-visible { background: rgba(255,255,255,.14); outline: 2px solid #fff; outline-offset: -2px; }
+.nc-reaction-choice .material-icons-round { font-size: 1.2rem; }
+.nc-reaction-choice small { font-size: .58rem; font-weight: 800; }
+.nc-reaction-choice.active { color: var(--red); }
 .nc-meta-row {
   display: flex;
   align-items: center;
@@ -3280,8 +3325,8 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
   gap: .45rem;
 }
 .clips-vol-slider {
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
+  -webkit-appearance: auto;
+  appearance: auto;
   writing-mode: vertical-lr;
   direction: rtl;
   width: 8px;

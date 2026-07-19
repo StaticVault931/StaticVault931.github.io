@@ -51,7 +51,7 @@ function updateVisibleItemList(page) {
   ldEl.textContent = JSON.stringify({ '@context': 'https://schema.org', '@graph': graph });
 }
 
-function updatePageMeta(p) {
+export function updatePageMeta(p) {
   const m = PAGE_META[p] || PAGE_META.home;
   document.title = m.title;
   const base = 'https://staticvault931.github.io/';

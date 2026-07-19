@@ -106,6 +106,11 @@ function loadProfileData(profileId) {
   } catch { return null; }
 }
 
+export function getProfileSettings(profileId) {
+  const data = loadProfileData(profileId);
+  return data?.profileSettings && typeof data.profileSettings === 'object' ? { ...data.profileSettings } : {};
+}
+
 export function exportProfilesSnapshot() {
   const profiles = getProfiles();
   const activeProfileId = getActiveProfileId();
@@ -124,7 +129,7 @@ export function exportProfilesSnapshot() {
 
 /* ── SWITCH PROFILE ───────────────────────────────────────────────── */
 export function restoreProfilesSnapshot(snapshot) {
-  if (!snapshot || !Array.isArray(snapshot.profiles) || !snapshot.profileData) return { imported: 0, activeProfileId: null };
+  if (!snapshot || !Array.isArray(snapshot.profiles) || !snapshot.profileData) return { imported: 0, activeProfileId: null, idMap: {} };
   const available = Math.max(0, MAX_PROFILES - getProfiles().length);
   const importedProfiles = snapshot.profiles.slice(0, available);
   const idMap = new Map();
@@ -147,7 +152,7 @@ export function restoreProfilesSnapshot(snapshot) {
 
   const activeProfileId = idMap.get(snapshot.activeProfileId) || idMap.values().next().value || null;
   if (activeProfileId) switchProfile(activeProfileId);
-  return { imported: idMap.size, activeProfileId };
+  return { imported: idMap.size, activeProfileId, idMap: Object.fromEntries(idMap) };
 }
 
 export function switchProfile(toId) {

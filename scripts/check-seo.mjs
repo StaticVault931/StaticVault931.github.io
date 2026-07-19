@@ -42,6 +42,14 @@ for (const route of required) {
   if (!uniqueUrls.has(`${ORIGIN}${route}`)) errors.push(`Required public route missing from sitemap: ${route}`);
 }
 
+const titleRegressions = [
+  '/title/movie/1083381-backrooms-2026/',
+  '/title/movie/986056-thunderbolts-2025/',
+];
+for (const route of titleRegressions) {
+  if (!uniqueUrls.has(`${ORIGIN}${route}`)) errors.push(`Year-bearing title route missing from sitemap: ${route}`);
+}
+
 const routes = [...uniqueUrls].map(raw => new URL(raw));
 for (let start = 0; start < routes.length; start += 250) {
   await Promise.all(routes.slice(start, start + 250).map(async url => {
@@ -53,7 +61,7 @@ for (let start = 0; start < routes.length; start += 250) {
   }));
 }
 
-const privateRoutes = ['/search/', '/library/', '/customize/'];
+const privateRoutes = ['/search/', '/library/', '/library/watchlist/', '/library/liked/', '/library/recent/', '/library/taste-profile/', '/customize/'];
 for (const route of privateRoutes) {
   const html = await readFile(path.join(OUT, route.slice(1, -1), 'index.html'), 'utf8');
   if (!/name="robots" content="noindex, follow"/i.test(html)) errors.push(`Private route is not noindex: ${route}`);
