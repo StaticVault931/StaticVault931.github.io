@@ -1,18 +1,29 @@
-import { esc } from './ui.js';
-import { goPage } from './router.js';
-import { searchPath } from './routes.js';
+const esc = value => String(value || '').replace(/[&<>"']/g, character =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+const goToPage = page => import('./router.js').then(({ goPage }) => goPage(page));
+const goToCatalogSearch = query => import('./routes.js').then(({ searchPath }) => {
+  location.href = searchPath(query);
+});
 
-let _enabled = () => false;
+let _enabled = () => {
+  try {
+    const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
+    return settings.superSearch !== false;
+  } catch {
+    return true;
+  }
+};
+let _listenerReady = false;
 let _previousFocus = null;
 let _entries = [];
 let _active = 0;
 
 const ACTIONS = [
-  { text: 'Search the full catalog', terms: 'find movie show anime actor title global catalog', kind: 'Page', icon: 'search', action: query => { location.href = searchPath(query); } },
-  { text: 'Open Settings', terms: 'preferences options captions subtitles language accessibility playback account', kind: 'Tool', icon: 'settings', action: () => goPage('prefs') },
-  { text: 'Open My Library', terms: 'watchlist saved liked loved watched recent history taste profile', kind: 'Page', icon: 'video_library', action: () => goPage('library') },
-  { text: 'Open Clips', terms: 'trailers short feed discover video', kind: 'Page', icon: 'smart_display', action: () => goPage('clips') },
-  { text: 'Open Mix & Match', terms: 'blend combine mix movies shows titles together recommendations discovery mixer', kind: 'Tool', icon: 'blender', action: () => goPage('mix') },
+  { text: 'Search the full catalog', terms: 'find movie show anime actor title global catalog', kind: 'Page', icon: 'search', action: goToCatalogSearch },
+  { text: 'Open Settings', terms: 'preferences options captions subtitles language accessibility playback account', kind: 'Tool', icon: 'settings', action: () => goToPage('prefs') },
+  { text: 'Open My Library', terms: 'watchlist saved liked loved watched recent history taste profile', kind: 'Page', icon: 'video_library', action: () => goToPage('library') },
+  { text: 'Open Clips', terms: 'trailers short feed discover video', kind: 'Page', icon: 'smart_display', action: () => goToPage('clips') },
+  { text: 'Open Mix & Match', terms: 'blend combine mix movies shows titles together recommendations discovery mixer', kind: 'Tool', icon: 'blender', action: () => goToPage('mix') },
   { text: 'Show feature guide and shortcuts', terms: 'help guide keyboard shortcuts features tips reference', kind: 'Help', icon: 'help_outline', action: () => document.getElementById('feature-guide-btn')?.click() },
   { text: 'Open undo history', terms: 'undo reverse restore mistake actions history z', kind: 'Tool', icon: 'history', action: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true })) },
   { text: 'Manage profiles', terms: 'profile account kids kid guided export avatar switch', kind: 'Tool', icon: 'manage_accounts', action: () => document.getElementById('profile-header-btn')?.click() },
@@ -176,8 +187,10 @@ export function closeSuperSearch() {
   return true;
 }
 
-export function initSuperSearch({ isEnabled }) {
+export function initSuperSearch({ isEnabled } = {}) {
   _enabled = isEnabled || _enabled;
+  if (_listenerReady) return;
+  _listenerReady = true;
   document.addEventListener('keydown', event => {
     const open = document.getElementById('super-search-overlay')?.classList.contains('open');
     if (open) {
@@ -207,3 +220,7 @@ export function initSuperSearch({ isEnabled }) {
     }
   }, true);
 }
+
+// Register during module evaluation so Ctrl+F works even while the rest of the
+// application is still completing asynchronous startup.
+initSuperSearch();

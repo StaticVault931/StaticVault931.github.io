@@ -343,7 +343,9 @@ export function buildSearchFilters(container) {
     container.querySelectorAll('.sf-provider-choice').forEach(c => c.classList.remove('included', 'excluded'));
     container.querySelectorAll('.sf-prov-chip, .sf-prov-block').forEach(c => { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); });
     container.querySelector('[data-prov-clear]')?.classList.add('on');
-    loadSearchDefault();
+    const query = document.getElementById('search-input')?.value.trim();
+    if (query) doSearch(query);
+    else loadSearchDefault({ force: true });
   });
 
   const rerunProviderSearch = () => {
@@ -579,7 +581,8 @@ export function initSearch() {
       if (document.getElementById('page-search')?.classList.contains('active')) {
         history.replaceState({ page: 'search' }, '', searchPath());
       }
-      loadSearchDefault();
+      _searchState = { query: '', page: 1, results: [], loading: false, done: false };
+      loadSearchDefault({ force: true });
       return;
     }
 
@@ -615,7 +618,8 @@ export function initSearch() {
       clear.style.display = 'none';
       closeInlineDrop();
       history.replaceState({ page: 'search' }, '', searchPath());
-      loadSearchDefault();
+      _searchState = { query: '', page: 1, results: [], loading: false, done: false };
+      loadSearchDefault({ force: true });
       inp.focus();
     });
   }
@@ -631,7 +635,8 @@ export function initSearch() {
       } else if (q) {
         doSearch(q);
       } else {
-        loadSearchDefault();
+        _searchState = { query: '', page: 1, results: [], loading: false, done: false };
+        loadSearchDefault({ force: true });
       }
     });
   });
@@ -900,9 +905,12 @@ export async function loadEverything(reset = true) {
 }
 
 /* ── DEFAULT STATE (no query) ────────────────────────────────────── */
-export async function loadSearchDefault() {
+export async function loadSearchDefault({ force = false } = {}) {
   const area = document.getElementById('search-results-area');
   if (!area) return;
+  const query = document.getElementById('search-input')?.value.trim();
+  if (!force && (query || _searchState.query)) return;
+  _searchState = { query: '', page: 1, results: [], loading: false, done: false };
 
   // Rotate tip
   rotateTip();
@@ -1287,6 +1295,9 @@ export async function doSearch(q) {
 
   q = String(q || '').trim();
   if (!q) return;
+  _searchState = { query: q, page: 1, results: [], loading: true, done: false };
+  const input = document.getElementById('search-input');
+  if (input && input.value !== q) input.value = q;
   if (document.getElementById('page-search')?.classList.contains('active')) {
     history.replaceState({ page: 'search', query: q }, '', searchPath(q));
   }

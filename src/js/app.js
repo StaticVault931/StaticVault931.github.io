@@ -1273,6 +1273,8 @@ let _cardCertObserver = null;
 
 /* ── INIT ────────────────────────────────────────────────────────── */
 (async function init() {
+  // Install Ctrl/Cmd+F handling before slower profile, overlay, and page setup.
+  initSuperSearch({ isEnabled: () => !!getSetting('superSearch') });
   undoManager.init({ getProfileId: getActiveProfileId, announce: toast });
   // Reset provider fail states every reload so previously-broken providers can be retried
   localStorage.removeItem('sv_provider_working');
@@ -1286,7 +1288,6 @@ let _cardCertObserver = null;
   applyLoadingScreenState();
   initEventDelegation();
   initKeyboard();
-  initSuperSearch({ isEnabled: () => !!getSetting('superSearch') });
   initTasteCalibration({ openInfo: (id, type) => openInfoPage(id, type) });
   initHeader();
   initHoverTrailer();
@@ -2389,7 +2390,9 @@ function registerAllLoaders() {
   registerLoader('tv', loadTvPage);
   registerLoader('anime', loadAnimePage);
   registerLoader('search', () => {
-    loadSearchDefault();
+    const query = document.getElementById('search-input')?.value.trim();
+    if (query) doSearch(query);
+    else loadSearchDefault();
     rotateTip(); // show a helpful tip in the placeholder
     buildSearchFilters(document.getElementById('sf-advanced-wrap'));
     setTimeout(() => document.getElementById('search-input')?.focus(), 100);
