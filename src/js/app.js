@@ -2078,7 +2078,12 @@ async function maybeShowOnboarding({ force = false } = {}) {
       const rows = Math.min(targetRows, fitRows, Math.floor(tileCount / candidateCols));
       if (rows >= 4) choices.push({ cols: candidateCols, rows, visible: candidateCols * rows, tileW });
     }
-    choices.sort((a, b) => b.visible - a.visible || b.tileW - a.tileW);
+    // Pick the layout that FILLS the box, not the one that crams the most
+    // tiles: maximizing count always chose 14 tiny columns and left a
+    // ~340px dead band under the wall. Filled height first, then the
+    // biggest posters that achieve it.
+    choices.forEach(c => { c.used = c.rows * (c.tileW * 1.5 + GAP) - GAP; });
+    choices.sort((a, b) => (b.used - a.used) || (b.tileW - a.tileW));
     const best = choices[0] || { cols: 7, rows: Math.max(1, Math.floor(tileCount / 7)), visible: tileCount };
     const { cols, visible } = best;
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;

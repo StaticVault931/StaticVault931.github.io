@@ -3425,3 +3425,41 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 /* Denser results: four columns on a desktop instead of three giants */
 .mix-grid { --card-w: 300px; }
 @media (max-width: 720px) { .mix-grid { --card-w: 44vw; } }
+
+/* ═══ FINAL PASS — onboarding sidebar: all five blocks on screen ═════
+   The anime tri-state joined the column and pushed Content Rating below
+   the fold. One even three-up row for anime + a slightly tighter rhythm
+   brings every block back inside the viewport with zero internal scroll. */
+@media (min-width: 881px) {
+  #ob-anime-pref { grid-template-columns: repeat(3, 1fr); }
+  .ob-side { gap: .6rem; }
+  .ob-side .ob-block { padding: .6rem .75rem; }
+  .ob-side .ob-chips { gap: .28rem; }
+  .ob-side .ob-label { margin-bottom: .42rem; }
+}
+
+/* ═══ FINAL PASS — Mix & Match: one first viewport, not two islands ══
+   The empty state was a detached block floating in a dead band below the
+   bench. It now sits directly under the bench as an attached dashed card
+   with left-aligned guidance — bench, formula, and hint read as one unit. */
+#lib-tab-mix .mix-results { margin-top: .7rem; }
+#lib-tab-mix .mix-empty {
+  min-height: 0;
+  padding: 1.1rem 1.3rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .4rem 1.4rem;
+  text-align: left;
+}
+#lib-tab-mix .mix-empty .mix-empty-art { margin-bottom: 0; flex: none; }
+#lib-tab-mix .mix-empty p { margin: 0; }
+#lib-tab-mix .mix-empty .muted-note { flex-basis: 100%; }
+@media (min-width: 881px) {
+  .ob-side .ob-chip { padding: .26rem .4rem; font-size: .71rem; }
+  .ob-search { padding: .4rem .65rem; }
+  .ob-side .ob-label { font-size: .64rem; }
+}
