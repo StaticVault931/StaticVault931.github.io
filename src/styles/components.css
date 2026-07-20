@@ -3994,3 +3994,6 @@ body.cal-open { overflow: hidden; }
   .undo-history-panel { max-height: 86dvh; border-radius: 8px 8px 0 0; }
   .undo-history-foot { align-items: stretch; flex-direction: column; }
 }
+
+/* ═══ COMMIT 132 — hover trailer: clean video, no fade bar ═══════════ */
+#netflix-card .nc-video-gradient { display: none; }

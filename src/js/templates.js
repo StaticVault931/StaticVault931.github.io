@@ -497,8 +497,8 @@ export function injectOverlays() {
           <div class="pe-quick-avatar pe-qa-default" data-avatar="" title="Default">
             <span class="material-icons-round">person</span>
           </div>
-          <div class="pe-quick-avatar" data-avatar="assets/icons/favicon.png" title="StaticVault931">
-            <img src="assets/icons/favicon.png" alt="StaticVault931">
+          <div class="pe-quick-avatar" data-avatar="/assets/icons/favicon.png" title="StaticVault931">
+            <img src="/assets/icons/favicon.png" alt="StaticVault931">
           </div>
           <div class="pe-quick-avatar" data-avatar="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" title="StaticQuasar931">
             <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg" alt="StaticQuasar931">

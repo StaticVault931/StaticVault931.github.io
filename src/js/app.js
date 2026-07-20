@@ -231,7 +231,7 @@ const SV_SETTINGS = [
   { id: 'autoNextProvider',  label: 'Auto-Switch Source',     desc: 'Try next source automatically if current one fails',          default: true,  icon: 'swap_horiz',       group: 'Playback' },
   { id: 'disableSandbox',    label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.',   default: false, icon: 'security',         group: 'Playback' },
   // Display
-  { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: true,  icon: 'star',             group: 'Display' },
+  { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: false, icon: 'star',             group: 'Display' },
   { id: 'useTitleLogos',     label: 'Title Treatment Images', desc: 'Show Netflix-style title logo images on cards instead of text (lazy-loads from TMDB)', default: true, icon: 'title', group: 'Display' },
   { id: 'compactMode',       label: 'Compact Grid Mode',      desc: 'Show content as a grid (no horizontal scroll)',               default: false, icon: 'grid_view',        group: 'Display' },
   { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
@@ -1813,7 +1813,7 @@ async function maybeShowOnboarding({ force = false } = {}) {
   // Picture options — same set the real profile editor offers
   const OB_AVATARS = [
     ['', 'Initial'],
-    ['assets/icons/favicon.png', 'StaticVault931'],
+    ['/assets/icons/favicon.png', 'StaticVault931'],
     ['https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', 'StaticQuasar931'],
   ];
   const avatarsEl = ob.querySelector('#ob-profile-avatars');
@@ -7004,7 +7004,9 @@ function playTrailerInWatchArea(key, title = 'Trailer') {
   }
   frame.title = `${title} trailer`;
   frame.onload = () => loading?.classList.add('hidden');
-  frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  // Same embed config as the info page — the bare nocookie URL without
+  // origin/widget_referrer context is what YouTube rejects with error 153
+  frame.src = `https://www.youtube.com/embed/${encodeURIComponent(key)}?autoplay=1&rel=0&modestbranding=1&fs=1&iv_load_policy=3&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.href)}`;
   toast('Trailer is playing in the watch area', 'theaters');
 }
 
@@ -10040,7 +10042,7 @@ function openPersonSearchForAvatar() {
         <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.2rem">Featured</div>
         <div style="display:flex;gap:.65rem;flex-wrap:wrap;">${(() => {
           const featuredAvatars = [
-            { url: 'assets/icons/favicon.png', name: 'StaticVault931', special: 'sv931' },
+            { url: '/assets/icons/favicon.png', name: 'StaticVault931', special: 'sv931' },
             { url: 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/squarestaticquasar931logo.jpg', name: 'StaticQuasar931', special: 'sq931' },
             // Person avatars: searched by exact name via TMDB — always correct face
             { name: 'Robert Downey Jr.',  searchName: 'Robert Downey Jr.' },
@@ -12016,6 +12018,16 @@ function _pauseAllClips() {
 
 // Page visibility — pause clips when tab is hidden, resume when it returns
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Kill the hover preview EVERYWHERE on tab-out: pending open timers,
+    // the trailer audio (even one that starts after the tab hides), and
+    // the expanded card itself — nothing should keep playing or stay
+    // "hovered" for a mouse that is no longer here.
+    clearHoverTrailer();
+    document.getElementById('netflix-card')?.classList.remove('nc-visible', 'open');
+    const ncFrame = document.getElementById('nc-frame');
+    if (ncFrame?.src) ncFrame.removeAttribute('src');
+  }
   if (state.currentPage !== 'clips') return;
   if (document.hidden) _pauseAllClips();
   else _clipsGoTo(_clipsIdx, { instant: true });
