@@ -15,6 +15,7 @@ function cleanProfileData(value) {
   });
   if (!data.continueWatching || typeof data.continueWatching !== 'object' || Array.isArray(data.continueWatching)) data.continueWatching = {};
   if (!data.tasteSkips || typeof data.tasteSkips !== 'object' || Array.isArray(data.tasteSkips)) data.tasteSkips = {};
+  if (!data.trailerPreviews || typeof data.trailerPreviews !== 'object' || Array.isArray(data.trailerPreviews)) data.trailerPreviews = {};
   if (!data.profileSettings || typeof data.profileSettings !== 'object' || Array.isArray(data.profileSettings)) data.profileSettings = {};
   return data;
 }
@@ -68,6 +69,7 @@ export function parseBackupText(text) {
       watched: cleanMediaList(kids.watched), watchlist: cleanMediaList(kids.watchlist),
       prefLikes: cleanMediaList(kids.prefLikes), prefDislikes: cleanMediaList(kids.prefDislikes),
       tasteSkips: kids.tasteSkips && typeof kids.tasteSkips === 'object' && !Array.isArray(kids.tasteSkips) ? kids.tasteSkips : {},
+      trailerPreviews: kids.trailerPreviews && typeof kids.trailerPreviews === 'object' && !Array.isArray(kids.trailerPreviews) ? kids.trailerPreviews : {},
     };
   }
   if (data.profilesSnapshot) data.profilesSnapshot = cleanProfilesSnapshot(data.profilesSnapshot);

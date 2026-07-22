@@ -76,8 +76,9 @@ export const state = {
   prefTagDislikes: load('sv_pref_tag_dislikes', []), // [{id,name}] — disliked TMDB keywords
   prefLangs:       load('sv_pref_langs', []),        // [iso639] — preferred audio/content languages ('en','fr',…)
   tasteSkips:      load('sv_taste_skips', {}),
+  trailerPreviews: load('sv_trailer_previews', {}),
   kidsTaste:       load('sv_kids_taste', {
-    liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {},
+    liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {}, trailerPreviews: {},
   }),
   lastProvider: load('sv_last_provider', 'vidsrc'),
 
@@ -114,6 +115,7 @@ const PERSIST_MAP = {
   prefTagDislikes:    'sv_pref_tag_dislikes',
   prefLangs:          'sv_pref_langs',
   tasteSkips:         'sv_taste_skips',
+  trailerPreviews:    'sv_trailer_previews',
   kidsTaste:          'sv_kids_taste',
   lastProvider:       'sv_last_provider',
   disabledShortcuts:    'sv_disabled_shortcuts',
@@ -171,6 +173,7 @@ export function cleanState() {
     prefLikes: cleanMediaArray(kids.prefLikes),
     prefDislikes: cleanMediaArray(kids.prefDislikes),
     tasteSkips: kids.tasteSkips && typeof kids.tasteSkips === 'object' ? kids.tasteSkips : {},
+    trailerPreviews: kids.trailerPreviews && typeof kids.trailerPreviews === 'object' ? kids.trailerPreviews : {},
   };
   persist('kidsTaste');
 
@@ -319,11 +322,61 @@ export function recordTasteSkip(item) {
   recordTasteSignal('skip', item);
 }
 
+export function recordTrailerPreview(item, seconds = 0) {
+  if (!isValidItem(item) || seconds < 15) return null;
+  const taste = getActiveTasteState();
+  taste.trailerPreviews ||= {};
+  const key = mediaKey(item);
+  const previous = taste.trailerPreviews[key] ? { ...taste.trailerPreviews[key] } : null;
+  taste.trailerPreviews[key] = {
+    item: { id: +item.id, type: mediaType(item), title: item.title || item.name || '', genre_ids: item.genre_ids || [] },
+    seconds: Math.min(600, (previous?.seconds || 0) + seconds),
+    count: Math.min(10, (previous?.count || 0) + 1),
+    lastAt: Date.now(),
+  };
+  kidsModeActive() ? persist('kidsTaste') : persist('trailerPreviews');
+  return previous;
+}
+
+export function restoreTrailerPreview(item, previous = null) {
+  if (!isValidItem(item)) return;
+  const taste = getActiveTasteState();
+  taste.trailerPreviews ||= {};
+  const key = mediaKey(item);
+  if (previous) taste.trailerPreviews[key] = previous;
+  else delete taste.trailerPreviews[key];
+  kidsModeActive() ? persist('kidsTaste') : persist('trailerPreviews');
+}
+
+export function getDiscoveryControls() {
+  let stored = {};
+  try {
+    const pid = localStorage.getItem('sv_active_profile') || 'default';
+    stored = JSON.parse(localStorage.getItem(`sv_discovery_controls_${pid}`) || '{}');
+  } catch {}
+  return {
+    familiarity: Math.max(0, Math.min(100, Number(stored.familiarity ?? 55))),
+    novelty: Math.max(0, Math.min(100, Number(stored.novelty ?? 50))),
+    variety: Math.max(0, Math.min(100, Number(stored.variety ?? 65))),
+  };
+}
+
+export function setDiscoveryControls(next = {}) {
+  const value = { ...getDiscoveryControls(), ...next };
+  try {
+    const pid = localStorage.getItem('sv_active_profile') || 'default';
+    localStorage.setItem(`sv_discovery_controls_${pid}`, JSON.stringify(value));
+  } catch {}
+  return value;
+}
+
 export function getTasteScore(item) {
   if (!item) return 0;
   const genres = new Set((item.genre_ids || []).map(Number));
   const key = mediaKey(item);
   let score = 0;
+  const controls = getDiscoveryControls();
+  const tasteScale = 0.7 + controls.familiarity / 100 * 0.6;
   const taste = getActiveTasteState();
   if (!kidsModeActive()) {
     (state.prefGenres || []).forEach(g => { if (genres.has(+g)) score += 0.9; });
@@ -343,9 +396,9 @@ export function getTasteScore(item) {
   if ((taste.disliked || []).some(source => mediaKey(source) === key)) score -= 10;
   if ((taste.watched || []).some(source => mediaKey(source) === key)) score += 3;
   if ((taste.watchlist || []).some(source => mediaKey(source) === key)) score += 2;
-  score += matchingContribution(taste.loved, 0.55, 3.3);
-  score += matchingContribution(taste.liked, 0.24, 1.8);
-  score += matchingContribution(taste.prefLikes, 0.18, 1.2);
+  score += matchingContribution(taste.loved, 0.55, 3.3) * tasteScale;
+  score += matchingContribution(taste.liked, 0.24, 1.8) * tasteScale;
+  score += matchingContribution(taste.prefLikes, 0.18, 1.2) * tasteScale;
   score += matchingContribution(taste.disliked, -0.55, -3.3);
   try {
     const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
@@ -365,6 +418,16 @@ export function getTasteScore(item) {
     }
   });
   score -= Math.min(0.9, relatedSkipPenalty);
+  Object.entries(taste.trailerPreviews || {}).forEach(([previewKey, rec]) => {
+    const ageDays = (now - (rec?.lastAt || 0)) / 86400000;
+    if (ageDays > 30) return;
+    const decay = Math.max(0, 1 - ageDays / 30);
+    if (previewKey === key) score += Math.min(0.7, (rec.seconds || 0) / 60 * 0.35) * decay;
+    else if ((rec?.item?.genre_ids || []).some(g => genres.has(+g))) score += 0.08 * decay * tasteScale;
+  });
+  const impression = state.impressions[key] || state.impressions[item.id];
+  const impressionCount = typeof impression === 'number' ? impression : impression?.count || 0;
+  score += Math.max(-0.5, (controls.novelty - 50) / 100 * (impressionCount ? -0.7 : 0.45));
   return score;
 }
 

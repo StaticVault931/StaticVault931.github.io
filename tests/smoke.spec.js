@@ -14,6 +14,74 @@ async function seedReturningUser(page) {
 }
 
 test.describe('StaticVault931 smoke', () => {
+  test('collection orders are deterministic and related collections are meaningful', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const result = await page.evaluate(async () => {
+      const catalog = await import('/src/js/collectionCatalog.js');
+      const items = [
+        { id: 11, release_date: '1977-05-25', vote_average: 8.2, vote_count: 20000 },
+        { id: 1893, release_date: '1999-05-19', vote_average: 6.6, vote_count: 14000 },
+        { id: 1891, release_date: '1980-05-17', vote_average: 8.4, vote_count: 17000 },
+      ];
+      return {
+        release: catalog.collectionOrder(10, items, 'release').map(item => item.id),
+        timeline: catalog.collectionOrder(10, items, 'timeline').map(item => item.id),
+        recommended: catalog.collectionOrder(10, items, 'recommended').map(item => item.id),
+        hasTimeline: catalog.hasTimelineOrder(10),
+        related: catalog.relatedCollections(131292).map(item => item.id),
+      };
+    });
+    expect(result.release).toEqual([11, 1891, 1893]);
+    expect(result.timeline).toEqual([1893, 11, 1891]);
+    expect(result.recommended[0]).toBe(1891);
+    expect(result.hasTimeline).toBe(true);
+    expect(result.related).toContain(86311);
+  });
+
+  test('referral analytics are bounded and share links use canonical campaign tags', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('sv_active_profile', 'analytics-test');
+      localStorage.removeItem('sv_product_analytics_v1_analytics-test');
+    });
+    await page.goto('/404.html?utm_source=News_Letter&utm_medium=email&utm_campaign=July%20Launch', { waitUntil: 'domcontentloaded' });
+    const result = await page.evaluate(async () => {
+      const analytics = await import('/src/js/productAnalytics.js');
+      analytics.initProductAnalytics();
+      const share = new URL(analytics.attributedShareUrl('/title/movie/603-the-matrix/', 'movie-title'));
+      const summary = analytics.getProductAnalytics();
+      return {
+        touch: summary.firstTouch,
+        share: Object.fromEntries(share.searchParams),
+        eventCount: summary.recentEvents.length,
+      };
+    });
+    expect(result.touch).toMatchObject({ source: 'news_letter', medium: 'email', campaign: 'july-launch' });
+    expect(result.share).toMatchObject({ utm_source: 'staticvault-share', utm_medium: 'referral', utm_campaign: 'user-share', utm_content: 'movie-title' });
+    expect(result.eventCount).toBeLessThanOrEqual(20);
+  });
+
+  test('qualified trailer previews are weak, profile-local, and reversible', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('sv_active_profile', 'preview-test');
+      localStorage.setItem('sv_settings', '{}');
+      localStorage.removeItem('sv_trailer_previews');
+    });
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const result = await page.evaluate(async () => {
+      const store = await import('/src/js/state.js');
+      const item = { id: 603, type: 'movie', title: 'The Matrix', genre_ids: [28, 878] };
+      const before = store.getTasteScore(item);
+      const previous = store.recordTrailerPreview(item, 20);
+      const after = store.getTasteScore(item);
+      store.restoreTrailerPreview(item, previous);
+      return { before, after, restored: store.getTasteScore(item), saved: Object.keys(store.state.trailerPreviews).length };
+    });
+    expect(result.after).toBeGreaterThan(result.before);
+    expect(result.after - result.before).toBeLessThan(1);
+    expect(result.restored).toBe(result.before);
+    expect(result.saved).toBe(0);
+  });
+
   test('Kid-Guided rating rules fail closed and use the stricter certification', async ({ page }) => {
     await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
     const results = await page.evaluate(async () => {
@@ -757,10 +825,12 @@ test.describe('StaticVault931 smoke', () => {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(async () => (await import('/src/js/app.js')).openCollectionPage(10, 'Test Collection'));
-    await expect(page.locator('#company-row-view .sec-title')).toContainText('In Release Order');
+    await expect(page.locator('#company-row-view .sec-title')).toContainText('Release Order');
     await expect(page.locator('#company-row-view .card')).toHaveCount(12);
     await expect(page.locator('#company-overlay')).toHaveAttribute('data-kind', 'collection');
     await expect(page.locator('#company-row-view .card-row')).toHaveCSS('overflow-x', 'auto');
+    await expect(page).toHaveTitle('Test Collection Movies in Order | StaticVault931');
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://staticvault931.github.io/collection/10-test-collection/');
     await page.locator('#company-close').click();
     await expect(page).toHaveURL(/\/$/);
   });

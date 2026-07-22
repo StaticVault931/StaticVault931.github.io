@@ -430,6 +430,7 @@ export function injectOverlays() {
         <h1 class="company-name-big"></h1>
         <p id="company-parent" class="company-parent"></p>
         <p id="company-desc" class="company-desc"></p>
+        <div id="company-collection-tools" class="company-collection-tools" hidden></div>
       </div>
     </div>
   </div>

@@ -18,5 +18,12 @@
   { "id": 8091, "name": "Alien Collection", "partIds": [348, 679, 8077, 8078] },
   { "id": 399, "name": "Predator Collection", "partIds": [106, 169, 34851, 346910, 766507, 1242898] },
   { "id": 295, "name": "Pirates of the Caribbean Collection", "partIds": [22, 58, 285, 1865, 166426] },
-  { "id": 131292, "name": "Iron Man Collection", "partIds": [1726, 10138, 68721] }
+  { "id": 131292, "name": "Iron Man Collection", "partIds": [1726, 10138, 68721] },
+  { "id": 86311, "name": "The Avengers Collection", "partIds": [24428, 99861, 299536, 299534] },
+  { "id": 131295, "name": "Captain America Collection", "partIds": [1771, 100402, 271110, 822119] },
+  { "id": 131296, "name": "Thor Collection", "partIds": [10195, 76338, 284053, 616037] },
+  { "id": 284433, "name": "Guardians of the Galaxy Collection", "partIds": [118340, 283995, 447365] },
+  { "id": 264, "name": "Back to the Future Collection", "partIds": [105, 165, 196] },
+  { "id": 84, "name": "Indiana Jones Collection", "partIds": [85, 87, 89, 217, 335977] },
+  { "id": 528, "name": "The Terminator Collection", "partIds": [218, 280, 296, 534, 87101, 290859] }
 ]

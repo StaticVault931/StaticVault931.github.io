@@ -1,7 +1,7 @@
 import './adblock.js';
 import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
-import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, getReaction, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore, getActiveTasteState } from './state.js';
+import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, getReaction, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore, getActiveTasteState, recordTrailerPreview, restoreTrailerPreview, getDiscoveryControls, setDiscoveryControls } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
   fetchOMDb, fetchWatchmode, fetchWikipediaSummary, testAllAPIs,
   getProviderLogoUrl, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
@@ -29,6 +29,8 @@ import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.
 import { requestPinUnlock, requestNewPin, showRecoveryCode } from './kidsPinDialog.js';
 import { parseBackupText } from './backup.js';
 import { reactionIcon, setReactionIcon } from './reactionIcons.js';
+import { initProductAnalytics, recordProductEvent, attributedShareUrl, getProductAnalytics } from './productAnalytics.js';
+import { collectionOrder, hasTimelineOrder, relatedCollections } from './collectionCatalog.js';
 
 let _onboardingPreloadGeneration = 0;
 async function preloadOnboardingHomeMetadata() {
@@ -108,7 +110,7 @@ const LEGAL_CONTENT = {
   privacy: {
     title: 'Privacy Policy',
     body: `
-      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 5, 2026</p>
+      <p style="color:var(--dim);font-size:.78rem;margin-bottom:1.2rem">Last updated: July 22, 2026</p>
       <h3>1. Overview</h3>
       <p>StaticVault931 ("we", "us", "our") is committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights regarding that data. By using StaticVault931 you agree to this policy.</p>
       <h3>2. Data We Collect</h3>
@@ -132,7 +134,7 @@ const LEGAL_CONTENT = {
       <h3>4. Cookies & Tracking</h3>
       <p>Embed providers may set cookies in the iframe context. Our ad-blocking layer attempts to restrict ad-network trackers, but cannot guarantee complete coverage.</p>
       <h3>5. Analytics</h3>
-      <p>StaticVault931 uses <strong>Google Analytics 4 (GA4)</strong> to understand aggregate usage patterns (pageviews, session counts, general regions). This helps us improve the site. Google Analytics sets cookies in your browser. You can opt out using <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. We do not use any other analytics platform (Mixpanel, Amplitude, etc.).</p>
+      <p>StaticVault931 uses <strong>Google Analytics 4 (GA4)</strong> to understand aggregate usage patterns, acquisition campaigns, shares, and use of a small allowlist of public discovery features. We do not send profile names, raw search text, full referral URLs, watch history, PIN data, or local recommendation details to Google. Browsers with Do Not Track enabled do not receive custom product events. Google Analytics may set cookies; you can opt out using <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. We do not use another analytics platform.</p>
       <h3>6. Children's Privacy & Kid Safety</h3>
       <p>StaticVault931 is not directed at children under 13 and we do not knowingly collect data from children. Kid-Guided Mode conservatively shows only titles with a verified family rating and hides unclear ratings. The optional local PIN is a device-level deterrent, not an online account lock, and a parent or guardian remains responsible for supervision. If both the PIN and recovery code are lost, recovery requires clearing local site data or restoring a backup.</p>
       <h3>7. Your Rights</h3>
@@ -1295,6 +1297,7 @@ let _cardCertObserver = null;
   injectOverlays();   // inject modals/overlays before anything else
   cleanState();       // remove corrupt null/empty items from all lists
   initProfiles();     // ensure at least one profile exists
+  initProductAnalytics();
   initTheme();
   applyAllSettings(); // apply persisted settings (reducedMotion, compactMode, etc.)
   applyLoadingScreenState();
@@ -4818,9 +4821,38 @@ function updateCyfStats() {
   set('cyf-stat-genres-n',  state.prefGenres?.length ?? 0);
 }
 
+function renderDiscoveryControls() {
+  const controls = getDiscoveryControls();
+  ['familiarity', 'novelty', 'variety'].forEach(id => {
+    const input = document.getElementById(`cyf-${id}`);
+    const value = document.getElementById(`cyf-${id}-value`);
+    if (input) input.value = controls[id];
+    if (value) value.textContent = `${controls[id]}%`;
+    if (input && !input.dataset.wired) {
+      input.dataset.wired = '1';
+      input.addEventListener('input', () => {
+        const next = setDiscoveryControls({ [id]: +input.value });
+        if (value) value.textContent = `${next[id]}%`;
+        _clearRowCache();
+      });
+    }
+  });
+  const signals = document.getElementById('cyf-algorithm-signals');
+  if (!signals) return;
+  const taste = getActiveTasteState();
+  const genreNames = state.prefGenres.slice(0, 4).map(id => GENRES.find(genre => genre.id === +id)?.name).filter(Boolean);
+  const labels = [
+    `${taste.loved?.length || 0} loved`, `${taste.liked?.length || 0} liked`, `${taste.disliked?.length || 0} hidden`,
+    `${Object.keys(taste.tasteSkips || {}).length} recent skips`, `${Object.keys(taste.trailerPreviews || {}).length} qualified trailer previews`,
+    genreNames.length ? `Top genres: ${genreNames.join(', ')}` : 'Choose genres to strengthen your profile',
+  ];
+  signals.innerHTML = labels.map(text => `<span>${esc(text)}</span>`).join('');
+}
+
 function loadPrefsPage() {
   syncLikedToPrefLikes();
   updateCyfStats();
+  renderDiscoveryControls();
   renderPrefLists();
   renderTagPrefsSection();
   buildRatingDescriptions();
@@ -5867,6 +5899,7 @@ function setupAC(inputId, dropId, onSelect) {
 
 /* ── OPEN MEDIA / MODAL ──────────────────────────────────────────── */
 export async function openMedia(id, type, hint = {}) {
+  recordProductEvent('title_open', { surface: 'player', type, id });
   if (!await _allowRequestedContent(id, type)) return;
   _rememberOverlayReturnRoute();
   // Redirect to info page if that's the user's default preference
@@ -6786,6 +6819,7 @@ function initEventDelegation() {
       ageRating:        state.ageRating,
       recentSearches:   state.recentSearches,
       tasteSkips:       state.tasteSkips,
+      trailerPreviews:  state.trailerPreviews,
       kidsTaste:        state.kidsTaste,
       // Row system diagnostics — engagement, cooldowns, daily stats,
       // selection history. All local-only; leaves the device only in this
@@ -6877,11 +6911,13 @@ function initEventDelegation() {
           if (data.continueWatching) { Object.assign(state.continueWatching, data.continueWatching); persist('continueWatching'); }
           if (data.ageRating)        { state.ageRating = data.ageRating; persist('ageRating'); }
           if (data.tasteSkips)       { Object.assign(state.tasteSkips, data.tasteSkips); persist('tasteSkips'); }
+          if (data.trailerPreviews)  { Object.assign(state.trailerPreviews, data.trailerPreviews); persist('trailerPreviews'); }
           if (data.kidsTaste) {
             ['liked', 'loved', 'disliked', 'watched', 'watchlist', 'prefLikes', 'prefDislikes'].forEach(field => {
               state.kidsTaste[field] = merge(state.kidsTaste[field] || [], data.kidsTaste[field] || []);
             });
             Object.assign(state.kidsTaste.tasteSkips, data.kidsTaste.tasteSkips || {});
+            Object.assign(state.kidsTaste.trailerPreviews, data.kidsTaste.trailerPreviews || {});
             persist('kidsTaste');
           }
           if (data.featureState) {
@@ -7378,7 +7414,8 @@ function shareMedia(forceClipboard = false) {
   if (!state.currentMedia) return;
   const { id, type, title, details } = state.currentMedia;
   const year = String(details?.release_date || details?.first_air_date || '').slice(0, 4);
-  const url = buildMediaUrl(id, type, title, year);
+  const url = attributedShareUrl(buildMediaUrl(id, type, title, year), `${type}-title`);
+  recordProductEvent('share', { surface: 'share-menu', type, id });
 
   if (forceClipboard) {
     navigator.clipboard?.writeText(url).then(() => toast('Link copied!', 'link')).catch(() => toast('Copy failed', 'error'));
@@ -7683,6 +7720,7 @@ function _showInfoTrailerFallback(trailerKey, posterImg, fallbackEl, frameEl) {
 }
 
 export async function openInfoPage(id, type, hint = {}) {
+  recordProductEvent('title_open', { surface: 'info', type, id });
   if (!await _allowRequestedContent(id, type)) return;
   const directTitleRoute = parseCleanRoute(location.pathname)?.kind === 'title';
   _rememberOverlayReturnRoute();
@@ -8211,6 +8249,7 @@ async function getTmdbWatchProviders() {
 /* ── PROVIDER PAGE (content on a streaming service) ─────────────── */
 let _providerPageToken = 0;
 export async function openProviderPage(providerId, providerName) {
+  recordProductEvent('provider_open', { surface: 'provider', type: 'provider', id: providerId });
   const requestToken = ++_providerPageToken;
   clearHoverTrailer();
   _svMarkFeatureUse('provider'); // tip-row usage signal
@@ -8575,6 +8614,7 @@ function _getProviderSVG(name) {
 
 /* ── COMPANY PAGE ────────────────────────────────────────────────── */
 export async function openCompanyPage(companyId, companyName) {
+  recordProductEvent('provider_open', { surface: 'production-company', type: 'company', id: companyId });
   _openCompanyOverlay({
     name: companyName,
     subtitle: 'Production Company',
@@ -8609,6 +8649,7 @@ export async function openCompanyPage(companyId, companyName) {
 
 /* ── COLLECTION / FRANCHISE PAGE ──────────────────────────────────── */
 export async function openCollectionPage(collectionId, collectionName) {
+  recordProductEvent('collection_open', { surface: 'collection', type: 'collection', id: collectionId });
   _rememberOverlayReturnRoute();
   const initialPath = collectionPath(collectionId, collectionName);
   history.pushState({ collectionId }, '', initialPath);
@@ -8628,7 +8669,56 @@ export async function openCollectionPage(collectionId, collectionName) {
       if (getSetting('kidsMode')) movies = await filterSafeItems(movies, _safetyContext());
       const resolvedPath = collectionPath(collectionId, col.name || collectionName);
       history.replaceState({ collectionId }, '', resolvedPath);
-      document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${SITE_ORIGIN}${resolvedPath}`);
+      const collectionUrl = `${SITE_ORIGIN}${resolvedPath}`;
+      const collectionTitle = `${col.name || collectionName} Movies in Order | StaticVault931`;
+      const collectionDescription = (col.overview ||
+        `Browse every movie in the ${col.name || collectionName}, compare release and recommended orders, and track your progress.`
+      ).slice(0, 300);
+      const collectionImage = col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280') :
+        col.poster_path ? imgUrl(col.poster_path, 'w780') : null;
+
+      document.title = collectionTitle;
+      document.querySelector('meta[name="description"]')?.setAttribute('content', collectionDescription);
+      document.querySelector('meta[name="robots"]')?.setAttribute('content', 'index, follow, max-snippet:-1, max-image-preview:large');
+      document.querySelector('link[rel="canonical"]')?.setAttribute('href', collectionUrl);
+      document.querySelector('meta[property="og:title"]')?.setAttribute('content', collectionTitle);
+      document.querySelector('meta[property="og:description"]')?.setAttribute('content', collectionDescription);
+      document.querySelector('meta[property="og:type"]')?.setAttribute('content', 'website');
+      document.querySelector('meta[property="og:url"]')?.setAttribute('content', collectionUrl);
+      document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', collectionTitle);
+      document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', collectionDescription);
+      if (collectionImage) {
+        document.querySelector('meta[property="og:image"]')?.setAttribute('content', collectionImage);
+        document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', collectionImage);
+      }
+
+      const collectionLd = document.getElementById('jsonld-media');
+      if (collectionLd) collectionLd.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'CollectionPage',
+            name: col.name || collectionName,
+            description: collectionDescription,
+            url: collectionUrl,
+            ...(collectionImage ? { image: collectionImage } : {}),
+            mainEntity: {
+              '@type': 'ItemList',
+              numberOfItems: movies.length,
+              itemListElement: movies.slice(0, 50).map((movie, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                name: movie.title || movie.name,
+                url: `${SITE_ORIGIN}${titlePath('movie', movie.id, movie.title || movie.name)}`,
+              })),
+            },
+          },
+          { '@type': 'BreadcrumbList', itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_ORIGIN}/` },
+            { '@type': 'ListItem', position: 2, name: col.name || collectionName, item: collectionUrl },
+          ] },
+        ],
+      });
 
       // Build a readable subtitle: "X Films · Year–Year"
       const years = movies.map(m => +(m.release_date||'').slice(0,4)).filter(Boolean);
@@ -8642,6 +8732,7 @@ export async function openCollectionPage(collectionId, collectionName) {
 
       return {
         kind: 'collection',
+        collectionId: +collectionId,
         name: col.name || collectionName,
         desc: col.overview || '',
         parent: subtitle,
@@ -8686,6 +8777,15 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
         if (!relatedId) return;
         closePersonPage({ restoreHistory: false });
         openPersonPage(relatedId);
+        return;
+      }
+      const collectionLink = e.target.closest('[data-related-collection-id]');
+      if (collectionLink) {
+        e.preventDefault();
+        const relatedId = +collectionLink.dataset.relatedCollectionId;
+        if (!relatedId) return;
+        _closeCompanyOverlay();
+        setTimeout(() => openCollectionPage(relatedId, collectionLink.dataset.collectionName || 'Collection'), 60);
         return;
       }
       const card = e.target.closest('.card[data-id][data-type]');
@@ -8741,10 +8841,12 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   const logoSm    = document.getElementById('company-logo'); // toolbar logo (id="company-logo")
   const descEl    = document.getElementById('company-desc');
   const parentEl  = document.getElementById('company-parent');
+  const collectionTools = document.getElementById('company-collection-tools');
 
   ov.querySelectorAll('.company-name, .company-name-big').forEach(el => el.textContent = name || 'Loading…');
   if (parentEl) parentEl.textContent = subtitle || '';
   if (descEl)   descEl.textContent = '';
+  if (collectionTools) { collectionTools.hidden = true; collectionTools.innerHTML = ''; }
   if (heroImg)  { heroImg.src = ''; heroImg.style.display = 'none'; }
   if (logoBig)  { logoBig.src = ''; logoBig.style.display = 'none'; }
   if (logoSm)   { logoSm.src = ''; logoSm.style.display = 'none'; }
@@ -8788,6 +8890,12 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     const moreTv     = data.moreTv     || [];
     const originals  = data.originals  || [];
     const all        = [...movies, ...tv];
+    if (data.kind === 'collection' && collectionTools) {
+      const watched = movies.filter(item => isWatched(item.id, 'movie')).length;
+      const percent = movies.length ? Math.round(watched / movies.length * 100) : 0;
+      collectionTools.hidden = false;
+      collectionTools.innerHTML = `<span><b>${watched}</b> of ${movies.length} watched</span><span class="collection-progress" aria-label="${percent}% complete"><i style="width:${percent}%"></i></span><span>${percent}% complete</span>`;
+    }
 
     // ── ROW VIEW: Full home-page style rows ───────────────────────
     const rowView = ov.querySelector('#company-row-view');
@@ -8817,7 +8925,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
       for (let i=0; i<Math.max(moreMovies.length,moreTv.length); i++) { if(moreMovies[i]) moreMixed.push(moreMovies[i]); if(moreTv[i]) moreMixed.push(moreTv[i]); }
 
       const rows = data.kind === 'collection'
-        ? [makeRow('cp-collection', 'theaters', 'In Release Order', movies, 'movie')]
+        ? [makeRow('cp-collection', 'theaters', 'Release Order', collectionOrder(data.collectionId, movies, 'release'), 'movie')]
         : [
             originals.length    ? makeRow('cp-originals',  'star',              `Only on ${name}`,  originals,    null)   : '',
             movies.length       ? makeRow('cp-movies',     'movie',             'Popular Movies',    movies,       'movie'): '',
@@ -8826,7 +8934,36 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
             moreMixed.length    ? makeRow('cp-more',       'explore',           'More to Explore',   moreMixed,    null)   : '',
           ].filter(Boolean);
 
-      rowView.innerHTML = rows.join('') || '<p style="padding:3rem;color:var(--muted);text-align:center;font-size:1rem">No content available for this provider in your region.</p>';
+      if (data.kind === 'collection' && rows.length) {
+        const timelineAvailable = hasTimelineOrder(data.collectionId);
+        const related = relatedCollections(data.collectionId);
+        rowView.innerHTML = `<div class="collection-experience">
+          <aside class="collection-sidebar">
+            <p class="collection-side-label">Watch order</p>
+            <div class="collection-order" role="group" aria-label="Collection watch order">
+              <button class="on" data-collection-order="release">Release</button>
+              <button data-collection-order="timeline" ${timelineAvailable ? '' : 'disabled title="No verified timeline order is available for this collection"'}>Timeline</button>
+              <button data-collection-order="recommended">Recommended</button>
+            </div>
+            <p class="collection-order-note">Recommended starts with the strongest audience-rated entries. Timeline is only offered when a verified order is available.</p>
+            ${related.length ? `<p class="collection-side-label">Related collections</p><nav class="collection-related" aria-label="Related collections">${related.map(entry => `<a href="${collectionPath(entry.id, entry.name)}" data-related-collection-id="${entry.id}" data-collection-name="${esc(entry.name)}"><span class="material-icons-round">movie_filter</span>${esc(entry.name.replace(/ Collection$/i, ''))}</a>`).join('')}</nav>` : ''}
+          </aside>
+          <div class="collection-main">${rows.join('')}</div>
+        </div>`;
+        const row = rowView.querySelector('#cp-collection');
+        const titleEl = rowView.querySelector('.collection-main .sec-title');
+        rowView.querySelectorAll('[data-collection-order]').forEach(button => button.addEventListener('click', () => {
+          const order = button.dataset.collectionOrder;
+          const ordered = collectionOrder(data.collectionId, movies, order);
+          row.innerHTML = ordered.map(item => makeCard(item, 'movie')).join('');
+          rowView.querySelectorAll('[data-collection-order]').forEach(item => item.classList.toggle('on', item === button));
+          if (titleEl) titleEl.innerHTML = `<span class="material-icons-round sec-icon">theaters</span>${order === 'timeline' ? 'Timeline Order' : order === 'recommended' ? 'Recommended Starting Points' : 'Release Order'}`;
+          recordProductEvent('collection_order', { surface: 'collection', type: order, id: data.collectionId });
+          _syncOverlayRowArrows(rowView);
+        }));
+      } else {
+        rowView.innerHTML = rows.join('') || '<p style="padding:3rem;color:var(--muted);text-align:center;font-size:1rem">No content available for this provider in your region.</p>';
+      }
 
       // Wire scroll arrows inside provider overlay
       rowView.querySelectorAll('[data-scroll-row]').forEach(btn => {
@@ -8834,6 +8971,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
           scrollRowEl(document.getElementById(btn.dataset.scrollRow), +btn.dataset.scrollDir);
         });
       });
+      _syncOverlayRowArrows(rowView);
 
     }
 
@@ -9244,6 +9382,13 @@ async function _enrichInfoPage(id, type, details, credits) {
           collSec.querySelectorAll('[data-info-collection-scroll]').forEach(button => {
             button.onclick = () => collGrid.scrollBy({ left: Number(button.dataset.infoCollectionScroll) * Math.max(280, collGrid.clientWidth * .75), behavior: 'smooth' });
           });
+          const syncArrows = () => {
+            const overflow = collGrid.scrollWidth > collGrid.clientWidth + 2;
+            collSec.querySelectorAll('.info-collection-arrow').forEach(button => { button.hidden = !overflow; });
+            collGrid.classList.toggle('row-fits', !overflow);
+          };
+          new ResizeObserver(syncArrows).observe(collGrid);
+          syncArrows();
         }
       }).catch(() => {});
     }
@@ -9251,6 +9396,7 @@ async function _enrichInfoPage(id, type, details, credits) {
 }
 
 export async function openPersonPage(personId) {
+  recordProductEvent('person_open', { surface: 'person', type: 'person', id: personId });
   // Close any other overlays first — only one thing open at a time
   document.getElementById('info-overlay')?.classList.remove('open');
   document.getElementById('company-overlay')?.classList.remove('open');
@@ -9272,6 +9418,21 @@ export async function openPersonPage(personId) {
       if (!tab) return;
       ov.querySelectorAll('.person-tab').forEach(t => t.classList.toggle('on', t === tab));
       loadPersonCredits(ov._personId, tab.dataset.tab);
+    });
+    ov.addEventListener('click', e => {
+      const personLink = e.target.closest('[data-related-person-id]');
+      if (personLink) {
+        e.preventDefault();
+        const id = +personLink.dataset.relatedPersonId;
+        if (id) { closePersonPage({ restoreHistory: false }); setTimeout(() => openPersonPage(id), 40); }
+        return;
+      }
+      const titleLink = e.target.closest('[data-shared-title-id]');
+      if (!titleLink) return;
+      e.preventDefault();
+      const id = +titleLink.dataset.sharedTitleId;
+      const type = titleLink.dataset.sharedTitleType;
+      if (id && type) { closePersonPage({ restoreHistory: false }); setTimeout(() => openInfoPage(id, type), 40); }
     });
     // Card clicks within person overlay — close person page first so modal opens on top
     ov.addEventListener('click', e => {
@@ -9427,7 +9588,7 @@ async function _loadPersonNetwork(person) {
     if (!data) {
       try {
         const saved = JSON.parse(sessionStorage.getItem(`sv_person_network_${person.id}`) || 'null');
-        if (saved && Date.now() - saved.ts < 86400000) data = saved.data;
+        if (saved?.version === 2 && Date.now() - saved.ts < 86400000 && saved.data?.every(actor => actor.titles?.every(title => title && typeof title === 'object'))) data = saved.data;
       } catch {}
     }
     if (!data) {
@@ -9441,9 +9602,15 @@ async function _loadPersonNetwork(person) {
           seenTitles.add(key);
           return true;
         })
-        .slice(0, 5);
-      const credits = await Promise.all(topTitles.map(title =>
-        tmdb(`/${title.media_type}/${title.id}/credits`).catch(() => ({ cast: [] }))));
+        .slice(0, 12);
+      const credits = [];
+      // A wider sample is more representative, while four-at-a-time avoids a
+      // burst of credits requests when a person page opens.
+      for (let i = 0; i < topTitles.length; i += 4) {
+        const batch = await Promise.all(topTitles.slice(i, i + 4).map(title =>
+          tmdb(`/${title.media_type}/${title.id}/credits`).catch(() => ({ cast: [] }))));
+        credits.push(...batch);
+      }
       const people = new Map();
       credits.forEach((credit, titleIndex) => {
         (credit.cast || []).slice(0, 15).forEach(actor => {
@@ -9454,25 +9621,28 @@ async function _loadPersonNetwork(person) {
           };
           rec.shared++;
           rec.weight += Math.max(1, 5 - titleIndex);
-          if (!rec.titles.includes(topTitles[titleIndex]?.title || topTitles[titleIndex]?.name)) {
-            rec.titles.push(topTitles[titleIndex]?.title || topTitles[titleIndex]?.name);
+          const sharedTitle = topTitles[titleIndex];
+          if (!rec.titles.some(title => title.id === sharedTitle?.id && title.type === sharedTitle?.media_type)) {
+            rec.titles.push({ id: sharedTitle?.id, type: sharedTitle?.media_type, name: sharedTitle?.title || sharedTitle?.name || '' });
           }
           people.set(actor.id, rec);
         });
       });
-      data = [...people.values()].sort((a, b) => b.shared - a.shared || b.weight - a.weight).slice(0, 10);
+      data = [...people.values()].filter(actor => actor.shared >= 2).sort((a, b) => b.shared - a.shared || b.weight - a.weight).slice(0, 10);
       _personNetworkCache.set(person.id, data);
-      try { sessionStorage.setItem(`sv_person_network_${person.id}`, JSON.stringify({ ts: Date.now(), data })); } catch {}
+      try { sessionStorage.setItem(`sv_person_network_${person.id}`, JSON.stringify({ version: 2, ts: Date.now(), data })); } catch {}
     }
     if (!data.length) { el.innerHTML = ''; return; }
     el.innerHTML = `
       <div class="person-network-heading">Frequently works with</div>
       <div class="person-network-list">${data.map(actor => `
-        <button class="person-network-node" data-related-person-id="${actor.id}" type="button"
-          title="Shared work: ${esc(actor.titles.join(', '))}">
-          ${actor.profile_path ? `<img src="${imgUrl(actor.profile_path, 'w185')}" alt="">` : '<span class="material-icons-round">person</span>'}
-          <span><b>${esc(actor.name)}</b><small>${actor.shared} shared ${actor.shared === 1 ? 'title' : 'titles'}</small></span>
-        </button>`).join('')}</div>`;
+        <article class="person-network-node" title="Shared work: ${esc(actor.titles.map(title => title.name).join(', '))}">
+          <a class="person-network-person" data-related-person-id="${actor.id}" href="${personPath(actor.id, actor.name)}">
+            ${actor.profile_path ? `<img src="${imgUrl(actor.profile_path, 'w185')}" alt="">` : '<span class="material-icons-round">person</span>'}
+            <span><b>${esc(actor.name)}</b><small>${actor.shared} shared titles</small></span>
+          </a>
+          <span class="person-network-shared">${actor.titles.slice(0, 3).map(title => `<a href="${titlePath(title.type, title.id, title.name)}" data-shared-title-id="${title.id}" data-shared-title-type="${title.type}">${esc(title.name)}</a>`).join('')}</span>
+        </article>`).join('')}</div>`;
   } catch (err) {
     console.warn('[SV Person] collaborator graph failed:', err?.message || err);
     el.innerHTML = '';
@@ -9499,7 +9669,7 @@ export function closeInfoPage() {
 }
 
 /* ── TRAILER OVERLAY (multi-key fallback) ───────────────────────── */
-function openTrailerOverlay(key, title, details) {
+function _openTrailerOverlay(key, title, details) {
   const ov = document.getElementById('trailer-overlay');
   if (!ov) return;
 
@@ -9626,7 +9796,7 @@ function closeTrailerOverlay() {
 }
 
 /* ── TRAILER FALLBACK ────────────────────────────────────────────── */
-function showTrailerFallback(key) {
+function _showTrailerFallback(key) {
   // Add a small "Watch on YouTube" button over the player without interrupting playback
   const existing = document.getElementById('trailer-fallback-btn');
   if (existing) return;
@@ -9750,6 +9920,8 @@ function _profileExportExtras(profileIds) {
   return Object.fromEntries(profileIds.map(profileId => [profileId, {
     usageStats: _readStoredJson(`sv_stats_v1_${profileId}`, {}),
     clipsSeen: _readStoredJson(`sv_clips_seen_v1_${profileId}`, []),
+    discoveryControls: _readStoredJson(`sv_discovery_controls_${profileId}`, {}),
+    productAnalytics: _readStoredJson(`sv_product_analytics_v1_${profileId}`, {}),
   }]));
 }
 
@@ -9763,6 +9935,12 @@ function _restoreProfileExtras(extras, idMap) {
     }
     if (Array.isArray(extra.clipsSeen)) {
       localStorage.setItem(`sv_clips_seen_v1_${targetId}`, JSON.stringify(extra.clipsSeen.slice(0, 5000)));
+    }
+    if (extra.discoveryControls && typeof extra.discoveryControls === 'object') {
+      localStorage.setItem(`sv_discovery_controls_${targetId}`, JSON.stringify(extra.discoveryControls));
+    }
+    if (extra.productAnalytics && typeof extra.productAnalytics === 'object') {
+      localStorage.setItem(`sv_product_analytics_v1_${targetId}`, JSON.stringify(extra.productAnalytics));
     }
   });
 }
@@ -10536,7 +10714,9 @@ function populateTestPanel() {
         <div class="dev-sec-title">Diagnostics Display</div>
         <div class="dev-btn-row">
           <button class="dev-btn" id="dev-btn-na" title="Missing data (ratings, years…) renders as N/A instead of disappearing">Label Missing Info (N/A)</button>
+          <button class="dev-btn" id="dev-btn-reactions" title="Check visible reaction controls for active/outline mismatches">Inspect Reaction States</button>
         </div>
+        <div id="dev-reaction-report" class="dev-inline-report"></div>
       </div>
 
       <div class="dev-section">
@@ -10746,6 +10926,22 @@ function populateTestPanel() {
       invalidateIndex();
       buildIndex().then(() => toast('Search index rebuilt', 'refresh'));
     });
+    panel.querySelector('#dev-btn-reactions')?.addEventListener('click', () => {
+      document.querySelectorAll('.sv-reaction-mismatch').forEach(el => el.classList.remove('sv-reaction-mismatch'));
+      const icons = [...document.querySelectorAll('[data-reaction-icon][data-icon-state]')].filter(icon => icon.getClientRects().length);
+      const mismatches = [];
+      icons.forEach(icon => {
+        const control = icon.closest('button,[role="button"]');
+        if (!control?.hasAttribute('aria-pressed')) return;
+        const expected = control.getAttribute('aria-pressed') === 'true' ? 'filled' : 'outline';
+        if (icon.dataset.iconState !== expected) {
+          control.classList.add('sv-reaction-mismatch');
+          mismatches.push(`${icon.dataset.reactionIcon}: expected ${expected}`);
+        }
+      });
+      const report = panel.querySelector('#dev-reaction-report');
+      if (report) report.textContent = mismatches.length ? `${mismatches.length} mismatch(es): ${mismatches.join(', ')}` : `${icons.length} visible reaction icons checked. No definite state mismatches.`;
+    });
 
     // ── Row system debug summary ─────────────────────────────────────
     const rowSys = panel.querySelector('#dev-row-system');
@@ -10781,6 +10977,7 @@ function populateTestPanel() {
         if (!el) return;
         const life = lifetimeSummary();
         const fav = getFavorites(3);
+        const analytics = getProductAnalytics();
         const titleList = fav.titles.map(x => esc(x.title || x.key)).join(', ') || 'Not enough activity yet';
         const actorList = fav.actors.map(x => esc(x.name || `Person ${x.personId}`)).join(', ') || 'Not enough activity yet';
         el.innerHTML = `
@@ -10788,7 +10985,8 @@ function populateTestPanel() {
           Searches: <b>${life.searches}</b> | Clips viewed: <b>${life.clipViews}</b> | Page views: <b>${life.pageViews}</b><br>
           Taste tuner: <b>${Object.values(life.calibration || {}).reduce((sum, value) => sum + value, 0)}</b> events | Avg clip attention: <b>${life.clips?.averageSeconds || 0}s</b><br>
           Favorite titles: <b>${titleList}</b><br>
-          Favorite actors: <b>${actorList}</b>`;
+          Favorite actors: <b>${actorList}</b><br>
+          Acquisition: <b>${Object.entries(analytics.sources).map(([source, count]) => `${esc(source)} (${count})`).join(', ') || 'No referral data yet'}</b>`;
       };
       const renderExps = () => {
         expEl.innerHTML = SV_EXPERIMENTS.map(e => `
@@ -11592,6 +11790,51 @@ function initHoverTrailer() {
 // Hover preview mute state (initialised from the automute setting per card)
 let _hoverMuted = true;
 let _hoverExpandTimer = null;
+let _hoverPlaybackStartedAt = 0;
+let _hoverPlaybackMs = 0;
+let _hoverSignalRecorded = false;
+
+function _pauseHoverPlaybackClock() {
+  if (_hoverPlaybackStartedAt) {
+    _hoverPlaybackMs += Math.max(0, performance.now() - _hoverPlaybackStartedAt);
+    _hoverPlaybackStartedAt = 0;
+  }
+  if (_hoverSignalRecorded || _hoverPlaybackMs < 15000 || !_hoverCurrentCard) return;
+  const item = buildItemMeta(+_hoverCurrentCard.dataset.id, _hoverCurrentCard.dataset.type);
+  const seconds = Math.round(_hoverPlaybackMs / 1000);
+  const previous = recordTrailerPreview(item, seconds);
+  _hoverSignalRecorded = true;
+  recordProductEvent('qualified_trailer_preview', { surface: 'hover-card', type: item.type, id: item.id, value: seconds });
+  const undoId = undoManager.record({
+    label: 'Trailer preview signal', title: item.title || '', icon: 'movie_filter',
+    undo: () => {
+      restoreTrailerPreview(item, previous);
+      recordProductEvent('undo_trailer_preview', { surface: 'undo', type: item.type, id: item.id });
+    },
+  });
+  toast('Trailer watch noted for recommendations', 'auto_awesome', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
+}
+
+function _syncOverlayRowArrows(root) {
+  root?.querySelectorAll('.card-row[id]').forEach(row => {
+    const wrap = row.closest('.row-wrap');
+    const left = wrap?.querySelector('.row-arrow-l');
+    const right = wrap?.querySelector('.row-arrow-r');
+    const sync = () => {
+      const overflow = row.scrollWidth > row.clientWidth + 2;
+      left?.classList.toggle('hidden', !overflow || row.scrollLeft <= 2);
+      right?.classList.toggle('hidden', !overflow || row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
+      row.classList.toggle('row-fits', !overflow);
+    };
+    row.addEventListener('scroll', sync, { passive: true });
+    new ResizeObserver(sync).observe(row);
+    sync();
+  });
+}
+
+function _startHoverPlaybackClock() {
+  if (!_hoverPlaybackStartedAt && !_hoverSignalRecorded && !document.hidden) _hoverPlaybackStartedAt = performance.now();
+}
 
 function _stopHoverExpansion() {
   clearTimeout(_hoverExpandTimer);
@@ -11610,14 +11853,24 @@ function _startHoverExpansion(card) {
     const nc = document.getElementById('netflix-card');
     if (!nc) return;
     const rect = nc.getBoundingClientRect();
-    const width = Math.min(Math.round(rect.width * 1.45), window.innerWidth - 24);
+    const scale = Math.max(1, Math.min(1.75, (window.innerWidth - 24) / rect.width, (window.innerHeight - 86) / rect.height));
+    const width = rect.width * scale;
+    const height = rect.height * scale;
     const left = Math.max(12, Math.min(rect.left - (width - rect.width) / 2, window.innerWidth - width - 12));
-    const estimatedHeight = Math.min(rect.height * 1.25, window.innerHeight - 86);
-    const top = Math.max(70, Math.min(rect.top - (estimatedHeight - rect.height) / 2, window.innerHeight - estimatedHeight - 8));
+    const top = Math.max(70, Math.min(rect.top - (height - rect.height) / 2, window.innerHeight - height - 8));
+    // Establish an explicit 1x starting frame. Without this reset, a reused
+    // hover card can briefly inherit the previous title's scale and jump.
+    nc.style.setProperty('--hover-expand-scale', '1');
+    nc.style.left = `${rect.left}px`;
+    nc.style.top = `${rect.top}px`;
     nc.classList.add('long-preview');
-    nc.style.width = `${width}px`;
-    nc.style.left = `${left}px`;
-    nc.style.top = `${top}px`;
+    nc.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      if (!_hoverActive || _hoverCurrentCard !== card) return;
+      nc.style.setProperty('--hover-expand-scale', scale.toFixed(3));
+      nc.style.left = `${left}px`;
+      nc.style.top = `${top}px`;
+    });
   }, 15000);
 }
 function _syncNcMuteIcon() {
@@ -11626,12 +11879,16 @@ function _syncNcMuteIcon() {
 }
 
 function clearHoverTrailer() {
+  _pauseHoverPlaybackClock();
   clearTimeout(_hoverTimer);
   _stopHoverExpansion();
   _hoverTimer = null;
   _hoverActive = false;
   _hoverCurrentCard = null;
   _hoverCurrentId = null;
+  _hoverPlaybackStartedAt = 0;
+  _hoverPlaybackMs = 0;
+  _hoverSignalRecorded = false;
   const nc = document.getElementById('netflix-card');
   if (nc) {
     nc.classList.remove('visible');
@@ -11792,7 +12049,9 @@ async function showNetflixCard(card) {
               _syncNcMuteIcon();
             }
             _startHoverExpansion(card);
+            _startHoverPlaybackClock();
           } else if (d.event === 'infoDelivery' && [-1, 0, 2, 3, 5].includes(d.info?.playerState)) {
+            _pauseHoverPlaybackClock();
             _stopHoverExpansion();
           } else if (d.event === 'onError') {
             // Trailer error — fall back to showing the backdrop image

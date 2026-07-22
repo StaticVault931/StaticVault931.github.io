@@ -1,4 +1,4 @@
-import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey, getActiveTasteState } from './state.js';
+import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey, getActiveTasteState, getDiscoveryControls } from './state.js';
 import { tmdb } from './api.js';
 import { makeCard, renderRow, skelCards, esc } from './ui.js';
 import { filterSafeItems, isAnimeContent } from './contentSafety.js';
@@ -56,6 +56,8 @@ const _franchiseStem = item => String(item?.title || item?.name || '')
 export function blendRecommendationCandidates(primary = [], exploration = [], limit = 18) {
   const queues = [primary.slice(), exploration.slice()];
   const output = [];
+  const controls = getDiscoveryControls();
+  const exploreEvery = controls.variety >= 75 ? 3 : controls.variety <= 30 ? 6 : 4;
 
   const takeBest = queue => {
     if (!queue.length) return null;
@@ -73,7 +75,7 @@ export function blendRecommendationCandidates(primary = [], exploration = [], li
   while (output.length < limit && (queues[0].length || queues[1].length)) {
     // Reserve roughly every fourth position for discovery without moving a
     // weak exploration result ahead of the first few high-confidence matches.
-    const wantsExploration = output.length >= 3 && (output.length + 1) % 4 === 0;
+    const wantsExploration = output.length >= 2 && (output.length + 1) % exploreEvery === 0;
     const preferredQueue = wantsExploration ? 1 : 0;
     const item = takeBest(queues[preferredQueue]) || takeBest(queues[1 - preferredQueue]);
     if (!item) break;

@@ -15,7 +15,7 @@ const PROFILE_STATE_KEYS = [
   'continueWatching', 'prefLikes', 'prefDislikes', 'prefGenres',
   'prefGenreDislikes', 'prefTagLikes', 'prefTagDislikes', 'prefLangs',
   'ageRating', 'lastProvider', 'impressions', 'recentSearches',
-  'disabledShortcuts', 'tasteSkips', 'kidsTaste', // per-profile shortcut overrides
+  'disabledShortcuts', 'tasteSkips', 'trailerPreviews', 'kidsTaste', // per-profile shortcut overrides
 ];
 
 const PERSIST_MAP_KEYS = {
@@ -38,6 +38,7 @@ const PERSIST_MAP_KEYS = {
   impressions:      'sv_impressions',
   recentSearches:   'sv_recent_searches',
   tasteSkips:       'sv_taste_skips',
+  trailerPreviews:  'sv_trailer_previews',
   kidsTaste:        'sv_kids_taste',
 };
 
@@ -84,6 +85,8 @@ export function deleteProfile(id) {
   try { localStorage.removeItem(`sv_pd_${id}`); } catch {}
   try { localStorage.removeItem(`sv_stats_v1_${id}`); } catch {}
   try { localStorage.removeItem(`sv_clips_seen_v1_${id}`); } catch {}
+  try { localStorage.removeItem(`sv_product_analytics_v1_${id}`); } catch {}
+  try { localStorage.removeItem(`sv_discovery_controls_${id}`); } catch {}
 }
 
 /* ── SAVE / LOAD PROFILE DATA ─────────────────────────────────────── */
@@ -182,8 +185,8 @@ export function switchProfile(toId) {
         prefLikes: [], prefDislikes: [], prefGenres: [],
         prefGenreDislikes: [], prefTagLikes: [], prefTagDislikes: [], prefLangs: [],
         ageRating: 'PG-13', lastProvider: 'vidsrc',
-        impressions: {}, recentSearches: [], tasteSkips: {},
-        kidsTaste: { liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {} },
+        impressions: {}, recentSearches: [], tasteSkips: {}, trailerPreviews: {},
+        kidsTaste: { liked: [], loved: [], disliked: [], watched: [], watchlist: [], prefLikes: [], prefDislikes: [], tasteSkips: {}, trailerPreviews: {} },
       };
       state[k] = defaults[k] ?? state[k];
     }

@@ -160,7 +160,7 @@ const legacyRecords = parseLegacySitemap(legacyXml);
 const titles = titleRecords(legacyRecords);
 const people = personRecords(legacyRecords);
 const collections = JSON.parse(await readFile(path.join(ROOT, 'scripts', 'data', 'collections.json'), 'utf8'));
-const lastmod = lastModified(['scripts/data/catalog-source.xml', 'scripts/generate-seo.mjs', 'src/js/routes.js']);
+const lastmod = lastModified(['scripts/data/catalog-source.xml', 'scripts/data/collections.json', 'scripts/generate-seo.mjs', 'src/js/routes.js']);
 
 const publicPages = [
   ['movies', 'Movies', 'Browse popular, acclaimed, and new movies.', 'CollectionPage', titles.filter(item => item.type === 'movie').slice(0, 12)],
