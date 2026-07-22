@@ -101,15 +101,25 @@ function personRecords(records) {
   return [...found.values()];
 }
 
-function shell({ title, description, canonical, type = 'WebPage', image = '', noindex = false, items = [] }) {
-  const entity = { '@type': type, name: title, description, url: canonical, ...(image ? { image } : {}) };
-  const graph = [entity, {
+function shell({ title, description, canonical, type = 'WebPage', image = '', noindex = false, items = [], parent = null }) {
+  const entityType = ['Movie', 'TVSeries', 'Person'].includes(type);
+  const entityId = `${canonical}#entity`;
+  const imageId = `${canonical}#primaryimage`;
+  const entity = { '@type': type, '@id': entityId, name: title, description, url: canonical, ...(image ? { image: { '@id': imageId } } : {}) };
+  const graph = entityType ? [{
+    '@type': 'WebPage', '@id': `${canonical}#webpage`, name: title, description, url: canonical,
+    mainEntity: { '@id': entityId }, ...(image ? { primaryImageOfPage: { '@id': imageId } } : {}),
+    isPartOf: { '@type': 'WebSite', name: 'StaticVault931', url: `${ORIGIN}/` },
+  }, entity] : [entity];
+  if (image) graph.push({ '@type': 'ImageObject', '@id': imageId, url: image, contentUrl: image, caption: title, representativeOfPage: true });
+  graph.push({
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: `${ORIGIN}/` },
-      { '@type': 'ListItem', position: 2, name: title.replace(/\s+\|\s+StaticVault931$/, ''), item: canonical },
+      ...(parent ? [{ '@type': 'ListItem', position: 2, name: parent.name, item: parent.url }] : []),
+      { '@type': 'ListItem', position: parent ? 3 : 2, name: title.replace(/\s+\|\s+StaticVault931$/, ''), item: canonical },
     ],
-  }];
+  });
   if (items.length) {
     graph.push({
       '@type': 'ItemList',
@@ -122,7 +132,8 @@ function shell({ title, description, canonical, type = 'WebPage', image = '', no
   const list = items.length ? `<section><h2>Featured titles</h2><ul>${items.map(item => `<li><a href="${esc(item.url)}">${esc(item.name)}</a></li>`).join('')}</ul></section>` : '';
   const boot = `fetch('/index.html').then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(h=>{document.open();document.write(h.replace('<head>','<head><base href="/">'));document.close()}).catch(()=>{})`;
   const socialImage = image || `${ORIGIN}/assets/icons/favicon.png`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="StaticVault931"><meta property="og:locale" content="en_US"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}"><meta property="og:image" content="${esc(socialImage)}"><meta property="og:image:alt" content="${esc(title)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@StaticQuasar931"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${esc(socialImage)}"><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a> / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
+  const parentCrumb = parent ? ` / <a href="${esc(parent.url)}">${esc(parent.name)}</a>` : '';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="StaticVault931"><meta property="og:locale" content="en_US"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}"><meta property="og:image" content="${esc(socialImage)}"><meta property="og:image:alt" content="${esc(title)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@StaticQuasar931"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${esc(socialImage)}"><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a>${parentCrumb} / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
   return serialize(parse(html));
 }
 
@@ -188,7 +199,12 @@ for (const item of titles) {
   const canonical = `${ORIGIN}/${route}/`;
   const description = `View details, related titles, and viewing options for ${item.name} on StaticVault931.`;
   const schemaType = item.type === 'movie' ? 'Movie' : 'TVSeries';
-  await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, type: schemaType, image: item.image }));
+  const parent = item.type === 'movie'
+    ? { name: 'Movies', url: `${ORIGIN}/movies/` }
+    : item.type === 'anime'
+      ? { name: 'Anime', url: `${ORIGIN}/anime/` }
+      : { name: 'TV Shows', url: `${ORIGIN}/tv/` };
+  await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, type: schemaType, image: item.image, parent }));
   urlGroups.get(item.type === 'movie' ? 'movies' : item.type).push({ loc: canonical, lastmod });
 }
 for (const person of people) {

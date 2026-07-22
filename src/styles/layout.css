@@ -2050,6 +2050,7 @@ body.sv-exp-footer-grid .footer-legal-btn:hover::before { transform: translateY(
   grid-template-columns: 1fr 1fr;
   gap: .35rem;
 }
+.sv-setting-wrap:has(.sv-setting-slider3) { grid-column: 1 / -1; }
 .sv-setting-select { align-items: flex-start; padding: .55rem .8rem; }
 .sv-setting-sel {
   background: var(--s3);

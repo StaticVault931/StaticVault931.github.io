@@ -3089,28 +3089,29 @@ body:has(#page-clips.active) #footer { display: none; }
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  border: none;
-  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.42);
+  background: rgba(8,8,10,.62);
   backdrop-filter: blur(4px);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background .15s, transform .1s;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
   flex-shrink: 0;
 }
 /* Hover styles ONLY on devices that truly hover — on touch screens the
    :hover state sticks after a tap and buttons looked permanently pressed */
 @media (hover: hover) {
-  .trailer-icon-btn:hover { background: rgba(255,255,255,.3); }
+  .trailer-icon-btn:hover { background: rgba(255,255,255,.18); border-color: #fff; }
   .trailer-icon-dislike:hover { background: rgba(239,68,68,.35); }
 }
 .trailer-icon-btn:active { transform: scale(.9); }
-.trailer-icon-btn.on { background: var(--red); }
+.trailer-icon-btn.on,
+.trailer-icon-btn.loved { background: rgba(8,8,10,.78); border-color: var(--red); color: var(--red); }
 .trailer-icon-btn:focus:not(:focus-visible) { outline: none; }
 .trailer-icon-btn .material-icons-round { font-size: 1.25rem; }
-.trailer-icon-dislike { background: rgba(255,255,255,.1); }
+.trailer-icon-dislike { background: rgba(8,8,10,.62); }
 
 /* Pause/play tap indicator (shows briefly on video area click) */
 .trailer-slide-pause-ind {
@@ -3533,7 +3534,7 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 }
 .super-search-overlay.open { display: flex; }
 .super-search-panel {
-  width: min(620px, 100%); max-height: min(58vh, 560px); overflow: hidden;
+  width: min(680px, 100%); max-height: min(68vh, 650px); overflow: hidden;
   border: 1px solid var(--border3); border-radius: 8px; background: var(--s1);
   box-shadow: 0 28px 80px rgba(0,0,0,.65); display: flex; flex-direction: column;
 }
@@ -3548,10 +3549,13 @@ body.sv-text-large .footer-legal-btn, body.sv-text-xl .footer-legal-btn, body.sv
 .super-search-input-wrap kbd, .taste-cal-actions kbd { border: 1px solid var(--border3); border-bottom-width: 2px; border-radius: 4px; padding: .12rem .35rem; color: var(--dim); background: var(--s3); font-size: .62rem; }
 .super-search-status { padding: .65rem 1rem .4rem; color: var(--dim); font-size: .68rem; }
 .super-search-results { overflow-y: auto; padding: 0 .5rem .6rem; }
-.super-search-result { width: 100%; display: grid; grid-template-columns: 28px minmax(0,1fr) 24px; align-items: center; gap: .6rem; padding: .7rem .65rem; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.super-search-result { width: 100%; min-height: 58px; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: .7rem; padding: .55rem .65rem; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer; }
 .super-search-result:hover, .super-search-result.active { background: var(--s3); }
-.super-search-result > .material-icons-round:first-child { color: var(--red); }
-.super-search-result > .material-icons-round:last-child { color: var(--dim); font-size: 1rem; }
+.super-search-result-icon { color: var(--red); justify-self: center; }
+.super-search-result-art { width: 34px; height: 46px; border-radius: 4px; object-fit: cover; background: var(--s3); }
+.super-search-result-go { color: var(--dim); font-size: 1rem; }
+.super-search-inline-state { min-width: 42px; padding: .22rem .45rem; border: 1px solid var(--border3); border-radius: 999px; color: var(--muted); font-size: .65rem; font-weight: 800; text-align: center; }
+.super-search-inline-state.on { color: #fff; border-color: var(--red); background: var(--red); }
 .super-search-result strong, .super-search-result small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .super-search-result strong { font-size: .82rem; }
 .super-search-result small { color: var(--muted); font-size: .65rem; margin-top: .12rem; }

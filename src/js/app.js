@@ -228,15 +228,12 @@ function closeLegal() {
 const SV_SETTINGS = [
   // Playback
   { id: 'showHoverTrailer',  label: 'Hover Trailers',         desc: 'Preview trailers when hovering cards for 1s',                default: true,  icon: 'play_circle',      group: 'Playback' },
-  { id: 'autoNextProvider',  label: 'Auto-Switch Source',     desc: 'Try next source automatically if current one fails',          default: true,  icon: 'swap_horiz',       group: 'Playback' },
   { id: 'disableSandbox',    label: 'Disable Player Sandbox', desc: 'Some providers need sandbox disabled. May allow more ads.',   default: false, icon: 'security',         group: 'Playback' },
   // Display
   { id: 'showRatings',       label: 'Show Ratings',           desc: 'Display star ratings on content cards',                       default: false, icon: 'star',             group: 'Display' },
   { id: 'useTitleLogos',     label: 'Title Treatment Images', desc: 'Show Netflix-style title logo images on cards instead of text (lazy-loads from TMDB)', default: true, icon: 'title', group: 'Display' },
   { id: 'compactMode',       label: 'Compact Grid Mode',      desc: 'Show content as a grid (no horizontal scroll)',               default: false, icon: 'grid_view',        group: 'Display' },
   { id: 'streamMode',        label: 'Stream Mode',            desc: 'All content in one mixed grid, no titles, no duplicates',     default: false, icon: 'stream',           group: 'Display' },
-  { id: 'showProgressBar',   label: 'Progress Bars',          desc: 'Watch progress on Continue Watching cards',                   default: false, icon: 'linear_scale',     group: 'Display' },
-  { id: 'darkPlayer',        label: 'Dark Player BG',         desc: 'Show dark background behind the player iframe',               default: true,  icon: 'dark_mode',        group: 'Display' },
   // Accessibility
   { id: 'textSize',          label: 'Text Size',              desc: 'Scale text, buttons, and controls across the whole site',     default: 'default', icon: 'format_size', group: 'Accessibility', type: 'slider3', options: ['default', 'large', 'xl', 'xxl', 'max'], optLabels: ['Default', '+12%', '+28%', '+40%', '+50%'], keywords: 'font size bigger larger text zoom scale readability huge' },
   { id: 'highContrast',      label: 'High Contrast',          desc: 'Stronger text/background contrast for low vision',            default: false, icon: 'contrast',         group: 'Accessibility', keywords: 'contrast vision low-vision brightness readability' },
@@ -260,12 +257,9 @@ const SV_SETTINGS = [
   { id: 'trailerLanguage',   label: 'Preferred Trailer Audio', desc: 'Prefer trailers in this language when a title has one — falls back to the default trailer otherwise', default: 'auto', icon: 'subtitles', group: 'Language', type: 'select', options: ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'hi', 'zh'], optLabels: ['Match interface', 'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean', 'Hindi', 'Chinese'], keywords: 'trailer audio dub subtitle language' },
   { id: 'disableAgeFilter',  label: 'Unlock All Content',     desc: 'Show all ratings regardless of age filter',                   default: false, icon: 'no_adult_content', group: 'Content' },
   { id: 'repeatContent',     label: 'Repeat Tolerance',       desc: 'How often to re-show content you\'ve already seen',           default: 'medium', icon: 'repeat',        group: 'Content', type: 'select', options: ['minimum','medium','maximum'], optLabels: ['Show freely','Balanced (default)','Rarely repeat'] },
-  { id: 'wideInfo',          label: 'Wide Info Page',         desc: 'Use full screen width for info page',                         default: true,  icon: 'open_in_full',     group: 'Content' },
   { id: 'defaultInfoMode',   label: 'Info Page by Default',   desc: 'Open full info screen instead of player',                     default: false, icon: 'info',             group: 'Content' },
   // Performance
   { id: 'motionLevel',       label: 'Animation Level',         desc: 'Control how much animation the site uses',                   default: 'default', icon: 'motion_photos_off', group: 'Performance', type: 'slider3', options: ['none','minimal','default'], optLabels: ['None','Minimal','Default'] },
-  { id: 'hdFirst',           label: 'Prefer HD Sources',      desc: 'Prioritize sources with 4K/HD content (Cineby, VidLink)',     default: true,  icon: 'hd',               group: 'Performance' },
-  { id: 'skipRecap',         label: 'Skip Intros',            desc: 'Remember to skip intro/recap (manual reminder)',               default: false, icon: 'skip_next',        group: 'Performance' },
   // Account
   { id: 'showAccountsOnStart', label: 'Show Profiles on Start', desc: 'Show profile selector every time you open the app',            default: false, icon: 'manage_accounts',  group: 'Account' },
   // Content filtering
@@ -2179,6 +2173,17 @@ async function maybeShowOnboarding({ force = false } = {}) {
 
     // Order the grid from lightest (kid-friendly) to most adult — no labels,
     // no sections, just a gentle gradient down the page
+    // Stable title order makes the wall a deliberate calibration journey:
+    // family animation, broad favorites, adventure, thrillers, then mature
+    // prestige drama. New titles fall back to the deterministic sort below.
+    const CURATED_ORDER = [
+      'movie:150540', 'movie:14160', 'movie:354912', 'movie:12', 'movie:10681', 'movie:862', 'movie:585', 'movie:8587', 'movie:9806', 'movie:808', 'movie:2062',
+      'movie:129', 'movie:269149', 'movie:177572', 'movie:425', 'movie:920', 'movie:20352', 'movie:118', 'movie:105', 'movie:37165', 'tv:1418', 'tv:71712',
+      'movie:671', 'movie:11', 'movie:1891', 'movie:557', 'tv:65930', 'tv:31910', 'tv:46260', 'tv:37854', 'tv:85271', 'tv:84958', 'tv:60735',
+      'tv:2122', 'tv:66732', 'tv:60625', 'tv:1429', 'tv:85937', 'movie:36557', 'tv:60574', 'tv:69050', 'tv:71446', 'tv:125988', 'tv:63174',
+      'tv:1399', 'tv:94997', 'tv:1396', 'tv:1402', 'tv:93405', 'tv:76479', 'movie:567', 'movie:1359', 'movie:578', 'movie:530385', 'movie:176',
+    ];
+    const curatedRank = new Map(CURATED_ORDER.map((key, index) => [key, index]));
     const G_WEIGHT = { 10751: 0, 16: 1, 10402: 2, 35: 2, 12: 3, 14: 3, 10765: 3, 878: 4, 10749: 4, 10762: 0, 18: 5, 36: 5, 99: 5, 9648: 6, 10768: 6, 53: 7, 80: 7, 10752: 7, 27: 8 };
     const maturity = x => {
       const gs = (x.genre_ids || []).map(g => G_WEIGHT[g]).filter(v => v !== undefined);
@@ -2186,7 +2191,15 @@ async function maybeShowOnboarding({ force = false } = {}) {
       const peak = gs.length ? Math.max(...gs) : 4;
       return avg * 0.6 + peak * 0.4 + (x.adult ? 10 : 0);
     };
-    const mixed = dedupedPool.sort((a, b) => maturity(a) - maturity(b)).slice(0, 72);
+    const quality = x => Number(x.vote_average || 0) + Math.log10(Math.max(1, Number(x.vote_count || x.popularity || 1)));
+    const mixed = dedupedPool.sort((a, b) => {
+      const aKey = `${a.media_type || 'movie'}:${a.id}`;
+      const bKey = `${b.media_type || 'movie'}:${b.id}`;
+      const ar = curatedRank.get(aKey);
+      const br = curatedRank.get(bKey);
+      if (ar !== undefined || br !== undefined) return (ar ?? Number.MAX_SAFE_INTEGER) - (br ?? Number.MAX_SAFE_INTEGER);
+      return maturity(a) - maturity(b) || quality(b) - quality(a) || aKey.localeCompare(bKey);
+    }).slice(0, 72);
     onboardingItems = mixed;
     mixed.forEach(x => allItems.set(x.id, x));
     renderOnboardingItems(mixed);
@@ -2630,15 +2643,19 @@ const _lazyObs = new Map(); // kept for compatibility
 /* Visibility-gated impressions: a title only counts as "seen" once its
    card is actually ≥10% visible in the viewport. Cards sitting off-screen
    at the end of a row the user never scrolled do NOT count. */
-const _impressionSeen = new Set(); // per-session: one impression per title
+const _impressionSeen = new Set(); // per-session: one impression per media key
 const _impressionObs = new IntersectionObserver(entries => {
   const visible = [];
   entries.forEach(entry => {
     if (!entry.isIntersecting) return;
     const id = +entry.target.dataset.id;
-    if (!id || _impressionSeen.has(id)) { _impressionObs.unobserve(entry.target); return; }
-    _impressionSeen.add(id);
-    visible.push({ id });
+    const type = entry.target.dataset.type || 'movie';
+    const item = { id, type, media_type: type };
+    const key = mediaKey(item);
+    if (!id || _impressionSeen.has(key)) { _impressionObs.unobserve(entry.target); return; }
+    _impressionSeen.add(key);
+    visible.push(item);
+    _markShown(item);
     _impressionObs.unobserve(entry.target);
   });
   if (visible.length) _recordImpressionsNow(visible);
@@ -2888,8 +2905,6 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       _saveRowCache(rowId, final);
       // Record impressions only when cards actually become visible (≥10%)
       recordImpressions(final, rowId);
-      // Mark items as shown for cross-session dedup
-      final.forEach(m => _markShown(m));
       scheduledisambiguateTitles();
     })
     .catch(async err => {
@@ -3407,13 +3422,14 @@ function _applyRowOrder() {
 /* ── ROW ENGAGEMENT OBSERVERS ────────────────────────────────────────
    Dwell: how long each row section is actually on screen. Skip: section
    was visible under 1.2s total and got no clicks. All local-only. */
-const _rowDwell = new Map(); // rowId → { visibleAt, totalMs, clicked }
+const _rowDwell = new Map(); // rowId → { visibleAt, totalMs, clicked, inViewport }
 const _rowDwellObs = new IntersectionObserver(entries => {
   entries.forEach(entry => {
     const rowId = entry.target.querySelector('.card-row')?.id;
     if (!rowId) return;
-    const rec = _rowDwell.get(rowId) || { visibleAt: 0, totalMs: 0, clicked: false };
-    if (entry.isIntersecting && !rec.visibleAt) rec.visibleAt = performance.now();
+    const rec = _rowDwell.get(rowId) || { visibleAt: 0, totalMs: 0, clicked: false, inViewport: false };
+    rec.inViewport = entry.isIntersecting;
+    if (entry.isIntersecting && !rec.visibleAt && !document.hidden) rec.visibleAt = performance.now();
     else if (!entry.isIntersecting && rec.visibleAt) {
       rec.totalMs += performance.now() - rec.visibleAt;
       rec.visibleAt = 0;
@@ -3422,6 +3438,19 @@ const _rowDwellObs = new IntersectionObserver(entries => {
     _rowDwell.set(rowId, rec);
   });
 }, { threshold: 0.35 });
+
+document.addEventListener('visibilitychange', () => {
+  const now = performance.now();
+  _rowDwell.forEach((rec, rowId) => {
+    if (document.hidden && rec.visibleAt) {
+      rec.totalMs += now - rec.visibleAt;
+      rec.visibleAt = 0;
+      recordRowDwell(rowId, rec.totalMs);
+    } else if (!document.hidden && rec.inViewport && !rec.visibleAt) {
+      rec.visibleAt = now;
+    }
+  });
+});
 
 window.addEventListener('pagehide', () => {
   _rowDwell.forEach((rec, rowId) => {
@@ -5289,14 +5318,11 @@ function applyAllSettings() {
    hide. */
 const SETTING_SEARCH_TERMS = {
   showHoverTrailer: 'preview autoplay card video mouse hover',
-  autoNextProvider: 'source fallback provider server retry broken playback',
   disableSandbox: 'iframe ads popup compatibility security provider',
   showRatings: 'score stars tmdb rating votes',
   useTitleLogos: 'logo artwork treatment title image',
   compactMode: 'dense grid rows horizontal space',
   streamMode: 'single feed mixed continuous duplicates headings',
-  showProgressBar: 'continue watching progress resume percentage',
-  darkPlayer: 'player background black theater cinema',
   personalizeContent: 'recommendations algorithm taste for you tailored',
   superSearch: 'spotlight find ctrl f command f current screen',
   featureTips: 'help hints discovery learn features',
@@ -5307,11 +5333,8 @@ const SETTING_SEARCH_TERMS = {
   trailerLanguage: 'captions subtitles audio dub trailer language',
   disableAgeFilter: 'adult maturity rating unrestricted unlock nc17 r tvma',
   repeatContent: 'duplicates repetition cooldown seen impressions',
-  wideInfo: 'details modal fullscreen width information page',
   defaultInfoMode: 'details information instead player open behavior',
   motionLevel: 'animations transition movement reduced motion vestibular',
-  hdFirst: 'quality resolution 4k 1080p source high definition',
-  skipRecap: 'intro opening recap reminder skip',
   showAccountsOnStart: 'profiles startup launch who is watching account',
   hideTabClips: 'navigation trailer feed remove clips',
   hideTabAnime: 'navigation anime remove hide tab',
@@ -5528,6 +5551,25 @@ function buildSettingsUI() {
 }
 
 // Clean empty state — no fake skeleton shimmer (looked like stuck loading)
+// Super Search reads the same registry and uses the same setter as this page,
+// preventing a second settings implementation from drifting out of sync.
+window._svSuperSearchSettings = () => SV_SETTINGS.map(setting => ({
+  id: setting.id,
+  label: setting.label,
+  description: setting.desc,
+  group: setting.group,
+  icon: setting.icon,
+  keywords: `${setting.keywords || ''} ${SETTING_SEARCH_TERMS[setting.id] || ''}`,
+  type: setting.type || 'boolean',
+  value: getSetting(setting.id),
+  options: setting.options || [],
+  optionLabels: setting.optLabels || [],
+  setValue: value => {
+    setSetting(setting.id, value);
+    buildSettingsUI();
+  },
+}));
+
 const _prefEmpty = (icon, text) => `
   <div class="pref-list-empty">
     <span class="material-icons-round" style="font-size:1.6rem;opacity:.35">${icon}</span>
@@ -7169,7 +7211,7 @@ function refreshCardBadges(id) {
     if (wlBtn) {
       wlBtn.classList.toggle('saved', isInWatchlist(id));
       const ic = wlBtn.querySelector('.material-icons-round');
-      if (ic) ic.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_add';
+      if (ic) ic.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
     }
   });
 }
@@ -7182,7 +7224,7 @@ function updateInfoPageSEO(title, type, details, infoUrl, bgImg) {
   const genres = (details.genres || []).map(g => g.name).join(', ');
   const cast = (details.credits?.cast || []).slice(0, 5).map(p => p.name).join(', ');
 
-  const fullTitle = `${title} (${year}) — ${typeLabel} — Watch Free on StaticVault931`;
+  const fullTitle = `${title}${year ? ` (${year})` : ''} — ${typeLabel} Details, Cast & Recommendations | StaticVault931`;
   const desc = [
     details.overview?.slice(0, 120),
     rating ? `Rated ${rating}/10` : '',
@@ -7196,6 +7238,9 @@ function updateInfoPageSEO(title, type, details, infoUrl, bgImg) {
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
   document.querySelector('meta[property="og:type"]')?.setAttribute('content', type === 'movie' ? 'video.movie' : 'video.tv_show');
   document.querySelector('meta[property="og:url"]')?.setAttribute('content', location.origin + infoUrl);
+  document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', fullTitle);
+  document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
+  document.querySelector('meta[name="robots"]')?.setAttribute('content', 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1');
   // Canonical always points to info page (most content)
   document.querySelector('link[rel="canonical"]')?.setAttribute('href', location.origin + infoUrl);
   if (bgImg) {
@@ -7206,21 +7251,39 @@ function updateInfoPageSEO(title, type, details, infoUrl, bgImg) {
   // Rich JSON-LD for Google indexing
   const ldEl = document.getElementById('jsonld-media');
   if (ldEl) {
+    const canonical = location.origin + infoUrl;
+    const entityId = `${canonical}#title`;
+    const imageId = `${canonical}#primaryimage`;
+    const sectionName = type === 'movie' ? 'Movies' : type === 'anime' ? 'Anime' : 'TV Shows';
+    const sectionUrl = `${location.origin}${type === 'movie' ? '/movies/' : type === 'anime' ? '/anime/' : '/tv/'}`;
     ldEl.textContent = JSON.stringify({
       '@context': 'https://schema.org',
-      '@type': type === 'movie' ? 'Movie' : 'TVSeries',
-      'name': title,
-      'description': details.overview || '',
-      'url': location.origin + infoUrl,
-      'image': bgImg || '',
-      ...(rating ? { 'aggregateRating': { '@type': 'AggregateRating', 'ratingValue': rating, 'ratingCount': details.vote_count || 1, 'bestRating': '10', 'worstRating': '1' } } : {}),
-      ...(year ? { 'datePublished': `${year}-01-01` } : {}),
-      ...(genres ? { 'genre': genres.split(', ') } : {}),
-      ...(cast ? { 'actor': cast.split(', ').map(n => ({ '@type': 'Person', 'name': n })) } : {}),
-      'potentialAction': {
-        '@type': 'WatchAction',
-        'target': location.origin + infoUrl.replace('&mode=info', '')
-      },
+      '@graph': [
+        {
+          '@type': 'WebPage', '@id': `${canonical}#webpage`, url: canonical, name: fullTitle,
+          description: details.overview || desc, mainEntity: { '@id': entityId },
+          ...(bgImg ? { primaryImageOfPage: { '@id': imageId } } : {}),
+          isPartOf: { '@type': 'WebSite', name: 'StaticVault931', url: `${location.origin}/` },
+        },
+        ...(bgImg ? [{ '@type': 'ImageObject', '@id': imageId, url: bgImg, contentUrl: bgImg, caption: `${title} backdrop`, representativeOfPage: true }] : []),
+        {
+          '@type': type === 'movie' ? 'Movie' : 'TVSeries', '@id': entityId,
+          name: title, description: details.overview || '', url: canonical,
+          ...(bgImg ? { image: { '@id': imageId } } : {}),
+          ...(rating ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: rating, ratingCount: details.vote_count || 1, bestRating: '10', worstRating: '1' } } : {}),
+          ...(year ? { datePublished: `${year}-01-01` } : {}),
+          ...(genres ? { genre: genres.split(', ') } : {}),
+          ...(cast ? { actor: cast.split(', ').map(name => ({ '@type': 'Person', name })) } : {}),
+          potentialAction: { '@type': 'WatchAction', target: canonical },
+        },
+        {
+          '@type': 'BreadcrumbList', itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${location.origin}/` },
+            { '@type': 'ListItem', position: 2, name: sectionName, item: sectionUrl },
+            { '@type': 'ListItem', position: 3, name: title, item: canonical },
+          ],
+        },
+      ],
     });
   }
 }
@@ -12319,13 +12382,13 @@ function _buildTrailerSlide(item) {
           <input type="range" class="clips-vol-slider" min="0" max="100" value="${_clipsVolume}"
             aria-label="Trailer volume" aria-orientation="vertical" orient="vertical" data-action="volume">
         </div>
-        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="Add to watchlist">
+        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="${isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist'}" aria-pressed="${isInWatchlist(id)}">
           <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
         </button>
-        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while">
+        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while" aria-pressed="${isWatched(id)}">
           <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
-        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}${isLoved(id) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id) ? 'Loved. Activate to clear' : isLiked(id) ? 'Liked. Activate to love' : 'Like'}">
+        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}${isLoved(id) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id) ? 'Loved. Activate to clear' : isLiked(id) ? 'Liked. Activate to love' : 'Like'}" aria-pressed="${isLiked(id)}">
           <span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike${isDisliked(id) ? ' on' : ''}" data-action="dislike" title="Not Interested (X)" aria-label="Not interested" aria-pressed="${isDisliked(id)}">
@@ -12382,6 +12445,7 @@ function _buildTrailerSlide(item) {
       btn.classList.toggle('on', isLiked(id));
       btn.classList.toggle('loved', isLoved(id));
       btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
+      btn.setAttribute('aria-pressed', String(isLiked(id)));
       const label = reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked' : 'Reaction removed';
       const undoId = undoManager.record({ label, title, icon: reaction === 'love' ? 'favorite' : 'thumb_up', undo: () => {
         setReaction(likeItem, previousReaction);
@@ -12389,6 +12453,7 @@ function _buildTrailerSlide(item) {
         if (icon) icon.textContent = active === 'love' ? 'favorite' : active === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
         btn.classList.toggle('on', active !== 'none');
         btn.classList.toggle('loved', active === 'love');
+        btn.setAttribute('aria-pressed', String(active !== 'none'));
       } });
       toast(reaction === 'like' ? 'Liked. Tap again to Love it.' : label, reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'wl') {
@@ -12397,10 +12462,14 @@ function _buildTrailerSlide(item) {
       const icon = btn.querySelector('.material-icons-round');
       if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
       btn.classList.toggle('on', isInWatchlist(id));
+      btn.setAttribute('aria-pressed', String(isInWatchlist(id)));
+      btn.setAttribute('aria-label', isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist');
       const undoId = undoManager.record({ label: isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', title, icon: 'bookmark', undo: () => {
         toggleWatchlist(wlItem);
         if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
         btn.classList.toggle('on', isInWatchlist(id));
+        btn.setAttribute('aria-pressed', String(isInWatchlist(id)));
+        btn.setAttribute('aria-label', isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist');
       } });
       toast(isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', 'bookmark', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'watched') {
@@ -12409,11 +12478,13 @@ function _buildTrailerSlide(item) {
       const icon = btn.querySelector('.material-icons-round');
       if (icon) icon.textContent = nowWatched ? 'done_all' : 'check_circle_outline';
       btn.classList.toggle('on', nowWatched);
+      btn.setAttribute('aria-pressed', String(nowWatched));
       if (nowWatched) {
         const undoId = undoManager.record({ label: 'Marked as already watched', title, icon: 'done_all', undo: () => {
           if (isWatched(id, type)) toggleWatched(watchedItem);
           if (icon) icon.textContent = 'check_circle_outline';
           btn.classList.remove('on');
+          btn.setAttribute('aria-pressed', 'false');
         } });
         toast('Marked as already watched', 'done_all', {
           actionLabel: 'Undo',
@@ -12425,6 +12496,7 @@ function _buildTrailerSlide(item) {
           if (!isWatched(id, type)) toggleWatched(watchedItem);
           if (icon) icon.textContent = 'done_all';
           btn.classList.add('on');
+          btn.setAttribute('aria-pressed', 'true');
         } });
         toast('Unmarked watched', 'done_all', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
       }
@@ -12450,10 +12522,6 @@ function _buildTrailerSlide(item) {
         // Slide indexes shifted — re-align and activate the slide now at this position
         _clipsGoTo(_clipsIdx, { instant: true });
       }, 320);
-      toast('Showing less like this', 'thumb_down', {
-        actionLabel: 'Undo',
-        onAction: () => undoManager.undo(undoId),
-      });
       const undoId = undoManager.record({ label: 'Showing less like this', title, icon: 'thumb_down', undo: () => {
           clearTimeout(removeTimer);
           setReaction(dislikeItem, 'none');
@@ -12465,6 +12533,10 @@ function _buildTrailerSlide(item) {
           slide.style.transition = '';
           _clipsGoTo(Math.max(0, _clipsIdx), { instant: true });
       } });
+      toast('Showing less like this', 'thumb_down', {
+        actionLabel: 'Undo',
+        onAction: () => undoManager.undo(undoId),
+      });
     }
   });
 

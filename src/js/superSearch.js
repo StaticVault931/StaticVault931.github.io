@@ -53,6 +53,7 @@ function buildIndex() {
     if (!visible(el) || el.closest('#super-search-overlay, nav, footer, .card-ov')) return;
     const card = el.closest('.card');
     const target = card || el;
+    if (target.closest('.sv-setting-wrap')) return;
     if (seen.has(target)) return;
     // Icon fonts render as glyphs but read as ligature names in
     // textContent ("nights_stay…") — strip them from the label
@@ -71,8 +72,25 @@ function buildIndex() {
       search: normalize(`${text} ${card?.dataset.year || ''} ${card?.dataset.type || ''} ${target.getAttribute('aria-label') || ''}`),
       kind: card ? (card.dataset.type === 'tv' ? 'TV show' : card.dataset.type === 'anime' ? 'Anime' : 'Movie')
         : target.matches('button,[role="tab"]') ? 'Control' : 'On this page',
+      image: card?.querySelector('img')?.currentSrc || card?.querySelector('img')?.src || '',
+      detail: card ? [card.dataset.year, card.dataset.type].filter(Boolean).join(' · ') : '',
     });
   });
+  const settings = window._svSuperSearchSettings?.() || [];
+  const settingLabels = new Set(settings.map(setting => normalize(setting.label)));
+  for (let index = entries.length - 1; index >= 0; index--) {
+    if (settingLabels.has(normalize(entries[index].text)) && !['Movie', 'TV show', 'Anime'].includes(entries[index].kind)) {
+      entries.splice(index, 1);
+    }
+  }
+  entries.push(...settings.map(setting => ({
+    text: setting.label,
+    search: normalize(`${setting.label} ${setting.description} ${setting.group} ${setting.keywords}`),
+    kind: 'Setting',
+    icon: setting.icon || 'settings',
+    detail: `${setting.group} · ${setting.type === 'boolean' ? (setting.value ? 'On' : 'Off') : setting.optionLabels[setting.options.indexOf(setting.value)] || setting.value}`,
+    setting,
+  })));
   entries.push(...ACTIONS.map(action => ({ ...action, search: normalize(`${action.text} ${action.terms}`) })));
   return entries;
 }
@@ -144,15 +162,36 @@ function render() {
     : 'No matching content, controls, pages, or tools';
   overlay.querySelector('.super-search-results').innerHTML = results.map((entry, index) => `
     <button type="button" role="option" aria-selected="${index === _active}" class="super-search-result${index === _active ? ' active' : ''}" data-super-result="${index}">
-      <span class="material-icons-round">${entry.icon || (entry.kind === 'On this page' ? 'subject' : 'movie')}</span>
-      <span><strong>${esc(entry.text)}</strong><small>${esc(entry.kind)}</small></span>
-      <span class="material-icons-round">north_east</span>
+      ${entry.image
+        ? `<img class="super-search-result-art" src="${esc(entry.image)}" alt="">`
+        : `<span class="material-icons-round super-search-result-icon">${entry.icon || (entry.kind === 'On this page' ? 'subject' : 'movie')}</span>`}
+      <span><strong>${esc(entry.text)}</strong><small>${esc(entry.detail ? `${entry.kind} · ${entry.detail}` : entry.kind)}</small></span>
+      ${entry.setting?.type === 'boolean'
+        ? `<span class="super-search-inline-state ${entry.setting.value ? 'on' : ''}">${entry.setting.value ? 'On' : 'Off'}</span>`
+        : `<span class="material-icons-round super-search-result-go">${entry.setting ? 'tune' : 'north_east'}</span>`}
     </button>`).join('');
 }
 
 function activate(index) {
   const entry = ensureOverlay()._results?.[index];
   if (!entry) return;
+  if (entry.setting) {
+    if (entry.setting.type === 'boolean') {
+      entry.setting.setValue(!entry.setting.value);
+      _entries = buildIndex();
+      render();
+      return;
+    }
+    closeSuperSearch();
+    goToPage('prefs').then(() => setTimeout(() => {
+      const input = document.getElementById('sv-settings-search-input');
+      if (!input) return;
+      input.value = entry.setting.label;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+    }, 0));
+    return;
+  }
   closeSuperSearch();
   if (entry.action) {
     entry.action(ensureOverlay().querySelector('input').value.trim());

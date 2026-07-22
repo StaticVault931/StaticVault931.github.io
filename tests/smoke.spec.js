@@ -758,6 +758,20 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page.locator('#super-search-results')).toContainText('Search the full catalog for');
   });
 
+  test('Super Search can toggle a real setting without leaving the current page', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/library/', { waitUntil: 'domcontentloaded' });
+    await page.keyboard.press('Control+f');
+    await page.locator('#super-search-input').fill('bold text');
+    const result = page.locator('.super-search-result').filter({ hasText: 'Bold Text' });
+    await expect(result).toHaveCount(1);
+    await expect(result).toContainText('Off');
+    await result.click();
+    await expect(page.locator('#super-search-overlay')).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/sv-bold-text/);
+    await expect(result).toContainText('On');
+  });
+
   test('the feature guide is visible, replayable, and teaches description search', async ({ page }) => {
     await seedReturningUser(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
