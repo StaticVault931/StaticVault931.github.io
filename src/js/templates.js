@@ -3,6 +3,8 @@
  * Keeps index.html lean; these elements are not needed for initial paint or SEO.
  */
 
+import { reactionIcon } from './reactionIcons.js';
+
 // injectTestPanel() removed — test panel is now built inline in populateTestPanel()
 // and appended directly to the CYF page element.
 
@@ -114,11 +116,11 @@ export function injectOverlays() {
       <button class="nc-btn nc-btn-play" id="nc-play" title="Play" aria-label="Play"><span class="material-icons-round">play_arrow</span></button>
       <button class="nc-btn nc-btn-wl"   id="nc-wl"   title="Save" aria-label="Save to watchlist"><span class="material-icons-round">add</span></button>
       <div class="nc-reaction-picker">
-        <button class="nc-btn nc-btn-like" id="nc-like" title="React" aria-label="React to this title" aria-haspopup="true" aria-expanded="false"><span class="material-icons-round">thumb_up_off_alt</span></button>
+        <button class="nc-btn nc-btn-like" id="nc-like" title="React" aria-label="React to this title" aria-haspopup="true" aria-expanded="false">${reactionIcon('like')}</button>
         <div class="nc-reaction-flyout" role="group" aria-label="Choose a reaction">
-          <button class="nc-reaction-choice" id="nc-dislike" data-reaction="dislike" aria-label="Dislike"><span class="material-icons-round">thumb_down_off_alt</span><small>Dislike</small></button>
-          <button class="nc-reaction-choice" id="nc-react-like" data-reaction="like" aria-label="Like"><span class="material-icons-round">thumb_up_off_alt</span><small>Like</small></button>
-          <button class="nc-reaction-choice" id="nc-love" data-reaction="love" aria-label="Love"><span class="material-icons-round">favorite_border</span><small>Love</small></button>
+          <button class="nc-reaction-choice" id="nc-dislike" data-reaction="dislike" aria-label="Dislike">${reactionIcon('dislike')}<small>Dislike</small></button>
+          <button class="nc-reaction-choice" id="nc-react-like" data-reaction="like" aria-label="Like">${reactionIcon('like')}<small>Like</small></button>
+          <button class="nc-reaction-choice" id="nc-love" data-reaction="love" aria-label="Love">${reactionIcon('love')}<small>Love</small></button>
         </div>
       </div>
       <button class="nc-btn nc-btn-watched" id="nc-watched" title="Already watched" aria-label="Mark as already watched"><span class="material-icons-round">check_circle_outline</span></button>
@@ -303,9 +305,13 @@ export function injectOverlays() {
           <div class="info-section" id="info-collection-section" style="display:none">
             <div class="info-section-label" style="display:flex;align-items:center;gap:.5rem">
               <span>Part of a Collection</span>
-              <span class="info-collection-link" id="info-collection-link" style="display:none;font-size:.75rem;cursor:pointer;color:var(--gold);border-bottom:1px dotted var(--gold)"></span>
+              <button type="button" class="info-collection-link" id="info-collection-link" style="display:none"></button>
             </div>
-            <div class="info-collection-grid" id="info-collection-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;margin-top:.5rem"></div>
+            <div class="info-collection-rail">
+              <button type="button" class="info-collection-arrow" data-info-collection-scroll="-1" aria-label="Scroll collection left"><span class="material-icons-round">chevron_left</span></button>
+              <div class="info-collection-grid" id="info-collection-grid" tabindex="0" aria-label="Titles in this collection"></div>
+              <button type="button" class="info-collection-arrow" data-info-collection-scroll="1" aria-label="Scroll collection right"><span class="material-icons-round">chevron_right</span></button>
+            </div>
           </div>
 
           <!-- Cast -->

@@ -28,6 +28,7 @@ import { undoManager } from './undoManager.js';
 import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.js';
 import { requestPinUnlock, requestNewPin, showRecoveryCode } from './kidsPinDialog.js';
 import { parseBackupText } from './backup.js';
+import { reactionIcon, setReactionIcon } from './reactionIcons.js';
 
 let _onboardingPreloadGeneration = 0;
 async function preloadOnboardingHomeMetadata() {
@@ -555,7 +556,7 @@ function _ensureMixPage() {
         </button>
       </div>
       <div class="mix-tools">
-        <button type="button" id="mix-from-likes"><span class="material-icons-round">favorite</span> Use my likes</button>
+        <button type="button" id="mix-from-likes">${reactionIcon('love')} Use my likes</button>
         <button type="button" id="mix-surprise"><span class="material-icons-round">casino</span> Surprise seed</button>
         <button type="button" id="mix-reroll" disabled><span class="material-icons-round">shuffle</span> Reroll blend</button>
         <button type="button" id="mix-share" disabled><span class="material-icons-round">share</span> Share mix</button>
@@ -1081,7 +1082,7 @@ function _ctxShow(items, x, y) {
   const menu = _ctxMenuEl();
   menu.innerHTML = items.map((it, i) => it === '-'
     ? '<div class="sv-ctx-sep" role="separator"></div>'
-    : `<button type="button" role="${it.checkable ? 'menuitemcheckbox' : 'menuitem'}" data-ctx="${i}"${it.checkable ? ` aria-checked="${!!it.active}"` : ''} class="${it.active ? 'is-active' : ''}"><span class="material-icons-round">${it.icon}</span>${it.label}</button>`).join('');
+    : `<button type="button" role="${it.checkable ? 'menuitemcheckbox' : 'menuitem'}" data-ctx="${i}"${it.checkable ? ` aria-checked="${!!it.active}"` : ''} class="${it.active ? 'is-active' : ''}">${it.reactionKind ? reactionIcon(it.reactionKind, !!it.active) : `<span class="material-icons-round">${it.icon}</span>`}${it.label}</button>`).join('');
   menu.querySelectorAll('[data-ctx]').forEach(btn => btn.addEventListener('click', () => {
     menu.classList.remove('open');
     items[+btn.dataset.ctx]?.run?.();
@@ -1150,9 +1151,9 @@ document.addEventListener('contextmenu', e => {
       else openMedia(item.id, t, item);
     } },
     '-',
-    { icon: priorReaction === 'love' ? 'favorite' : 'favorite_border', label: priorReaction === 'love' ? 'Remove Love' : 'Love', checkable: true, active: priorReaction === 'love', run: () => runReaction('love') },
-    { icon: priorReaction === 'like' ? 'thumb_up' : 'thumb_up_off_alt', label: priorReaction === 'like' ? 'Remove Like' : 'Like', checkable: true, active: priorReaction === 'like', run: () => runReaction('like') },
-    { icon: priorReaction === 'dislike' ? 'thumb_down' : 'thumb_down_off_alt', label: priorReaction === 'dislike' ? 'Remove Not my taste' : 'Not my taste', checkable: true, active: priorReaction === 'dislike', run: () => runReaction('dislike') },
+    { icon: 'favorite', reactionKind: 'love', label: priorReaction === 'love' ? 'Remove Love' : 'Love', checkable: true, active: priorReaction === 'love', run: () => runReaction('love') },
+    { icon: 'thumb_up', reactionKind: 'like', label: priorReaction === 'like' ? 'Remove Like' : 'Like', checkable: true, active: priorReaction === 'like', run: () => runReaction('like') },
+    { icon: 'thumb_down', reactionKind: 'dislike', label: priorReaction === 'dislike' ? 'Remove Not my taste' : 'Not my taste', checkable: true, active: priorReaction === 'dislike', run: () => runReaction('dislike') },
     { icon: isWatched(item.id, t) ? 'done_all' : 'check_circle_outline', label: isWatched(item.id, t) ? 'Unmark watched' : 'Mark as watched', checkable: true, active: isWatched(item.id, t), run: () => {
       const was = isWatched(item.id, t);
       undoable(was ? 'Unmarked watched' : 'Marked as watched', 'done_all',
@@ -1184,10 +1185,10 @@ document.addEventListener('contextmenu', e => {
 const SV_EXPERIMENTS = [
   {
     id: 'footer-grid',
-    label: 'Equal Footer Grid',
-    desc: 'Four equal-width footer columns, shared rhythm, red-dot hover microinteraction.',
+    label: 'Legacy Footer Widths',
+    desc: 'Restores the older content-width footer columns for an honest comparison with the equal baseline.',
     added: '2026-07-08', commit: 101,
-    bodyClass: 'sv-exp-footer-grid',
+    bodyClass: 'sv-exp-footer-legacy',
   },
   {
     id: 'ob-top-search',
@@ -1209,6 +1210,27 @@ const SV_EXPERIMENTS = [
     desc: 'Shows current lifetime activity and behavioral favorites in the dev panel.',
     added: '2026-07-12', commit: 109,
     bodyClass: 'sv-exp-stats-preview',
+  },
+  {
+    id: 'equal-choice-chips',
+    label: 'Equal-Width Choice Chips',
+    desc: 'Locks genre and onboarding choices into aligned tracks instead of sizing each control to its label.',
+    added: '2026-07-22', commit: 136,
+    bodyClass: 'sv-exp-equal-choices',
+  },
+  {
+    id: 'row-focus',
+    label: 'Focused Browsing Rows',
+    desc: 'Softly quiets neighboring home rows while a row is being explored with a pointer.',
+    added: '2026-07-22', commit: 136,
+    bodyClass: 'sv-exp-row-focus',
+  },
+  {
+    id: 'compact-collections',
+    label: 'Compact Collection Density',
+    desc: 'Compares the roomy franchise timeline with a denser poster rail and grid.',
+    added: '2026-07-22', commit: 136,
+    bodyClass: 'sv-exp-compact-collections',
   },
 ];
 function svExpOn(id) { try { return localStorage.getItem(`sv_exp_${id}`) === '1'; } catch { return false; } }
@@ -1959,8 +1981,8 @@ async function maybeShowOnboarding({ force = false } = {}) {
       <span class="ob-tile-check material-icons-round">favorite</span>
       <span class="ob-tile-cross material-icons-round">thumb_down</span>
       <span class="ob-tile-actions">
-        <button class="ob-ta" data-act="liked" title="Love it" aria-label="Love"><span class="material-icons-round">favorite</span></button>
-        <button class="ob-ta" data-act="disliked" title="Not my taste" aria-label="Not my taste"><span class="material-icons-round">thumb_down</span></button>
+        <button class="ob-ta" data-act="liked" title="Love it" aria-label="Love" aria-pressed="false">${reactionIcon('love')}</button>
+        <button class="ob-ta" data-act="disliked" title="Not my taste" aria-label="Not my taste" aria-pressed="false">${reactionIcon('dislike')}</button>
         <button class="ob-ta" data-act="hide" title="Remove from this list" aria-label="Hide"><span class="material-icons-round">visibility_off</span></button>
       </span>
     </div>`;
@@ -1980,6 +2002,12 @@ async function maybeShowOnboarding({ force = false } = {}) {
     tile.dataset.state = next;
     tile.classList.toggle('picked', next === 'liked');
     tile.classList.toggle('hidden-pick', next === 'disliked');
+    const loveButton = tile.querySelector('[data-act="liked"]');
+    const dislikeButton = tile.querySelector('[data-act="disliked"]');
+    setReactionIcon(loveButton, 'love', next === 'liked');
+    setReactionIcon(dislikeButton, 'dislike', next === 'disliked');
+    loveButton?.setAttribute('aria-pressed', String(next === 'liked'));
+    dislikeButton?.setAttribute('aria-pressed', String(next === 'disliked'));
     likedTitles.delete(item.id); dislikedTitles.delete(item.id);
     if (next === 'liked') likedTitles.set(item.id, item);
     if (next === 'disliked') dislikedTitles.set(item.id, item);
@@ -7073,7 +7101,7 @@ function handleLike(id, type, btn, metaOverride) {
   if (btn) {
     btn.classList.toggle('liked', isLiked(id, type));
     btn.classList.toggle('loved', isLoved(id, type));
-    btn.querySelector('.material-icons-round').textContent = isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt';
+    setReactionIcon(btn, isLoved(id, type) ? 'love' : 'like', isLiked(id, type) || isLoved(id, type));
     btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
   }
   const label = reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked' : 'Reaction removed';
@@ -7111,20 +7139,18 @@ function handleExactReaction(id, type, requested, metaOverride) {
 function _syncHoverReactionIcons(id, type) {
   const reaction = isDisliked(id, type) ? 'dislike' : getReaction(id, type);
   const config = {
-    dislike: ['nc-dislike', 'thumb_down', 'thumb_down_off_alt'],
-    like: ['nc-react-like', 'thumb_up', 'thumb_up_off_alt'],
-    love: ['nc-love', 'favorite', 'favorite_border'],
+    dislike: 'nc-dislike',
+    like: 'nc-react-like',
+    love: 'nc-love',
   };
-  Object.entries(config).forEach(([name, [elementId, activeIcon, idleIcon]]) => {
+  Object.entries(config).forEach(([name, elementId]) => {
     const button = document.getElementById(elementId);
     button?.classList.toggle('active', reaction === name);
-    const icon = button?.querySelector('.material-icons-round');
-    if (icon) icon.textContent = reaction === name ? activeIcon : idleIcon;
+    setReactionIcon(button, name, reaction === name);
     button?.setAttribute('aria-pressed', String(reaction === name));
   });
-  const trigger = document.querySelector('#nc-like .material-icons-round');
-  if (trigger) trigger.textContent = reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
   const triggerButton = document.getElementById('nc-like');
+  setReactionIcon(triggerButton, reaction === 'love' ? 'love' : 'like', reaction === 'like' || reaction === 'love');
   triggerButton?.classList.toggle('active', reaction === 'like' || reaction === 'love');
   triggerButton?.setAttribute('aria-pressed', String(reaction === 'like' || reaction === 'love'));
   triggerButton?.setAttribute('aria-label', reaction === 'love' ? 'Loved. Choose another reaction' : reaction === 'like' ? 'Liked. Choose another reaction' : 'Choose a reaction');
@@ -7194,8 +7220,7 @@ function refreshCardBadges(id) {
     if (likeBtn) {
       likeBtn.classList.toggle('liked', isLiked(id));
       likeBtn.classList.toggle('loved', isLoved(id));
-      const ic = likeBtn.querySelector('.material-icons-round');
-      if (ic) ic.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
+      setReactionIcon(likeBtn, isLoved(id) ? 'love' : 'like', isLiked(id) || isLoved(id));
     }
     if (wlBtn) {
       wlBtn.classList.toggle('saved', isInWatchlist(id));
@@ -7884,7 +7909,7 @@ export async function openInfoPage(id, type, hint = {}) {
             <span class="material-icons-round">${wlNow ? 'bookmark' : 'bookmark_add'}</span>${wlNow ? 'Saved' : 'Save'}
           </button>
           <button class="ma${likedNow ? ' liked' : ''}${lovedNow ? ' loved' : ''}" id="info-like-btn" style="flex:1;justify-content:center">
-            <span class="material-icons-round">${lovedNow ? 'favorite' : likedNow ? 'thumb_up' : 'thumb_up_off_alt'}</span>${lovedNow ? 'Loved' : likedNow ? 'Liked' : 'Like'}
+            ${reactionIcon(lovedNow ? 'love' : 'like', likedNow || lovedNow)}${lovedNow ? 'Loved' : likedNow ? 'Liked' : 'Like'}
           </button>
           <button class="ma${watchedNow ? ' watched' : ''}" id="info-watched-btn" title="${watchedNow ? 'Mark as unwatched' : 'Mark as watched'}" style="flex:1;justify-content:center">
             <span class="material-icons-round">${watchedNow ? 'visibility' : 'visibility_off'}</span>
@@ -7904,7 +7929,7 @@ export async function openInfoPage(id, type, hint = {}) {
       document.getElementById('info-like-btn')?.addEventListener('click', () => {
         handleLike(id, type, null, { id, type, title, poster_path: details.poster_path, genre_ids: details.genres?.map(g => g.id) || [], original_language: details.original_language || '' });
         const btn = document.getElementById('info-like-btn');
-        if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}${isLoved(id) ? ' loved' : ''}`; btn.innerHTML = `<span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>${isLoved(id) ? 'Loved' : isLiked(id) ? 'Liked' : 'Like'}`; }
+        if (btn) { btn.className = `ma${isLiked(id) ? ' liked' : ''}${isLoved(id) ? ' loved' : ''}`; btn.innerHTML = `${reactionIcon(isLoved(id) ? 'love' : 'like', isLiked(id) || isLoved(id))}${isLoved(id) ? 'Loved' : isLiked(id) ? 'Liked' : 'Like'}`; }
       });
       document.getElementById('info-watched-btn')?.addEventListener('click', () => {
         toggleWatched({ id, type, title, poster_path: details.poster_path });
@@ -8591,6 +8616,7 @@ export async function openCollectionPage(collectionId, collectionName) {
   _openCompanyOverlay({
     name: collectionName,
     subtitle: 'Film Collection',
+    mode: 'collection',
     // A franchise is chronological browsing, so lead with the roomy
     // horizontal row. Compact grid remains available through the view toggle.
     defaultCompact: false,
@@ -8636,11 +8662,12 @@ function _closeCompanyOverlay() {
   if (parseCleanRoute(location.pathname)?.kind === 'collection') _restoreOverlayRoute();
 }
 
-async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCompact = false }) {
+async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCompact = false, mode = 'company' }) {
   // Stop hover trailer immediately — don't let it play behind the overlay
   clearHoverTrailer();
   const ov = document.getElementById('company-overlay');
   if (!ov) return;
+  ov.dataset.kind = mode;
   ov.classList.add('open');
   document.body.style.overflow = 'hidden';
 
@@ -8739,6 +8766,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
 
   try {
     const data = await fetchFn();
+    if (data.kind) ov.dataset.kind = data.kind;
 
     // Update name, desc, logo, backdrop
     if (data.name)  ov.querySelectorAll('.company-name, .company-name-big').forEach(el => el.textContent = data.name);
@@ -9090,11 +9118,11 @@ async function _enrichInfoPage(id, type, details, credits) {
     menu.innerHTML = `
       <div class="tag-menu-title">${esc(tag.name)}</div>
       <button class="tag-menu-btn${liked ? ' active' : ''}" data-action="like">
-        <span class="material-icons-round">${liked ? 'favorite' : 'favorite_border'}</span>
+        ${reactionIcon('love', liked)}
         ${liked ? 'Liked — click to remove' : 'Like this tag'}
       </button>
       <button class="tag-menu-btn${disliked ? ' active warn' : ''}" data-action="dislike">
-        <span class="material-icons-round">${disliked ? 'thumb_down' : 'thumb_down_off_alt'}</span>
+        ${reactionIcon('dislike', disliked)}
         ${disliked ? 'Disliked — click to remove' : 'Show less like this'}
       </button>
       <button class="tag-menu-btn secondary" data-action="search">
@@ -9178,13 +9206,13 @@ async function _enrichInfoPage(id, type, details, credits) {
         collEl.textContent = `${col.name} →`;
         collEl.dataset.collectionId = col.id;
         collEl.style.display = '';
-        collEl.onclick = null;
-        collEl.addEventListener('click', () => openCollectionPage(col.id, col.name), { once: true });
+        collEl.onclick = () => openCollectionPage(col.id, col.name);
       }
       // Fetch the full collection and show movies in a compact horizontal row
-      tmdb(`/collection/${col.id}`).then(colData => {
-        const parts = (colData.parts || [])
+      tmdb(`/collection/${col.id}`).then(async colData => {
+        let parts = (colData.parts || [])
           .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1);
+        if (getSetting('kidsMode')) parts = await filterSafeItems(parts.map(item => ({ ...item, media_type: 'movie' })), _safetyContext());
         if (!parts.length) return;
         const collGrid = collSec.querySelector('#info-collection-grid');
         if (collGrid) {
@@ -9192,13 +9220,13 @@ async function _enrichInfoPage(id, type, details, credits) {
             parts.map(m => {
               const poster = m.poster_path ? `https://image.tmdb.org/t/p/w185${m.poster_path}` : '';
               const yr = String(m.release_date||'').slice(0,4);
-              return `<div class="info-col-film" data-id="${m.id}" data-type="movie" style="cursor:pointer" title="${esc(m.title||'')}">
+              return `<button type="button" class="info-col-film" data-id="${m.id}" data-type="movie" title="${esc(m.title||'')}">
                 <div class="info-col-poster" style="background:var(--s3)">
                   ${poster ? `<img src="${poster}" alt="${esc(m.title||'')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:5px">` : '<span class="material-icons-round" style="font-size:1.5rem;color:var(--dim)">movie</span>'}
                 </div>
                 <div class="info-col-film-title">${esc((m.title||'').slice(0,20))}</div>
                 <div class="info-col-film-year" style="font-size:.62rem;color:var(--dim)">${yr}</div>
-              </div>`;
+              </button>`;
             }).join('')
           }</div>`;
           // Wire clicks
@@ -9207,6 +9235,14 @@ async function _enrichInfoPage(id, type, details, credits) {
               closeInfoPage();
               setTimeout(() => openInfoPage(+el.dataset.id, 'movie'), 80);
             });
+          });
+          collGrid.onwheel = event => {
+            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || collGrid.scrollWidth <= collGrid.clientWidth) return;
+            event.preventDefault();
+            collGrid.scrollLeft += event.deltaY;
+          };
+          collSec.querySelectorAll('[data-info-collection-scroll]').forEach(button => {
+            button.onclick = () => collGrid.scrollBy({ left: Number(button.dataset.infoCollectionScroll) * Math.max(280, collGrid.clientWidth * .75), behavior: 'smooth' });
           });
         }
       }).catch(() => {});
@@ -10830,6 +10866,60 @@ function populateTestPanel() {
       sec.appendChild(det);
     });
 
+    const groupDefs = [
+      ['Discovery', ['Search Engine Features', 'Row System', 'Row Summoner']],
+      ['Experiments', ['Experiments', 'Visual Layers', 'Themes']],
+      ['Profile Data', ['Profile Stats Preview', 'Year in the Life Lab', 'Diagnostics Display']],
+      ['Testing', ['Product Feedback Lab', 'Source Testing']],
+    ];
+    const groupHost = document.createElement('div');
+    groupHost.className = 'dev-group-host';
+    const folds = [...panel.querySelectorAll(':scope > .dev-section')];
+    groupDefs.forEach(([label, matches]) => {
+      const children = folds.filter(sec => matches.some(match => sec.querySelector('.dev-fold-sum')?.textContent.includes(match)));
+      if (!children.length) return;
+      const group = document.createElement('details');
+      group.className = 'dev-group';
+      const summary = document.createElement('summary');
+      summary.className = 'dev-group-summary';
+      summary.innerHTML = `<span>${label}</span><small>${children.length} tools</small>`;
+      const body = document.createElement('div');
+      body.className = 'dev-group-body';
+      children.forEach(child => body.appendChild(child));
+      group.append(summary, body);
+      groupHost.appendChild(group);
+    });
+    panel.appendChild(groupHost);
+
+    const tools = document.createElement('div');
+    tools.className = 'dev-panel-tools';
+    tools.innerHTML = `<label><span class="material-icons-round">filter_alt</span><input id="dev-tool-filter" type="search" placeholder="Filter tools and experiments" aria-label="Filter developer tools"></label><button class="dev-btn dev-btn-sm" id="dev-collapse-all">Collapse all</button><button class="dev-btn dev-btn-sm" id="dev-reset-experiments">Reset experiments</button>`;
+    panel.insertBefore(tools, groupHost);
+    tools.querySelector('#dev-collapse-all')?.addEventListener('click', () => {
+      panel.querySelectorAll('.dev-group, .dev-fold').forEach(details => { details.open = false; });
+    });
+    tools.querySelector('#dev-reset-experiments')?.addEventListener('click', () => {
+      SV_EXPERIMENTS.forEach(exp => svExpSet(exp.id, false));
+      panel.querySelectorAll('[data-exp]').forEach(button => {
+        button.classList.remove('dev-btn-active');
+        button.textContent = 'OFF';
+      });
+      toast('Experiments reset to production defaults', 'restart_alt');
+    });
+    tools.querySelector('#dev-tool-filter')?.addEventListener('input', event => {
+      const query = event.target.value.trim().toLowerCase();
+      panel.querySelectorAll('.dev-section').forEach(sec => {
+        const match = !query || sec.textContent.toLowerCase().includes(query);
+        sec.hidden = !match;
+        if (query && match) sec.querySelector('.dev-fold').open = true;
+      });
+      panel.querySelectorAll('.dev-group').forEach(group => {
+        const visible = [...group.querySelectorAll('.dev-section')].some(sec => !sec.hidden);
+        group.hidden = !visible;
+        if (query && visible) group.open = true;
+      });
+    });
+
     // ── Pin / float: fixed panel that follows across pages, draggable ─
     const _setFloating = (on) => {
       panel.classList.toggle('dev-floating', on);
@@ -10839,11 +10929,11 @@ function populateTestPanel() {
         document.body.appendChild(panel);
         if (!panel.style.top) { panel.style.top = '84px'; panel.style.left = 'auto'; panel.style.right = '16px'; }
         // Collapse all folds when floating so it starts compact
-        panel.querySelectorAll('.dev-fold').forEach((d, i) => { d.open = i === 0; });
+        panel.querySelectorAll('.dev-group, .dev-fold').forEach(d => { d.open = false; });
       } else {
         panel.style.top = panel.style.left = panel.style.right = panel.style.width = panel.style.height = '';
         document.getElementById('page-prefs')?.appendChild(panel);
-        panel.querySelectorAll('.dev-fold').forEach(d => { d.open = true; });
+        panel.querySelectorAll('.dev-group, .dev-fold').forEach(d => { d.open = false; });
       }
       localStorage.setItem('sv_dev_float', on ? '1' : '0');
     };
@@ -11916,9 +12006,9 @@ function _maybeShowClipsTutorial(feed) {
 
       <div class="clips-tut-example" aria-hidden="true">
         <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">volume_up</span></span><span>Sound on/off <kbd>M</kbd></span></div>
-        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">thumb_up_off_alt</span></span><span>Like — more like this <kbd>L</kbd></span></div>
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn">${reactionIcon('like')}</span><span>Like — more like this <kbd>L</kbd></span></div>
         <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">bookmark_border</span></span><span>Save for later <kbd>B</kbd></span></div>
-        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn"><span class="material-icons-round">thumb_down_off_alt</span></span><span>Never again <kbd>X</kbd></span></div>
+        <div class="clips-tut-ex-btn"><span class="trailer-icon-btn">${reactionIcon('dislike')}</span><span>Never again <kbd>X</kbd></span></div>
       </div>
 
       <div class="clips-tut-prefs" aria-label="Clip feed preferences">
@@ -12432,10 +12522,10 @@ function _buildTrailerSlide(item) {
           <span class="material-icons-round">${isWatched(id, type) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
         <button class="trailer-icon-btn${isLiked(id, type) ? ' on' : ''}${isLoved(id, type) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id, type) ? 'Loved. Activate to clear' : isLiked(id, type) ? 'Liked. Activate to love' : 'Like'}" aria-pressed="${isLiked(id, type) || isLoved(id, type)}">
-          <span class="material-icons-round">${isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
+          ${reactionIcon(isLoved(id, type) ? 'love' : 'like', isLiked(id, type) || isLoved(id, type))}
         </button>
         <button class="trailer-icon-btn trailer-icon-dislike${isDisliked(id, type) ? ' on' : ''}" data-action="dislike" title="Not Interested (X)" aria-label="Not interested" aria-pressed="${isDisliked(id, type)}">
-          <span class="material-icons-round">${isDisliked(id, type) ? 'thumb_down' : 'thumb_down_off_alt'}</span>
+          ${reactionIcon('dislike', isDisliked(id, type))}
         </button>
       </div>
     </div>`;
@@ -12484,8 +12574,7 @@ function _buildTrailerSlide(item) {
       const previousReaction = getReaction(id, type);
       const reaction = cycleReaction(likeItem);
       recordClipSession({ action: reaction });
-      const icon = btn.querySelector('.material-icons-round');
-      if (icon) icon.textContent = isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt';
+      setReactionIcon(btn, isLoved(id, type) ? 'love' : 'like', isLiked(id, type) || isLoved(id, type));
       btn.classList.toggle('on', isLiked(id, type));
       btn.classList.toggle('loved', isLoved(id, type));
       btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
@@ -12494,7 +12583,7 @@ function _buildTrailerSlide(item) {
       const undoId = undoManager.record({ label, title, icon: reaction === 'love' ? 'favorite' : 'thumb_up', undo: () => {
         setReaction(likeItem, previousReaction);
         const active = getReaction(id, type);
-        if (icon) icon.textContent = active === 'love' ? 'favorite' : active === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
+        setReactionIcon(btn, active === 'love' ? 'love' : 'like', active === 'like' || active === 'love');
         btn.classList.toggle('on', active !== 'none');
         btn.classList.toggle('loved', active === 'love');
         btn.setAttribute('aria-pressed', String(active !== 'none'));

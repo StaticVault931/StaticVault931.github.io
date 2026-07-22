@@ -1952,29 +1952,30 @@ body.sv-icon-nav .bottom-nav-search .material-icons-round { font-size: 1.6rem; }
 
 /* ── EXPERIMENT: Equal Footer Grid (dev panel → Experiments) ──────────
    Four equal-width columns, one rhythm, shared red-dot hover. */
-body.sv-exp-footer-grid .footer-links {
+body.sv-exp-footer-legacy .footer-links {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  grid-template-columns: repeat(4, max-content);
+  justify-content: space-between;
   gap: 2rem;
 }
 @media (max-width: 720px) {
-  body.sv-exp-footer-grid .footer-links { grid-template-columns: repeat(2, 1fr); }
+  body.sv-exp-footer-legacy .footer-links { grid-template-columns: repeat(2, max-content); }
 }
-body.sv-exp-footer-grid .footer-col { gap: 0; min-width: 0; }
-body.sv-exp-footer-grid .footer-col a,
-body.sv-exp-footer-grid .footer-legal-btn {
+body.sv-exp-footer-legacy .footer-col { gap: 0; min-width: 0; }
+body.sv-exp-footer-legacy .footer-col a,
+body.sv-exp-footer-legacy .footer-legal-btn {
   position: relative;
   font-size: .84rem;
   padding: .3rem 0;
   transition: color .18s, transform .18s var(--ease);
 }
-body.sv-exp-footer-grid .footer-col a:hover,
-body.sv-exp-footer-grid .footer-legal-btn:hover {
+body.sv-exp-footer-legacy .footer-col a:hover,
+body.sv-exp-footer-legacy .footer-legal-btn:hover {
   color: var(--text);
   transform: translateX(4px);
 }
-body.sv-exp-footer-grid .footer-col a::before,
-body.sv-exp-footer-grid .footer-legal-btn::before {
+body.sv-exp-footer-legacy .footer-col a::before,
+body.sv-exp-footer-legacy .footer-legal-btn::before {
   content: '';
   position: absolute;
   left: -10px; top: 50%;
@@ -1984,8 +1985,8 @@ body.sv-exp-footer-grid .footer-legal-btn::before {
   transform: translateY(-50%) scale(0);
   transition: transform .18s var(--ease);
 }
-body.sv-exp-footer-grid .footer-col a:hover::before,
-body.sv-exp-footer-grid .footer-legal-btn:hover::before { transform: translateY(-50%) scale(1); }
+body.sv-exp-footer-legacy .footer-col a:hover::before,
+body.sv-exp-footer-legacy .footer-legal-btn:hover::before { transform: translateY(-50%) scale(1); }
 .footer-bottom {
   border-top: 1px solid var(--border);
   padding-top: 1.2rem;
@@ -3464,3 +3465,31 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
   .ob-search { padding: .4rem .65rem; }
   .ob-side .ob-label { font-size: .64rem; }
 }
+
+/* Horizontal franchise rail in the information view. */
+.info-collection-rail { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: .45rem; margin-top: .55rem; }
+.info-collection-grid { display: flex; gap: .7rem; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x proximity; padding: .25rem .1rem .65rem; scrollbar-color: rgba(255,255,255,.15) transparent; }
+.info-collection-scroll { display: contents; }
+.info-collection-arrow { width: 32px; height: 56px; display: grid; place-items: center; border: 1px solid var(--border2); border-radius: 5px; background: var(--s2); color: var(--muted); cursor: pointer; }
+.info-collection-arrow:hover, .info-collection-arrow:focus-visible { border-color: var(--red); color: var(--text); }
+.info-col-film { flex: 0 0 clamp(112px, 10vw, 150px); width: auto; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; scroll-snap-align: start; }
+.info-col-film-title { font-size: .7rem; line-height: 1.25; }
+@media (max-width: 560px) {
+  .info-collection-rail { grid-template-columns: minmax(0, 1fr); }
+  .info-collection-arrow { display: none; }
+  .info-col-film { flex-basis: 112px; }
+}
+
+/* Real, reversible experiment variants. */
+body.sv-exp-equal-choices #genre-scroll,
+body.sv-exp-equal-choices #pref-genres,
+body.sv-exp-equal-choices .ob-side .ob-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+body.sv-exp-equal-choices .genre-chip,
+body.sv-exp-equal-choices .ob-side .ob-chip { justify-content: center; width: 100%; }
+@media (hover: hover) {
+  body.sv-exp-row-focus #page-home:has(.section:hover) .section:not(:hover) { opacity: .56; }
+  body.sv-exp-row-focus #page-home .section { transition: opacity .28s ease; }
+}
+body.sv-exp-compact-collections #company-overlay[data-kind="collection"] { --card-w: 150px; }
+body.sv-exp-compact-collections #company-overlay[data-kind="collection"] .company-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); }
+body.sv-exp-compact-collections .info-col-film { flex-basis: 96px; }

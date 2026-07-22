@@ -386,9 +386,9 @@ test.describe('StaticVault931 smoke', () => {
     const love = page.locator('#sv-ctx-menu [role="menuitemcheckbox"]', { hasText: 'Remove Love' });
     const like = page.locator('#sv-ctx-menu [role="menuitemcheckbox"]', { hasText: 'Like' });
     await expect(love).toHaveAttribute('aria-checked', 'true');
-    await expect(love.locator('.material-icons-round')).toHaveText('favorite');
+    await expect(love.locator('[data-reaction-icon="love"]')).toHaveAttribute('data-icon-state', 'filled');
     await expect(like).toHaveAttribute('aria-checked', 'false');
-    await expect(like.locator('.material-icons-round')).toHaveText('thumb_up_off_alt');
+    await expect(like.locator('[data-reaction-icon="like"]')).toHaveAttribute('data-icon-state', 'outline');
   });
 
   test('profile export snapshot includes inactive profile metadata and data', async ({ page }) => {
@@ -474,17 +474,18 @@ test.describe('StaticVault931 smoke', () => {
     await page.goto('/clips/', { waitUntil: 'domcontentloaded' });
     const button = page.locator('.trailer-slide [data-action="like"]').first();
     await expect(button).toHaveAttribute('aria-label', 'Like');
-    await expect(button.locator('.material-icons-round')).toHaveText('thumb_up_off_alt');
+    await expect(button.locator('[data-reaction-icon="like"]')).toHaveAttribute('data-icon-state', 'outline');
     await button.click();
     await expect(button).toHaveAttribute('aria-label', 'Liked. Activate to love');
-    await expect(button.locator('.material-icons-round')).toHaveText('thumb_up');
+    await expect(button.locator('[data-reaction-icon="like"]')).toHaveAttribute('data-icon-state', 'filled');
     await expect(button).toHaveClass(/\bon\b/);
     await button.click();
     await expect(button).toHaveAttribute('aria-label', 'Loved. Activate to clear');
-    await expect(button.locator('.material-icons-round')).toHaveText('favorite');
+    await expect(button.locator('[data-reaction-icon="love"]')).toHaveAttribute('data-icon-state', 'filled');
     await expect(button).toHaveClass(/\bloved\b/);
     await button.click();
     await expect(button).toHaveAttribute('aria-pressed', 'false');
+    await expect(button.locator('[data-reaction-icon="like"]')).toHaveAttribute('data-icon-state', 'outline');
   });
 
   test('developer route redirects unless hidden developer mode is active', async ({ page }) => {
@@ -492,6 +493,30 @@ test.describe('StaticVault931 smoke', () => {
     await page.goto('/developer/', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator('#dev-test-panel')).toBeHidden();
+  });
+
+  test('developer lab uses nested compact groups and production-default experiments', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const footerLogo = page.locator('.footer-logo');
+    await expect(footerLogo).toHaveCount(1);
+    for (let click = 0; click < 5; click++) await footerLogo.click();
+    await page.keyboard.type('iopiop');
+    await expect(page).toHaveURL(/\/developer\/$/);
+    await expect(page.locator('.dev-group')).toHaveCount(4);
+    await expect(page.locator('.dev-group[open]')).toHaveCount(0);
+    await expect(page.locator('[data-exp]')).toHaveCount(7);
+    await expect(page.locator('body')).not.toHaveClass(/sv-exp-footer-grid|sv-exp-footer-legacy/);
+
+    await page.locator('.dev-group-summary', { hasText: 'Experiments' }).click();
+    await page.locator('.dev-fold-sum', { hasText: 'Experiments' }).click();
+    await page.locator('[data-exp="footer-grid"]').click();
+    await expect(page.locator('body')).toHaveClass(/sv-exp-footer-legacy/);
+    await expect(page.locator('body')).not.toHaveClass(/sv-exp-footer-grid/);
+
+    await page.locator('#dev-pin-btn').click();
+    await expect(page.locator('#dev-test-panel')).toHaveClass(/dev-floating/);
+    await expect(page.locator('.dev-group[open], .dev-fold[open]')).toHaveCount(0);
   });
 
   test('onboarding appears on first visit', async ({ page }) => {
@@ -545,6 +570,12 @@ test.describe('StaticVault931 smoke', () => {
     });
     expect(rows.length).toBeGreaterThanOrEqual(4);
     expect(new Set(rows).size).toBe(1);
+    const firstTile = page.locator('#ob-grid .ob-tile[data-oid]').first();
+    const loveButton = firstTile.locator('[data-act="liked"]');
+    await expect(loveButton.locator('[data-reaction-icon="love"]')).toHaveAttribute('data-icon-state', 'outline');
+    await firstTile.click();
+    await expect(loveButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(loveButton.locator('[data-reaction-icon="love"]')).toHaveAttribute('data-icon-state', 'filled');
   });
 
   test('idle info trailer is not replaced before the user presses play', async ({ page }) => {
@@ -728,6 +759,8 @@ test.describe('StaticVault931 smoke', () => {
     await page.evaluate(async () => (await import('/src/js/app.js')).openCollectionPage(10, 'Test Collection'));
     await expect(page.locator('#company-row-view .sec-title')).toContainText('In Release Order');
     await expect(page.locator('#company-row-view .card')).toHaveCount(12);
+    await expect(page.locator('#company-overlay')).toHaveAttribute('data-kind', 'collection');
+    await expect(page.locator('#company-row-view .card-row')).toHaveCSS('overflow-x', 'auto');
     await page.locator('#company-close').click();
     await expect(page).toHaveURL(/\/$/);
   });
