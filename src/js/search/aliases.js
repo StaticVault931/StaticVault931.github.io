@@ -7,6 +7,9 @@ import { fold } from './normalize.js';
 
 let _aliases = null;
 let _loading = null;
+// Two-letter abbreviations are useful as complete queries but unsafe inside
+// normal phrases (for example, "best op songs" is not a One Piece search).
+const WHOLE_QUERY_ONLY = new Set(['ad', 'bb', 'br', 'dc', 'gg', 'hp', 'mi', 'mt', 'op', 'sf', 'sl', 'st', 'sw', 'vs']);
 
 export function loadAliases() {
   if (_aliases) return Promise.resolve(_aliases);
@@ -36,7 +39,7 @@ export function expandAliases(q) {
   const words = folded.split(' ');
   let changed = false;
   const out = words.map(w => {
-    if (_aliases[w]) { changed = true; return _aliases[w]; }
+    if (_aliases[w] && !WHOLE_QUERY_ONLY.has(w)) { changed = true; return _aliases[w]; }
     return w;
   });
   return changed ? { query: out.join(' '), expanded: true } : { query: q, expanded: false };

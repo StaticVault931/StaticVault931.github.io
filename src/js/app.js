@@ -3,26 +3,21 @@ import { injectOverlays } from './templates.js';
 import { injectPages } from './pages.js';
 import { state, persist, GENRES, AGE_LEVELS, ALL_RATINGS, addRecentlyViewed, saveContinue, getContinue, isLiked, isLoved, getReaction, setReaction, cycleReaction, isInWatchlist, isDisliked, isWatched, toggleWatchlist, toggleWatched, addDislike, recordImpression, isValidItem, cleanState, mediaKey, isTagLiked, isTagDisliked, toggleTagLike, toggleTagDislike, getTasteScore, getActiveTasteState } from './state.js';
 import { tmdb, aniQuery, imgUrl, normalizeAnime, fetchAnimeDetails, getContentRating, clearCachePattern,
-  fetchOMDb, fetchFanart, getFanartLogo, fetchWatchmode, fetchWikipediaSummary, getWikidataId,
-  fetchWikidata, fetchJikan, testAllAPIs, OMDB_KEY, FANART_KEY, WATCHMODE_KEY, STREAMING_SERVICES,
-  getProviderLogoUrl, LOGO_DEV_TOKEN, PROVIDER_LOGO_DOMAINS, TASTEDIVE_KEY,
-  fetchTvApiBoxOffice,
-  wikidataSPARQL, getFilmAwards,
-  fetchVidsrcLatestMovies, fetchVidsrcLatestShows, fetchVidsrcLatestEpisodes, getVidsrcEmbedUrl,
-  fetchTasteDive, TVAPI_KEY2, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
+  fetchOMDb, fetchWatchmode, fetchWikipediaSummary, testAllAPIs,
+  getProviderLogoUrl, fetchBestBackdrop, TMDB_BASE, TMDB_RAT } from './api.js';
 import { goPage, registerLoader, goSeeAll, registerSeeAll, PAGE_LOADERS, updatePageMeta } from './router.js';
 import { buildProviderBar, loadPlayer, nextProvider, cancelProviderTimer, getActiveProvider, setActiveProvider, PROVIDERS, cycleSandboxForce, getSandboxForce } from './player.js';
-import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRow, scrollRowEl, buildGenreChips, emptyState, esc, hideSection, showSection, showConfirm, showChoice } from './ui.js';
+import { toast, makeCard, renderRow, skelCards, showHero, buildHeroDots, jumpHero, resetModal, renderModalInfo, renderModalActions, renderCast, renderRelated, scrollRowEl, buildGenreChips, esc, hideSection, showConfirm, showChoice } from './ui.js';
 import { loadForYou, loadBecauseYouLiked, loadGenreRow, loadGenreTrending, loadDeepCuts, loadHistoryMix, loadBecauseYouWatched, resetTitleRowAnchors } from './recommendations.js';
-import { initSearch, loadSearchDefault, loadEverything, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip, setProviderFilter } from './search.js';
+import { initSearch, loadSearchDefault, doSearch, searchTmdbAutocomplete, buildSearchFilters, rotateTip } from './search.js';
 import { svFlag, setSvFlag } from './search/searchPipeline.js';
 import { invalidateIndex, buildIndex } from './search/searchIndex.js';
 import { renderLibrary, renderSeeAll, loadMoreSeeAll, clearSection, clearAllData } from './library.js';
 import { initProfiles, getProfiles, createProfile, switchProfile, getActiveProfileId, getProfileSettings, updateProfile, deleteProfile, exportProfilesSnapshot, restoreProfilesSnapshot, MAX_PROFILES } from './profiles.js';
 import { selectRowsForToday } from './rows/rowSelector.js';
-import { UI_LANGS, uiLang, tmdbLang, trailerLang, t as i18nT, applyUITranslations } from './i18n.js';
+import { uiLang, tmdbLang, trailerLang, applyUITranslations } from './i18n.js';
 import { titleScore } from './search/fuzzy.js';
-import { recordPlay, recordWatchTime, recordClipView, recordClipSession, recordPageView, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites, yearSummary } from './stats.js';
+import { recordPlay, recordWatchTime, recordClipView, recordClipSession, exportStats, profileUsageSummary, getStats, lifetimeSummary, getFavorites, yearSummary } from './stats.js';
 import { saveShownRows, getRowCooldowns, clearRowCooldowns, dayNumber as _svDayNumber } from './rows/rowCooldowns.js';
 import { recordRowImpression, recordRowClick, recordRowSkip, recordRowDwell, recordRowStat, setStatsPageMode, getRowStats, getRowEngagement, exportRowDiagnostics, clearRowStats, clearRowEngagement } from './rows/rowEngagement.js';
 import { initSuperSearch, closeSuperSearch } from './superSearch.js';
@@ -31,6 +26,7 @@ import { resolveContentSafety, filterSafeItems, isAnimeContent } from './content
 import { parseCleanRoute, titlePath, personPath, collectionPath, providerPath, searchPath, pagePath, libraryViewPath, routeLabel, SITE_ORIGIN } from './routes.js';
 import { undoManager } from './undoManager.js';
 import { hasKidsPin, setKidsPin, verifyKidsPin, removeKidsPin } from './kidsPin.js';
+import { requestPinUnlock, requestNewPin, showRecoveryCode } from './kidsPinDialog.js';
 import { parseBackupText } from './backup.js';
 
 let _onboardingPreloadGeneration = 0;
@@ -1384,7 +1380,7 @@ let _cardCertObserver = null;
     // Has ?id= but it's not a valid number (NaN, empty, text)
     if (watchId && (isNaN(+watchId) || +watchId <= 0)) return true;
     // Has ?page= but it's not a known page
-    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider','clips','holidayrows','mix'].includes(pageParam)) return true;
+    if (pageParam && !['home','movies','tv','anime','search','library','prefs','seeall','provider','clips','holidayrows','mix','dev'].includes(pageParam)) return true;
     // Has no useful params but also has garbage (avoid 404ing clean URLs)
     return false;
   };
@@ -2455,6 +2451,30 @@ function registerAllLoaders() {
   });
   registerLoader('library', renderLibrary);
   registerLoader('prefs', loadPrefsPage);
+  registerLoader('dev', () => {
+    if (!document.body.classList.contains('test-mode')) {
+      goPage('home', { history: 'replace' });
+      toast('Developer Lab is locked', 'lock');
+      return;
+    }
+    let page = document.getElementById('page-dev');
+    if (!page) {
+      page = document.createElement('main');
+      page.id = 'page-dev';
+      page.className = 'page dev-page';
+      page.tabIndex = -1;
+      page.innerHTML = `<div class="dev-page-intro"><p class="eyebrow">Local tools</p><h2 class="page-title-h1">Developer Lab</h2><p>Diagnostics, controlled experiments, and structured product feedback. Nothing here is uploaded.</p></div>`;
+      document.getElementById('footer')?.before(page);
+    }
+    populateTestPanel();
+    const panel = document.getElementById('dev-test-panel');
+    if (panel) {
+      panel.classList.remove('dev-floating');
+      panel.style.cssText = '';
+      page.appendChild(panel);
+      panel.querySelectorAll('.dev-fold').forEach(fold => { fold.open = false; });
+    }
+  });
 
   document.getElementById('sv-reset-settings-btn')?.addEventListener('click', async () => {
     if (await showConfirm('Reset Settings', 'Reset all Display & Player settings to defaults?')) {
@@ -4053,40 +4073,14 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   }
 
   // Recently Added Movies (from vidsrc-embed.ru)
-  _scheduleRowLoad('row-recently-added', 'sec-recently-added', async () => {
-    const feed = await fetchVidsrcLatestMovies(1).catch(() => null);
-    if (!feed?.length) return [];
-    // Feed items have tmdb_id or imdb_id — resolve via TMDB
-    const items = await Promise.all(
-      (feed || []).slice(0, 12).map(item => {
-        if (item.tmdb_id) return tmdb(`/movie/${item.tmdb_id}`).then(d => ({...d, media_type:'movie'})).catch(() => null);
-        if (item.imdb_id) return tmdb(`/find/${item.imdb_id}`, { external_source: 'imdb_id' })
-          .then(d => d.movie_results?.[0] ? {...d.movie_results[0], media_type:'movie'} : null).catch(() => null);
-        return null;
-      })
-    );
-    return items.filter(Boolean);
-  }, 'movie');
+  _scheduleRowLoad('row-recently-added', 'sec-recently-added', () =>
+    tmdb('/movie/now_playing', { region: 'US', page: 1 })
+      .then(data => (data.results || []).map(item => ({ ...item, media_type: 'movie' }))), 'movie');
 
   // Recently Added TV Episodes (from vidsrc-embed.ru)
-  _scheduleRowLoad('row-new-episodes', 'sec-new-episodes', async () => {
-    const feed = await fetchVidsrcLatestEpisodes(1).catch(() => null);
-    if (!feed?.length) return [];
-    const seen = new Set();
-    const items = await Promise.all(
-      (feed || []).filter(ep => {
-        if (seen.has(ep.tmdb_id || ep.imdb_id)) return false;
-        seen.add(ep.tmdb_id || ep.imdb_id);
-        return true;
-      }).slice(0, 12).map(item => {
-        if (item.tmdb_id) return tmdb(`/tv/${item.tmdb_id}`).then(d => ({...d, media_type:'tv'})).catch(() => null);
-        if (item.imdb_id) return tmdb(`/find/${item.imdb_id}`, { external_source: 'imdb_id' })
-          .then(d => d.tv_results?.[0] ? {...d.tv_results[0], media_type:'tv'} : null).catch(() => null);
-        return null;
-      })
-    );
-    return items.filter(Boolean);
-  }, 'tv');
+  _scheduleRowLoad('row-new-episodes', 'sec-new-episodes', () =>
+    tmdb('/tv/airing_today', { timezone: 'America/New_York', page: 1 })
+      .then(data => (data.results || []).map(item => ({ ...item, media_type: 'tv' }))), 'tv');
 
   // Sequels row: first 2 films from popular franchises
   _scheduleRowLoad('row-sequels', 'sec-sequels', async () => {
@@ -4135,22 +4129,12 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
   }, null);
 
   // Box Office This Weekend — from tv-api.com + resolved via TMDB for full card data
-  _scheduleRowLoad('row-boxoffice', 'sec-boxoffice', async () => {
-    const boxData = await fetchTvApiBoxOffice().catch(() => null);
-    if (!boxData?.items?.length) return [];
-    // Resolve TMDB IDs from IMDB IDs
-    const results = await Promise.all(
-      boxData.items.slice(0, 10).map(item => {
-        if (!item.id) return null;
-        return tmdb('/find/' + item.id, { external_source: 'imdb_id' })
-          .then(d => {
-            const match = d.movie_results?.[0];
-            return match ? { ...match, media_type: 'movie' } : null;
-          }).catch(() => null);
-      })
-    );
-    return results.filter(Boolean);
-  }, 'movie');
+  _scheduleRowLoad('row-boxoffice', 'sec-boxoffice', () =>
+    tmdb('/discover/movie', {
+      region: 'US', with_release_type: '2|3', sort_by: 'popularity.desc',
+      'release_date.gte': new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
+      'release_date.lte': new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    }).then(data => (data.results || []).map(item => ({ ...item, media_type: 'movie' }))), 'movie');
 
   // ── Originals & Exclusives rows (rotates daily across 3 providers) ──
   // Uses only with_networks — combining with_watch_providers AND with_networks
@@ -5058,7 +5042,7 @@ function setSetting(id, val) {
 async function requestKidsPinUnlock(reason = 'continue') {
   const profileId = getActiveProfileId();
   if (!hasKidsPin(profileId)) return true;
-  const secret = window.prompt(`Enter the Kid-Guided PIN or recovery code to ${reason}.`);
+  const secret = await requestPinUnlock(reason);
   if (secret == null) return false;
   const result = await verifyKidsPin(profileId, secret);
   if (result.ok) {
@@ -5085,13 +5069,11 @@ async function configureKidsPin() {
     buildSettingsUI();
     return;
   }
-  const pin = window.prompt('Create a 4 to 8 digit Kid-Guided PIN. This protects settings on this device only.');
+  const pin = await requestNewPin();
   if (pin == null) return;
-  const confirmPin = window.prompt('Enter the same PIN again.');
-  if (pin !== confirmPin) { toast('PINs did not match', 'warning'); return; }
   try {
     const recovery = await setKidsPin(profileId, pin);
-    window.alert(`Save this one-time recovery code somewhere private:\n\n${recovery}\n\nThis is device-level protection, not an online account lock. If both codes are lost, recovery requires clearing this site's local data or restoring a backup.`);
+    await showRecoveryCode(recovery);
     toast('Kid-Guided PIN enabled', 'enhanced_encryption');
     buildSettingsUI();
   } catch (error) {
@@ -6152,6 +6134,9 @@ function initEventDelegation() {
   document.addEventListener('click', e => {
     const card = e.target.closest('[data-id][data-type]');
     if (!card) return;
+    // Clips own their interaction lifecycle. Letting the generic card handler
+    // process the same click a second time corrupts reaction icon state.
+    if (card.classList.contains('trailer-slide')) return;
 
     // Like button
     const likeBtn = e.target.closest('[data-action="like"]');
@@ -7139,6 +7124,10 @@ function _syncHoverReactionIcons(id, type) {
   });
   const trigger = document.querySelector('#nc-like .material-icons-round');
   if (trigger) trigger.textContent = reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'thumb_up_off_alt';
+  const triggerButton = document.getElementById('nc-like');
+  triggerButton?.classList.toggle('active', reaction === 'like' || reaction === 'love');
+  triggerButton?.setAttribute('aria-pressed', String(reaction === 'like' || reaction === 'love'));
+  triggerButton?.setAttribute('aria-label', reaction === 'love' ? 'Loved. Choose another reaction' : reaction === 'like' ? 'Liked. Choose another reaction' : 'Choose a reaction');
 }
 
 function handleWatched(id, type, btn, card) {
@@ -7831,7 +7820,6 @@ export async function openInfoPage(id, type, hint = {}) {
       const networks = (details.networks || []).slice(0, 2).map(n => n.name).join(', ');
       const prodCos = (details.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
       const creators  = (details.created_by || []).map(c => c.name).join(', ');
-      const keywords  = (details.keywords?.keywords || details.keywords?.results || []).slice(0, 8).map(k => k.name);
       const directors = type !== 'anime' ? (credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name) : [];
       const writers   = type !== 'anime' ? (credits?.crew || []).filter(c => ['Screenplay','Story','Writer'].includes(c.job)).slice(0,3).map(c => c.name) : [];
       const producers = type !== 'anime' ? (credits?.crew || []).filter(c => ['Executive Producer','Producer'].includes(c.job)).slice(0,2).map(c => c.name) : [];
@@ -8071,7 +8059,6 @@ export async function openInfoPage(id, type, hint = {}) {
     const castAlsoGrid = document.getElementById('info-cast-also-grid');
     if (castSection && castAlsoGrid && cast.length >= 2) {
       const topCast = cast.slice(0, 4); // top 4 billed cast
-      const mediaType = type === 'anime' ? 'tv' : type;
       try {
         // Fetch filmographies for top cast in parallel
         const creditResults = await Promise.allSettled(
@@ -8134,19 +8121,6 @@ export async function openInfoPage(id, type, hint = {}) {
         reviewsOuter.style.display = 'none';
       }
     } catch {}
-
-    // ── Fanart.tv logo (replace text title with transparent logo if available)
-    if (type !== 'anime') {
-      fetchFanart(id, type === 'movie' ? 'movies' : 'tv').then(fanart => {
-        const logoUrl = getFanartLogo(fanart);
-        if (logoUrl) {
-          const titleEl = document.getElementById('info-title');
-          if (titleEl) {
-            titleEl.innerHTML = `<img class="info-fanart-logo" src="${logoUrl}" alt="${esc(title)}" onerror="this.style.display='none'">`;
-          }
-        }
-      }).catch(() => {});
-    }
 
     // Note: .info-studio-link and .info-person-link clicks are handled via
     // delegated listener registered in overlay._wired block above.
@@ -8735,7 +8709,6 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   const grid      = document.getElementById('company-grid');
   const moviesSec = document.getElementById('company-movies-sec');
   const tvSec     = document.getElementById('company-tv-sec');
-  const heroEl    = document.getElementById('company-hero');
   const heroImg   = document.getElementById('company-hero-img');
   const logoBig   = document.getElementById('company-logo-big');
   const logoSm    = document.getElementById('company-logo'); // toolbar logo (id="company-logo")
@@ -8748,6 +8721,12 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   if (heroImg)  { heroImg.src = ''; heroImg.style.display = 'none'; }
   if (logoBig)  { logoBig.src = ''; logoBig.style.display = 'none'; }
   if (logoSm)   { logoSm.src = ''; logoSm.style.display = 'none'; }
+  if (rowView) {
+    rowView.innerHTML = `<div class="section" aria-busy="true">
+      <div class="sec-header"><div class="sec-title"><span class="material-icons-round sec-icon">hourglass_top</span>Loading</div></div>
+      <div class="row-wrap"><div class="card-row">${skelCards(6)}</div></div>
+    </div>`;
+  }
   if (moviesRow) moviesRow.innerHTML = skelCards(6);
   if (tvRow)     tvRow.innerHTML     = '';
   if (grid)      grid.innerHTML      = skelCards(12);
@@ -8838,7 +8817,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
     }
   } catch (e) {
     console.warn('[SV] Company overlay error:', e?.message);
-    if (moviesRow) moviesRow.innerHTML = '<p style="padding:1rem;color:var(--muted)">Could not load content.</p>';
+    if (rowView) rowView.innerHTML = '<p style="padding:3rem;color:var(--muted);text-align:center">Could not load content.</p>';
   }
 }
 
@@ -10321,7 +10300,7 @@ function initTestMode() {
       _armed = false;
       _testCodeBuffer = '';
       const on = document.body.classList.toggle('test-mode');
-      if (on) { populateTestPanel(); goPage('prefs'); }
+      if (on) { populateTestPanel(); goPage('dev'); }
       else {
         const panel = document.getElementById('dev-test-panel');
         if (panel) panel.style.display = 'none';
@@ -10488,6 +10467,23 @@ function populateTestPanel() {
         <div id="dev-experiments"></div>
       </div>
 
+      <div class="dev-section">
+        <div class="dev-sec-title">Product Feedback Lab</div>
+        <form id="dev-feedback-form" class="dev-feedback-form">
+          <label>Tester perspective<select name="perspective"><option>Average viewer</option><option>Teen viewer</option><option>Older or less technical viewer</option><option>Power user</option><option>Parent testing Kid-Guided</option><option>Accessibility tester</option></select></label>
+          <label>Task attempted<input name="task" placeholder="What were you trying to do?"></label>
+          <label>Task success (1-5)<input name="success" type="range" min="1" max="5" value="3"></label>
+          <label>Recommendation relevance (1-5)<input name="relevance" type="range" min="1" max="5" value="3"></label>
+          <label>Search query tested<input name="searchQuery" placeholder="Exact words used"></label>
+          <label>Most confusing screen or control<textarea name="confusing" rows="2"></textarea></label>
+          <label>Best feature<textarea name="favorite" rows="2"></textarea></label>
+          <label>What felt missing?<textarea name="missing" rows="2"></textarea></label>
+          <label>Performance, mobile, keyboard, or accessibility issue<textarea name="quality" rows="2"></textarea></label>
+          <label>Other notes<textarea name="notes" rows="3"></textarea></label>
+          <div class="dev-btn-row"><button class="dev-btn" type="button" id="dev-feedback-copy">Copy JSON</button><button class="dev-btn" type="button" id="dev-feedback-download">Download JSON</button><button class="dev-btn" type="reset">Clear</button></div>
+        </form>
+      </div>
+
       <div class="dev-section" id="dev-stats-preview">
         <div class="dev-sec-title">Profile Stats Preview</div>
         <div id="dev-stats-preview-body" style="font-size:.72rem;line-height:1.7"></div>
@@ -10582,6 +10578,7 @@ function populateTestPanel() {
     document.getElementById('dev-close')?.addEventListener('click', () => {
       document.body.classList.remove('test-mode');
       panel.style.display = 'none';
+      if (state.currentPage === 'dev') goPage('home', { history: 'replace' });
     });
 
     // Theme buttons via event delegation (no inline onclick)
@@ -10648,6 +10645,31 @@ function populateTestPanel() {
       toast('Cache cleared', 'delete_sweep');
     });
     document.getElementById('dev-btn-year-recap')?.addEventListener('click', showYearRecapPreview);
+    const feedbackData = () => {
+      const form = panel.querySelector('#dev-feedback-form');
+      return {
+        schema: 'staticvault-feedback-v1',
+        createdAt: new Date().toISOString(),
+        route: `${location.pathname}${location.search}`,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        userAgent: navigator.userAgent,
+        answers: Object.fromEntries(new FormData(form).entries()),
+      };
+    };
+    panel.querySelector('#dev-feedback-copy')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(feedbackData(), null, 2));
+        toast('Feedback JSON copied', 'content_copy');
+      } catch { toast('Clipboard access failed. Use Download JSON instead.', 'warning'); }
+    });
+    panel.querySelector('#dev-feedback-download')?.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(feedbackData(), null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `staticvault-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
     const naBtn = document.getElementById('dev-btn-na');
     const syncNaBtn = () => { if (naBtn) naBtn.textContent = `${window._svShowNA ? '✓ ' : ''}Label Missing Info (N/A)`; };
     syncNaBtn();
@@ -10784,14 +10806,12 @@ function populateTestPanel() {
 
     // ── Foldable sections — bulky sections start COLLAPSED (click to
     // unhide); light/frequently-used ones start open ──────────────────
-    const START_CLOSED = ['Row Summoner', 'Row System', 'Themes', 'Source Testing'];
     panel.querySelectorAll('.dev-section').forEach(sec => {
       const title = sec.querySelector('.dev-sec-title');
       if (!title) return;
       const det = document.createElement('details');
       det.className = 'dev-fold';
-      const titleText = title.textContent || '';
-      det.open = !START_CLOSED.some(t => titleText.includes(t));
+      det.open = false;
       const sum = document.createElement('summary');
       sum.className = 'dev-fold-sum';
       sum.append(...title.childNodes);
@@ -11037,16 +11057,6 @@ function buildRatingDescriptions() {
 /* (initTestMode defined above in testing mode section) */
 
 /* ── PROVIDER NOTIFICATION ───────────────────────────────────────── */
-function checkProviderNotification() {
-  const active = getActiveProvider();
-  const usual = state.lastProvider || 'vidsrc';
-  if (active.id !== usual && state.currentMedia) {
-    const usualProv = PROVIDERS.find(p => p.id === usual);
-    const usualLabel = usualProv?.label || usual;
-    toast(`Using ${active.label} instead of ${usualLabel}`, 'swap_horiz');
-  }
-}
-
 /* ── TMDB TITLE TREATMENT LOGOS (lazy card logo loader) ─────────── */
 // _cardLogoObserver and _cardLogoMutObs declared above init() to avoid TDZ crash
 const _logoCache = new Map(); // id → logoUrl | null
@@ -11491,6 +11501,35 @@ function initHoverTrailer() {
 
 // Hover preview mute state (initialised from the automute setting per card)
 let _hoverMuted = true;
+let _hoverExpandTimer = null;
+
+function _stopHoverExpansion() {
+  clearTimeout(_hoverExpandTimer);
+  _hoverExpandTimer = null;
+  const nc = document.getElementById('netflix-card');
+  if (nc) nc.classList.remove('long-preview');
+}
+
+function _startHoverExpansion(card) {
+  const current = document.getElementById('netflix-card');
+  if (_hoverExpandTimer || current?.classList.contains('long-preview')) return;
+  _stopHoverExpansion();
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || matchMedia('(hover: none)').matches) return;
+  _hoverExpandTimer = setTimeout(() => {
+    if (!_hoverActive || _hoverCurrentCard !== card) return;
+    const nc = document.getElementById('netflix-card');
+    if (!nc) return;
+    const rect = nc.getBoundingClientRect();
+    const width = Math.min(Math.round(rect.width * 1.45), window.innerWidth - 24);
+    const left = Math.max(12, Math.min(rect.left - (width - rect.width) / 2, window.innerWidth - width - 12));
+    const estimatedHeight = Math.min(rect.height * 1.25, window.innerHeight - 86);
+    const top = Math.max(70, Math.min(rect.top - (estimatedHeight - rect.height) / 2, window.innerHeight - estimatedHeight - 8));
+    nc.classList.add('long-preview');
+    nc.style.width = `${width}px`;
+    nc.style.left = `${left}px`;
+    nc.style.top = `${top}px`;
+  }, 15000);
+}
 function _syncNcMuteIcon() {
   const icon = document.querySelector('#nc-mute .material-icons-round');
   if (icon) icon.textContent = _hoverMuted ? 'volume_off' : 'volume_up';
@@ -11498,6 +11537,7 @@ function _syncNcMuteIcon() {
 
 function clearHoverTrailer() {
   clearTimeout(_hoverTimer);
+  _stopHoverExpansion();
   _hoverTimer = null;
   _hoverActive = false;
   _hoverCurrentCard = null;
@@ -11513,6 +11553,7 @@ function clearHoverTrailer() {
     nc.setAttribute('aria-hidden', 'true');
     // Run any DM cleanup timers
     if (nc._dmCleanup) { nc._dmCleanup(); nc._dmCleanup = null; }
+    if (nc._hoverPlayerCleanup) { nc._hoverPlayerCleanup(); nc._hoverPlayerCleanup = null; }
   }
   // Force-stop iframe immediately — removeAttribute alone doesn't stop audio in all browsers
   const frame = document.getElementById('nc-frame');
@@ -11660,7 +11701,9 @@ async function showNetflixCard(card) {
               if (!_hoverMuted) _ytCmd(frame, 'unMute');
               _syncNcMuteIcon();
             }
-            window.removeEventListener('message', ytHandler);
+            _startHoverExpansion(card);
+          } else if (d.event === 'infoDelivery' && [-1, 0, 2, 3, 5].includes(d.info?.playerState)) {
+            _stopHoverExpansion();
           } else if (d.event === 'onError') {
             // Trailer error — fall back to showing the backdrop image
             window.removeEventListener('message', ytHandler);
@@ -11669,7 +11712,7 @@ async function showNetflixCard(card) {
         } catch {}
       };
       window.addEventListener('message', ytHandler);
-      setTimeout(() => window.removeEventListener('message', ytHandler), 8000);
+      nc._hoverPlayerCleanup = () => window.removeEventListener('message', ytHandler);
     };
 
     playYouTube(trailerKey);
@@ -12382,17 +12425,17 @@ function _buildTrailerSlide(item) {
           <input type="range" class="clips-vol-slider" min="0" max="100" value="${_clipsVolume}"
             aria-label="Trailer volume" aria-orientation="vertical" orient="vertical" data-action="volume">
         </div>
-        <button class="trailer-icon-btn${isInWatchlist(id) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="${isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist'}" aria-pressed="${isInWatchlist(id)}">
-          <span class="material-icons-round">${isInWatchlist(id) ? 'bookmark' : 'bookmark_border'}</span>
+        <button class="trailer-icon-btn${isInWatchlist(id, type) ? ' on' : ''}" data-action="wl" title="Watchlist (B)" aria-label="${isInWatchlist(id, type) ? 'Remove from watchlist' : 'Add to watchlist'}" aria-pressed="${isInWatchlist(id, type)}">
+          <span class="material-icons-round">${isInWatchlist(id, type) ? 'bookmark' : 'bookmark_border'}</span>
         </button>
-        <button class="trailer-icon-btn${isWatched(id) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while" aria-pressed="${isWatched(id)}">
-          <span class="material-icons-round">${isWatched(id) ? 'done_all' : 'check_circle_outline'}</span>
+        <button class="trailer-icon-btn${isWatched(id, type) ? ' on' : ''}" data-action="watched" title="Already watched it — hide this title for a while (W)" aria-label="Already watched — hide this title for a while" aria-pressed="${isWatched(id, type)}">
+          <span class="material-icons-round">${isWatched(id, type) ? 'done_all' : 'check_circle_outline'}</span>
         </button>
-        <button class="trailer-icon-btn${isLiked(id) ? ' on' : ''}${isLoved(id) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id) ? 'Loved. Activate to clear' : isLiked(id) ? 'Liked. Activate to love' : 'Like'}" aria-pressed="${isLiked(id)}">
-          <span class="material-icons-round">${isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
+        <button class="trailer-icon-btn${isLiked(id, type) ? ' on' : ''}${isLoved(id, type) ? ' loved' : ''}" data-action="like" title="Like, then Love (L)" aria-label="${isLoved(id, type) ? 'Loved. Activate to clear' : isLiked(id, type) ? 'Liked. Activate to love' : 'Like'}" aria-pressed="${isLiked(id, type) || isLoved(id, type)}">
+          <span class="material-icons-round">${isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt'}</span>
         </button>
-        <button class="trailer-icon-btn trailer-icon-dislike${isDisliked(id) ? ' on' : ''}" data-action="dislike" title="Not Interested (X)" aria-label="Not interested" aria-pressed="${isDisliked(id)}">
-          <span class="material-icons-round">${isDisliked(id) ? 'thumb_down' : 'thumb_down_off_alt'}</span>
+        <button class="trailer-icon-btn trailer-icon-dislike${isDisliked(id, type) ? ' on' : ''}" data-action="dislike" title="Not Interested (X)" aria-label="Not interested" aria-pressed="${isDisliked(id, type)}">
+          <span class="material-icons-round">${isDisliked(id, type) ? 'thumb_down' : 'thumb_down_off_alt'}</span>
         </button>
       </div>
     </div>`;
@@ -12424,6 +12467,7 @@ function _buildTrailerSlide(item) {
       }
       return;
     }
+    e.stopPropagation();
     const action = btn.dataset.action;
     if (action === 'watch') {
       _standbyClipSlide(slide); // pause trailer so audio doesn't bleed under the player
@@ -12441,11 +12485,11 @@ function _buildTrailerSlide(item) {
       const reaction = cycleReaction(likeItem);
       recordClipSession({ action: reaction });
       const icon = btn.querySelector('.material-icons-round');
-      if (icon) icon.textContent = isLoved(id) ? 'favorite' : isLiked(id) ? 'thumb_up' : 'thumb_up_off_alt';
-      btn.classList.toggle('on', isLiked(id));
-      btn.classList.toggle('loved', isLoved(id));
+      if (icon) icon.textContent = isLoved(id, type) ? 'favorite' : isLiked(id, type) ? 'thumb_up' : 'thumb_up_off_alt';
+      btn.classList.toggle('on', isLiked(id, type));
+      btn.classList.toggle('loved', isLoved(id, type));
       btn.setAttribute('aria-label', reaction === 'love' ? 'Loved. Activate to clear' : reaction === 'like' ? 'Liked. Activate to love' : 'Like');
-      btn.setAttribute('aria-pressed', String(isLiked(id)));
+      btn.setAttribute('aria-pressed', String(isLiked(id, type)));
       const label = reaction === 'love' ? 'Loved' : reaction === 'like' ? 'Liked' : 'Reaction removed';
       const undoId = undoManager.record({ label, title, icon: reaction === 'love' ? 'favorite' : 'thumb_up', undo: () => {
         setReaction(likeItem, previousReaction);
@@ -12454,24 +12498,25 @@ function _buildTrailerSlide(item) {
         btn.classList.toggle('on', active !== 'none');
         btn.classList.toggle('loved', active === 'love');
         btn.setAttribute('aria-pressed', String(active !== 'none'));
+        btn.setAttribute('aria-label', active === 'love' ? 'Loved. Activate to clear' : active === 'like' ? 'Liked. Activate to love' : 'Like');
       } });
       toast(reaction === 'like' ? 'Liked. Tap again to Love it.' : label, reaction === 'love' ? 'favorite' : reaction === 'like' ? 'thumb_up' : 'remove_circle_outline', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'wl') {
       const wlItem = { id, type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       toggleWatchlist(wlItem);
       const icon = btn.querySelector('.material-icons-round');
-      if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
-      btn.classList.toggle('on', isInWatchlist(id));
-      btn.setAttribute('aria-pressed', String(isInWatchlist(id)));
-      btn.setAttribute('aria-label', isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist');
-      const undoId = undoManager.record({ label: isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', title, icon: 'bookmark', undo: () => {
+      if (icon) icon.textContent = isInWatchlist(id, type) ? 'bookmark' : 'bookmark_border';
+      btn.classList.toggle('on', isInWatchlist(id, type));
+      btn.setAttribute('aria-pressed', String(isInWatchlist(id, type)));
+      btn.setAttribute('aria-label', isInWatchlist(id, type) ? 'Remove from watchlist' : 'Add to watchlist');
+      const undoId = undoManager.record({ label: isInWatchlist(id, type) ? 'Added to watchlist' : 'Removed from watchlist', title, icon: 'bookmark', undo: () => {
         toggleWatchlist(wlItem);
-        if (icon) icon.textContent = isInWatchlist(id) ? 'bookmark' : 'bookmark_border';
-        btn.classList.toggle('on', isInWatchlist(id));
-        btn.setAttribute('aria-pressed', String(isInWatchlist(id)));
-        btn.setAttribute('aria-label', isInWatchlist(id) ? 'Remove from watchlist' : 'Add to watchlist');
+        if (icon) icon.textContent = isInWatchlist(id, type) ? 'bookmark' : 'bookmark_border';
+        btn.classList.toggle('on', isInWatchlist(id, type));
+        btn.setAttribute('aria-pressed', String(isInWatchlist(id, type)));
+        btn.setAttribute('aria-label', isInWatchlist(id, type) ? 'Remove from watchlist' : 'Add to watchlist');
       } });
-      toast(isInWatchlist(id) ? 'Added to watchlist' : 'Removed from watchlist', 'bookmark', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
+      toast(isInWatchlist(id, type) ? 'Added to watchlist' : 'Removed from watchlist', 'bookmark', { actionLabel: 'Undo', onAction: () => undoManager.undo(undoId) });
     } else if (action === 'watched') {
       const watchedItem = { id, type, media_type: type, title, year, rating, poster: '', backdrop: item.backdrop_path || '' };
       const nowWatched = toggleWatched(watchedItem);
@@ -12878,11 +12923,6 @@ async function fetchRichDetails(id, type) {
   } catch {
     return null;
   }
-}
-
-async function fetchGenreNames(id, type) {
-  const rich = await fetchRichDetails(id, type);
-  return rich?.genres || [];
 }
 
 /* ── COLLAPSIBLE MODAL SIDEBARS ──────────────────────────────────── */

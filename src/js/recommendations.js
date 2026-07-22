@@ -1,6 +1,6 @@
 import { state, AGE_LEVELS, getImpressionPenalty, getTasteScore, mediaKey, getActiveTasteState } from './state.js';
-import { tmdb, aniQuery, normalizeAnime } from './api.js';
-import { makeCard, renderRow, skelCards, hideSection, showSection, esc } from './ui.js';
+import { tmdb } from './api.js';
+import { makeCard, renderRow, skelCards, esc } from './ui.js';
 import { filterSafeItems, isAnimeContent } from './contentSafety.js';
 
 /* Shared between the title-referencing rows ("Because you liked X",
@@ -161,8 +161,6 @@ export async function loadForYou() {
     const recItems = recResults.flatMap((r, index) => r.status === 'fulfilled'
       ? (r.value.results || []).map(item => ({ ...item, media_type: dedupedCandidates[index]?.type || dedupedCandidates[index]?.media_type || 'movie' }))
       : []);
-    const dislikedTagIdSet = new Set((state.prefTagDislikes || []).map(t => t.id));
-
     // IDs currently shown in Trending row — exclude to avoid repeats
     const trendingRowIds = new Set(
       Array.from(document.querySelectorAll('#row-trending [data-id]')).map(el => `${el.dataset.type || 'movie'}:${+el.dataset.id}`)

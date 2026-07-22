@@ -19,7 +19,7 @@ http.createServer((req, res) => {
   if (fromRoot.startsWith('..') || path.isAbsolute(fromRoot)) { res.writeHead(403); return res.end('Forbidden'); }
   if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');
   if (!fs.existsSync(p)) {
-    const appRoute = /^\/(?:movies|tv|anime|clips|mix|search|library|customize)\/?$|^\/(?:title|person|collection|provider|browse)\//i.test(pathname);
+    const appRoute = /^\/(?:movies|tv|anime|clips|mix|search|library|customize|developer)\/?$|^\/(?:title|person|collection|provider|browse)\//i.test(pathname);
     if (appRoute) { p = path.join(root, 'index.html'); injectBase = true; }
     else { res.writeHead(404); return res.end('Not found'); }
   }

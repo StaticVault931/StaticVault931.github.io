@@ -1,0 +1,22 @@
+[
+  { "id": 10, "name": "Star Wars Collection", "partIds": [11, 1891, 1892, 1893, 1894, 1895, 140607, 181808, 181812] },
+  { "id": 1241, "name": "Harry Potter Collection", "partIds": [671, 672, 673, 674, 675, 767, 12444, 12445] },
+  { "id": 119, "name": "The Lord of the Rings Collection", "partIds": [120, 121, 122] },
+  { "id": 121938, "name": "The Hobbit Collection", "partIds": [49051, 57158, 122917] },
+  { "id": 645, "name": "James Bond Collection", "partIds": [646, 657, 658, 660, 667, 668, 681, 253, 682, 691, 698, 699, 700, 707, 708, 709, 710, 714, 36643, 36669, 36557, 10764, 37724, 206647, 370172] },
+  { "id": 9485, "name": "The Fast and the Furious Collection", "partIds": [9799, 584, 9615, 13804, 51497, 82992, 168259, 337339, 384018, 385128, 385687] },
+  { "id": 328, "name": "Jurassic Park Collection", "partIds": [329, 330, 331, 135397, 351286, 507086, 1234821] },
+  { "id": 263, "name": "The Dark Knight Collection", "partIds": [272, 155, 49026] },
+  { "id": 556, "name": "Spider-Man Collection", "partIds": [557, 558, 559] },
+  { "id": 10194, "name": "Toy Story Collection", "partIds": [862, 863, 10193, 301528, 1084244] },
+  { "id": 2150, "name": "Shrek Collection", "partIds": [808, 809, 810, 10192, 421892] },
+  { "id": 86066, "name": "Despicable Me Collection", "partIds": [20352, 93456, 324852, 519182] },
+  { "id": 87359, "name": "Mission: Impossible Collection", "partIds": [954, 955, 956, 56292, 177677, 353081, 575264, 575265] },
+  { "id": 404609, "name": "John Wick Collection", "partIds": [245891, 324552, 458156, 603692] },
+  { "id": 131635, "name": "The Hunger Games Collection", "partIds": [70160, 101299, 131631, 131634] },
+  { "id": 2344, "name": "The Matrix Collection", "partIds": [603, 604, 605, 624860] },
+  { "id": 8091, "name": "Alien Collection", "partIds": [348, 679, 8077, 8078] },
+  { "id": 399, "name": "Predator Collection", "partIds": [106, 169, 34851, 346910, 766507, 1242898] },
+  { "id": 295, "name": "Pirates of the Caribbean Collection", "partIds": [22, 58, 285, 1865, 166426] },
+  { "id": 131292, "name": "Iron Man Collection", "partIds": [1726, 10138, 68721] }
+]

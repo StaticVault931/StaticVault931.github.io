@@ -1,4 +1,4 @@
-import { state, persist } from './state.js';
+import { state } from './state.js';
 import { recordPageView } from './stats.js';
 import { pagePath, canonicalPageUrl, browsePath } from './routes.js';
 
@@ -14,6 +14,7 @@ const PAGE_META = {
   seeall:   { title: 'Browse All Content — StaticVault931',                       desc: 'Browse the full catalog of free unblocked movies, TV shows, and anime.' },
   mix:      { title: 'Mix & Match — Blend Titles Into New Picks | StaticVault931', desc: 'Pick a few movies or shows you love and blend them — Mix & Match finds titles that match the combination, not just one of them.' },
   clips:    { title: 'Watch Clips — StaticVault931',                              desc: 'Scroll through short clips for the latest movies and TV shows. Discover your next watch.' },
+  dev:      { title: 'Developer Lab | StaticVault931',                            desc: 'Private local diagnostics and product experiments.' },
 };
 
 const PAGE_BREADCRUMBS = {
@@ -27,7 +28,7 @@ const PAGE_BREADCRUMBS = {
   mix:      [{ name: 'Mix & Match',  url: canonicalPageUrl('mix') }],
   clips:    [{ name: 'Clips',           url: canonicalPageUrl('clips') }],
 };
-const PRIVATE_PAGES = new Set(['search', 'library', 'prefs', 'seeall', 'holidayrows']);
+const PRIVATE_PAGES = new Set(['search', 'library', 'prefs', 'seeall', 'holidayrows', 'dev']);
 
 function updateVisibleItemList(page) {
   if (!['home', 'movies', 'tv', 'anime', 'clips', 'mix'].includes(page)) return;
@@ -111,6 +112,10 @@ export function registerLoader(page, fn) {
 
 /* ── NAVIGATE ────────────────────────────────────────────────────── */
 export function goPage(p, options = {}) {
+  if (p === 'dev' && !document.body.classList.contains('test-mode')) {
+    p = 'home';
+    options = { ...options, history: 'replace' };
+  }
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => {
     const on = el.dataset.page === p;

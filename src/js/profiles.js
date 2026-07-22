@@ -3,7 +3,7 @@
  * Up to 10 profiles per browser, each with independent preferences and history.
  */
 
-import { state, persist } from './state.js';
+import { state } from './state.js';
 
 const PROFILES_KEY = 'sv_profiles';
 const ACTIVE_KEY   = 'sv_active_profile';

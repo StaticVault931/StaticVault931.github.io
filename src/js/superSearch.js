@@ -20,6 +20,7 @@ let _active = 0;
 
 const ACTIONS = [
   { text: 'Search the full catalog', terms: 'find movie show anime actor title global catalog', kind: 'Page', icon: 'search', action: goToCatalogSearch },
+  { text: 'Search by plot or description', terms: 'story clue description overview plot what was that movie where', kind: 'Search mode', icon: 'manage_search', action: query => goToCatalogSearch(`::${query}`) },
   { text: 'Open Settings', terms: 'preferences options captions subtitles language accessibility playback account', kind: 'Tool', icon: 'settings', action: () => goToPage('prefs') },
   { text: 'Open My Library', terms: 'watchlist saved liked loved watched recent history taste profile', kind: 'Page', icon: 'video_library', action: () => goToPage('library') },
   { text: 'Open Clips', terms: 'trailers short feed discover video', kind: 'Page', icon: 'smart_display', action: () => goToPage('clips') },
@@ -116,12 +117,32 @@ function ensureOverlay() {
         <input id="super-search-input" type="search" autocomplete="off" placeholder="Search this screen, settings, pages, and tools" aria-controls="super-search-results">
         <kbd>Esc</kbd>
       </label>
+      <div class="super-search-capabilities" aria-label="Super Search can find">
+        <span><i class="material-icons-round">web_asset</i>This screen</span>
+        <span><i class="material-icons-round">toggle_on</i>Settings</span>
+        <span><i class="material-icons-round">apps</i>Pages &amp; tools</span>
+        <span><i class="material-icons-round">movie_filter</i>Full catalog</span>
+      </div>
+      <div class="super-search-examples" aria-label="Example searches">
+        <span>Try</span>
+        <button type="button" data-super-query="bold text">bold text</button>
+        <button type="button" data-super-query="my library">my library</button>
+        <button type="button" data-super-query="astronauts near a black hole">a plot clue</button>
+      </div>
       <div id="super-search-status" class="super-search-status" aria-live="polite"></div>
       <div id="super-search-results" class="super-search-results" role="listbox"></div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', event => {
     if (event.target === overlay || event.target.closest('.super-search-close')) closeSuperSearch();
+    const example = event.target.closest('[data-super-query]');
+    if (example) {
+      const input = overlay.querySelector('input');
+      input.value = example.dataset.superQuery;
+      input.focus();
+      render();
+      return;
+    }
     const row = event.target.closest('[data-super-result]');
     if (row) activate(+row.dataset.superResult);
   });
@@ -129,16 +150,41 @@ function ensureOverlay() {
   return overlay;
 }
 
+function closeEnough(word, candidate) {
+  if (candidate.includes(word) || word.includes(candidate)) return true;
+  if (word.length < 4 || Math.abs(word.length - candidate.length) > 1) return false;
+  let left = 0;
+  let right = 0;
+  let edits = 0;
+  while (left < word.length && right < candidate.length) {
+    if (word[left] === candidate[right]) { left++; right++; continue; }
+    if (++edits > 1) return false;
+    if (word.length > candidate.length) left++;
+    else if (candidate.length > word.length) right++;
+    else { left++; right++; }
+  }
+  return edits + (word.length - left) + (candidate.length - right) <= 1;
+}
+
 function matches(query) {
   const normalizedQuery = normalize(query);
-  const words = normalizedQuery.split(/\s+/).filter(Boolean);
-  if (!words.length) return _entries.slice(0, 12);
+  const querySynonyms = { txt: 'text', vids: 'videos', prefs: 'preferences' };
+  const words = normalizedQuery.split(/\s+/).filter(Boolean).map(word => querySynonyms[word] || word);
+  if (!words.length) {
+    const actions = _entries.filter(entry => entry.action);
+    const settings = _entries.filter(entry => entry.kind === 'Setting').slice(0, 4);
+    return [...actions, ...settings].slice(0, 14);
+  }
   return _entries
-    .filter(entry => words.every(word => entry.search.includes(word)))
+    .filter(entry => {
+      const candidates = entry.search.split(' ');
+      return words.every(word => candidates.some(candidate => closeEnough(word, candidate)));
+    })
     .map(entry => {
       let score = words.reduce((total, word) => total + (entry.search.startsWith(word) ? 8 : entry.search.includes(` ${word}`) ? 4 : 1), 0);
       if (entry.search === normalizedQuery) score += 20;
       if (entry.kind !== 'On this page') score += 2;
+      if (entry.kind === 'Setting') score += 3;
       return { entry, score };
     })
     .sort((a, b) => b.score - a.score || a.entry.text.length - b.entry.text.length)
@@ -153,6 +199,8 @@ function render() {
   const results = matches(query);
   if (query && !results.length) {
     const catalog = ACTIONS[0];
+    const description = ACTIONS[1];
+    results.push({ ...description, text: `Search plots and descriptions for “${query}”` });
     results.push({ ...catalog, text: `Search the full catalog for “${query}”` });
   }
   _active = Math.min(_active, Math.max(0, results.length - 1));

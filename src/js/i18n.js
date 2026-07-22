@@ -72,6 +72,15 @@ export const STRINGS = {
   },
 };
 
+const EXTRA_STRINGS = {
+  en: { 'search.filters':'Filters','search.all':'All','search.top':'Top Rated','search.new':'New Releases','search.everything':'Everything','search.mix':'Mix','library.title':'My Library','library.subtitle':'Your watchlist, liked titles, and viewing history','library.mix':'Mix & Match','library.taste':'Taste Profile','library.service':'Browse by service','library.continue':'Continue Watching','library.watchlist':'Watchlist','library.liked':'Liked','library.recent':'Recently Viewed','prefs.title':'Customize Your Feed','prefs.subtitle':'Tell us what you love. Changes apply automatically when you leave.','prefs.autosaved':'Auto-saved','prefs.taste':'Your Taste' },
+  es: { 'search.filters':'Filtros','search.all':'Todo','search.top':'Mejor valorado','search.new':'Estrenos','search.everything':'Todo el catalogo','search.mix':'Mezclar','library.title':'Mi biblioteca','library.subtitle':'Tu lista, titulos favoritos e historial','library.mix':'Mezclar y combinar','library.taste':'Perfil de gustos','library.service':'Explorar por servicio','library.continue':'Seguir viendo','library.watchlist':'Mi lista','library.liked':'Me gusta','library.recent':'Visto recientemente','prefs.title':'Personaliza tu contenido','prefs.subtitle':'Cuentanos que te gusta. Los cambios se aplican automaticamente al salir.','prefs.autosaved':'Guardado automatico','prefs.taste':'Tus gustos' },
+  pt: { 'search.filters':'Filtros','search.all':'Tudo','search.top':'Mais bem avaliados','search.new':'Lancamentos','search.everything':'Catalogo completo','search.mix':'Misturar','library.title':'Minha biblioteca','library.subtitle':'Sua lista, titulos curtidos e historico','library.mix':'Misturar e combinar','library.taste':'Perfil de gosto','library.service':'Explorar por servico','library.continue':'Continuar assistindo','library.watchlist':'Minha lista','library.liked':'Curtidos','library.recent':'Vistos recentemente','prefs.title':'Personalize seu conteudo','prefs.subtitle':'Conte o que voce gosta. As alteracoes sao aplicadas ao sair.','prefs.autosaved':'Salvo automaticamente','prefs.taste':'Seu gosto' },
+  fr: { 'search.filters':'Filtres','search.all':'Tout','search.top':'Les mieux notes','search.new':'Nouveautes','search.everything':'Tout le catalogue','search.mix':'Melanger','library.title':'Ma bibliotheque','library.subtitle':'Votre liste, vos favoris et votre historique','library.mix':'Melanger','library.taste':'Profil de gouts','library.service':'Parcourir par service','library.continue':'Continuer a regarder','library.watchlist':'Ma liste','library.liked':'Aimes','library.recent':'Vus recemment','prefs.title':'Personnaliser votre selection','prefs.subtitle':'Dites-nous ce que vous aimez. Les changements s appliquent en quittant.','prefs.autosaved':'Enregistre automatiquement','prefs.taste':'Vos gouts' },
+  ja: { 'search.filters':'フィルター','search.all':'すべて','search.top':'高評価','search.new':'新着','search.everything':'全カタログ','search.mix':'ミックス','library.title':'マイライブラリ','library.subtitle':'ウォッチリスト、お気に入り、視聴履歴','library.mix':'ミックス＆マッチ','library.taste':'好みのプロフィール','library.service':'サービス別に探す','library.continue':'視聴を続ける','library.watchlist':'ウォッチリスト','library.liked':'お気に入り','library.recent':'最近見た作品','prefs.title':'フィードをカスタマイズ','prefs.subtitle':'好みを教えてください。移動時に自動適用されます。','prefs.autosaved':'自動保存','prefs.taste':'あなたの好み' },
+};
+Object.entries(EXTRA_STRINGS).forEach(([language, values]) => Object.assign(STRINGS[language], values));
+
 function _setting(id) {
   try { return JSON.parse(localStorage.getItem('sv_settings') || '{}')[id]; } catch { return undefined; }
 }
@@ -117,6 +126,12 @@ export function applyUITranslations() {
       else el.textContent = t(key);
     });
   };
+  const setTail = (sel, key) => {
+    document.querySelectorAll(sel).forEach(el => {
+      const text = [...el.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      if (text) text.textContent = t(key);
+    });
+  };
   set('.nav-tab[data-page="home"]', 'nav.home');
   set('.nav-tab[data-page="movies"]', 'nav.movies');
   set('.nav-tab[data-page="tv"]', 'nav.tv');
@@ -136,6 +151,26 @@ export function applyUITranslations() {
   });
   const searchInput = document.getElementById('search-input');
   if (searchInput) searchInput.placeholder = t('search.placeholder');
+  setTail('#sf-advanced-toggle', 'search.filters');
+  setTail('.sf-chip[data-f="all"]', 'search.all');
+  setTail('.sf-chip[data-f="top"]', 'search.top');
+  setTail('.sf-chip[data-f="recent"]', 'search.new');
+  setTail('.sf-chip[data-f="everything"]', 'search.everything');
+  setTail('#sf-shuffle-btn', 'search.mix');
+  set('#page-library .lib-header h2', 'library.title');
+  set('#page-library .lib-header p', 'library.subtitle');
+  setTail('.lib-tab[data-lib-tab="library"]', 'library.title');
+  setTail('.lib-tab[data-lib-tab="mix"]', 'library.mix');
+  setTail('.lib-tab[data-lib-tab="prefs"]', 'library.taste');
+  set('.lib-qp-label', 'library.service');
+  setTail('#lib-continue', 'library.continue');
+  setTail('#lib-watchlist', 'library.watchlist');
+  setTail('#lib-liked', 'library.liked');
+  setTail('#lib-recent', 'library.recent');
+  set('#page-prefs .cyf-header h2', 'prefs.title');
+  set('#page-prefs .cyf-header-left > p', 'prefs.subtitle');
+  setTail('.pref-autosave-note', 'prefs.autosaved');
+  setTail('#page-prefs .cyf-section-label', 'prefs.taste');
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
   document.querySelectorAll('[data-i18n-label]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nLabel)); });

@@ -10,6 +10,7 @@ export const PAGE_PATHS = Object.freeze({
   search: '/search/',
   library: '/library/',
   prefs: '/customize/',
+  dev: '/developer/',
 });
 
 export function slugifyRoute(value = '') {

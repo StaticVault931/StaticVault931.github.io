@@ -6,12 +6,12 @@ export const ANILIST = 'https://graphql.anilist.co';
 
 // ── THIRD-PARTY API KEYS ─────────────────────────────────────────
 export const OMDB_KEY        = '9f3c997';
-export const FANART_KEY      = '61816a03253da18b920d1a3e991a8abb'; // fanart.tv
+export const FANART_KEY      = ''; // retired: invalid key and unreliable browser CORS
 export const WATCHMODE_KEY   = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
-export const TVAPI_KEY       = 'k_ukuha965';   // tv-api.com primary
-export const TVAPI_KEY2      = 'pk_tbfqvjjbljz611let'; // tv-api.com secondary
+export const TVAPI_KEY       = ''; // retired: invalid legacy provider
+export const TVAPI_KEY2      = '';
 export const LOGO_DEV_TOKEN  = 'pk_Ls472ChRSLSBvfBYgW6R7Q'; // logo.dev
-export const TASTEDIVE_KEY   = '1073636-StaticQ-DF044F0C'; // TasteDive recommendations
+export const TASTEDIVE_KEY   = ''; // retired: browser requests require a server-side proxy
 
 // Logo.dev: domain-to-logo mapping for streaming providers
 export const PROVIDER_LOGO_DOMAINS = {
@@ -792,14 +792,7 @@ export async function testAllAPIs() {
     results.push({ name: 'Jikan (MAL)', status: 'error', note: 'Request failed' });
   }
 
-  // TV-API.com (IMDB-API)
-  try {
-    const r = await fetch(`${TVAPI_BASE}/Trailer/${TVAPI_KEY}/tt0137523`);
-    const d = r.ok ? await r.json() : null;
-    results.push({ name: 'TV-API (IMDB)', status: (r.ok && !d?.errorMessage) ? 'ok' : 'error', note: (r.ok && !d?.errorMessage) ? 'Trailers + Awards — working' : (d?.errorMessage || 'Failed') });
-  } catch {
-    results.push({ name: 'TV-API (IMDB)', status: 'error', note: 'Request failed' });
-  }
+  results.push({ name: 'TV-API (IMDB)', status: 'missing', note: 'Retired: invalid legacy key; TMDB supplies current-release data' });
 
   // Dailymotion Removed
 
@@ -820,23 +813,7 @@ export async function testAllAPIs() {
     results.push({ name: 'Wikidata SPARQL', status: 'error', note: 'Request failed' });
   }
 
-  // Vidsrc feeds do not allow direct browser reads. Test through the same
-  // proxy path used by the optional feed helpers so the panel reports the
-  // app's real behavior instead of guaranteed CORS failures.
-  const [vidsrcMovies, vidsrcEps] = await Promise.allSettled([
-    _vidsrcFetch(`${VIDSRC_BASE}/movies/latest/page-1.json`),
-    _vidsrcFetch(`${VIDSRC_BASE}/episodes/latest/page-1.json`),
-  ]);
-  results.push({
-    name: 'Vidsrc — Movies feed',
-    status: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value?.length ? 'ok' : 'error',
-    note: vidsrcMovies.status === 'fulfilled' && vidsrcMovies.value?.length ? 'Latest movies feed — working' : 'Proxy/feed unavailable',
-  });
-  results.push({
-    name: 'Vidsrc — Episodes feed',
-    status: vidsrcEps.status === 'fulfilled' && vidsrcEps.value?.length ? 'ok' : 'error',
-    note: vidsrcEps.status === 'fulfilled' && vidsrcEps.value?.length ? 'New episodes feed — working' : 'Proxy/feed unavailable',
-  });
+  results.push({ name: 'Vidsrc — catalog feeds', status: 'missing', note: 'Retired: TMDB now supplies current movies and airing episodes' });
 
   // TasteDive's public endpoint is not browser-compatible. Do not generate a
   // guaranteed CORS error from the diagnostics panel.

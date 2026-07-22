@@ -11,7 +11,7 @@
    • exactly 1 seasonalHuge (if active) + 1 seasonalBig + 1 seasonalSmall
    • target 36 rows, hard cap 40; specials replace weak generic rows */
 
-import { ROW_REGISTRY, ROW_SLOT_TEMPLATE, getRowDef } from './rowRegistry.js';
+import { ROW_REGISTRY, ROW_SLOT_TEMPLATE } from './rowRegistry.js';
 import { getRowCooldowns, isOnCooldown, dayNumber } from './rowCooldowns.js';
 import { engagementBoost } from './rowEngagement.js';
 

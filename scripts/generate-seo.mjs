@@ -159,6 +159,7 @@ const legacyXml = await readFile(path.join(ROOT, 'scripts', 'data', 'catalog-sou
 const legacyRecords = parseLegacySitemap(legacyXml);
 const titles = titleRecords(legacyRecords);
 const people = personRecords(legacyRecords);
+const collections = JSON.parse(await readFile(path.join(ROOT, 'scripts', 'data', 'collections.json'), 'utf8'));
 const lastmod = lastModified(['scripts/data/catalog-source.xml', 'scripts/generate-seo.mjs', 'src/js/routes.js']);
 
 const publicPages = [
@@ -181,6 +182,7 @@ const privatePages = [
   ['library/recent', 'Recently Viewed', 'Titles recently viewed by this private profile.'],
   ['library/taste-profile', 'Taste Profile', 'A private summary of this profile\'s discovery preferences.'],
   ['customize', 'Customize Your Feed', 'Adjust your private discovery and accessibility preferences.'],
+  ['developer', 'Developer Lab', 'Private local diagnostics and product experiments.'],
 ];
 for (const [route, title, description] of privatePages) {
   await writeRoute(route, shell({ title: `${title} | StaticVault931`, description, canonical: `${ORIGIN}/${route}/`, noindex: true }));
@@ -193,6 +195,7 @@ const urlGroups = new Map([
   ['anime', []],
   ['people', []],
   ['providers', []],
+  ['collections', []],
 ]);
 for (const item of titles) {
   const route = `title/${item.type}/${item.id}-${item.slug}`;
@@ -213,6 +216,18 @@ for (const person of people) {
   const description = `Explore ${person.name}'s movies, television credits, collaborators, and related titles on StaticVault931.`;
   await writeRoute(route, shell({ title: `${person.name} | StaticVault931`, description, canonical, type: 'Person', image: person.image }));
   urlGroups.get('people').push({ loc: canonical, lastmod });
+}
+const movieById = new Map(titles.filter(item => item.type === 'movie').map(item => [item.id, item]));
+for (const collection of collections) {
+  const route = `collection/${collection.id}-${slug(collection.name)}`;
+  const canonical = `${ORIGIN}/${route}/`;
+  const members = collection.partIds.map(id => movieById.get(id)).filter(Boolean).map(itemLink);
+  const description = `Explore ${collection.name} in release order, with movie details and related recommendations.`;
+  await writeRoute(route, shell({
+    title: `${collection.name} | StaticVault931`, description, canonical,
+    type: 'CollectionPage', items: members,
+  }));
+  urlGroups.get('collections').push({ loc: canonical, lastmod });
 }
 for (const [id, name] of PROVIDERS) {
   const route = `provider/${id}-${slug(name)}`;

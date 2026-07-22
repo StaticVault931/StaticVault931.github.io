@@ -453,6 +453,47 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page).not.toHaveURL(/404/);
   });
 
+  test('Clips reactions progress from inactive to Like to Love without double handling', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.addInitScript(() => localStorage.setItem('sv_clips_tut_v2', '2'));
+    await page.route('https://api.themoviedb.org/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.includes('/trending/movie/week')) {
+        await route.fulfill({ json: { results: [{
+          id: 44001,
+          title: 'Reaction Test',
+          release_date: '2025-01-01',
+          backdrop_path: '/reaction.jpg',
+          vote_average: 8,
+          genre_ids: [12],
+        }] } });
+        return;
+      }
+      await route.fulfill({ json: { results: [] } });
+    });
+    await page.goto('/clips/', { waitUntil: 'domcontentloaded' });
+    const button = page.locator('.trailer-slide [data-action="like"]').first();
+    await expect(button).toHaveAttribute('aria-label', 'Like');
+    await expect(button.locator('.material-icons-round')).toHaveText('thumb_up_off_alt');
+    await button.click();
+    await expect(button).toHaveAttribute('aria-label', 'Liked. Activate to love');
+    await expect(button.locator('.material-icons-round')).toHaveText('thumb_up');
+    await expect(button).toHaveClass(/\bon\b/);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-label', 'Loved. Activate to clear');
+    await expect(button.locator('.material-icons-round')).toHaveText('favorite');
+    await expect(button).toHaveClass(/\bloved\b/);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('developer route redirects unless hidden developer mode is active', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/developer/', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('#dev-test-panel')).toBeHidden();
+  });
+
   test('onboarding appears on first visit', async ({ page }) => {
     // Fresh user: no seeded storage at all
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -577,7 +618,7 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page.locator('#search-results-area')).not.toContainText('Other Match');
   });
 
-  test('home row selector respects its cap and quarantines failed feeds', async ({ page }) => {
+  test('home row selector respects its cap and restored feeds are eligible', async ({ page }) => {
     await seedReturningUser(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const selected = await page.evaluate(async () => {
@@ -585,9 +626,12 @@ test.describe('StaticVault931 smoke', () => {
       return rows.selectRowsForToday({ profile: 'regression-test' }).map(row => row.id);
     });
     expect(selected.length).toBeLessThanOrEqual(40);
-    expect(selected).not.toContain('row-boxoffice');
-    expect(selected).not.toContain('row-recently-added');
-    expect(selected).not.toContain('row-new-episodes');
+    const restored = await page.evaluate(async () => {
+      const { ROW_REGISTRY } = await import('/src/js/rows/rowRegistry.js');
+      return ['row-boxoffice', 'row-recently-added', 'row-new-episodes']
+        .map(id => ROW_REGISTRY.find(row => row.id === id)?.enabled !== false);
+    });
+    expect(restored).toEqual([true, true, true]);
   });
 
   test('description search recognizes story clues without weakening title search', async ({ page }) => {
@@ -758,6 +802,22 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page.locator('#super-search-results')).toContainText('Search the full catalog for');
   });
 
+  test('ambiguous short aliases expand alone but not inside ordinary phrases', async ({ page }) => {
+    await page.goto('/404.html', { waitUntil: 'domcontentloaded' });
+    const result = await page.evaluate(async () => {
+      const aliases = await import('/src/js/search/aliases.js');
+      await aliases.loadAliases();
+      return {
+        alone: aliases.expandAliases('op'),
+        phrase: aliases.expandAliases('best op songs'),
+        safe: aliases.expandAliases('mcu movies'),
+      };
+    });
+    expect(result.alone.query).toBe('one piece');
+    expect(result.phrase.query).toBe('best op songs');
+    expect(result.safe.query).toBe('marvel movies');
+  });
+
   test('Super Search can toggle a real setting without leaving the current page', async ({ page }) => {
     await seedReturningUser(page);
     await page.goto('/library/', { waitUntil: 'domcontentloaded' });
@@ -770,6 +830,29 @@ test.describe('StaticVault931 smoke', () => {
     await expect(page.locator('#super-search-overlay')).toBeVisible();
     await expect(page.locator('body')).toHaveClass(/sv-bold-text/);
     await expect(result).toContainText('On');
+  });
+
+  test('Super Search explains its scopes and tolerates a small typo', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/library/', { waitUntil: 'domcontentloaded' });
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('.super-search-capabilities')).toContainText('This screen');
+    await expect(page.locator('.super-search-capabilities')).toContainText('Full catalog');
+    await page.locator('#super-search-input').fill('bold txt');
+    await expect(page.locator('.super-search-result').filter({ hasText: 'Bold Text' })).toHaveCount(1);
+  });
+
+  test('Kid-Guided PIN setup uses an accessible dialog instead of native prompts', async ({ page }) => {
+    await seedReturningUser(page);
+    await page.goto('/customize/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => { import('/src/js/kidsPinDialog.js').then(module => module.requestNewPin()); });
+    const dialog = page.locator('.kids-pin-dialog');
+    await expect(dialog).toHaveAttribute('role', 'dialog');
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await dialog.locator('input[name="pin"]').fill('1234');
+    await dialog.locator('input[name="confirm"]').fill('1234');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
   });
 
   test('the feature guide is visible, replayable, and teaches description search', async ({ page }) => {
