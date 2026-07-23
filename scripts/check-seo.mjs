@@ -21,7 +21,9 @@ for (const sitemapUrl of sitemapUrls) {
   if (parsed.origin !== ORIGIN) errors.push(`Foreign sitemap origin: ${sitemapUrl}`);
   const file = path.join(OUT, parsed.pathname.replace(/^\/+/, ''));
   if (!await exists(file)) { errors.push(`Missing sitemap file: ${parsed.pathname}`); continue; }
-  const urls = locs(await readFile(file, 'utf8'));
+  const sitemapBody = await readFile(file, 'utf8');
+  const urls = locs(sitemapBody);
+  if (/\/(?:movies|tv|anime)(?:-|\.)/.test(parsed.pathname) && !/<image:image>/.test(sitemapBody)) errors.push(`${parsed.pathname} contains no title image associations`);
   if (urls.length > 10000) errors.push(`${parsed.pathname} contains ${urls.length} URLs`);
   publicUrls.push(...urls);
 }

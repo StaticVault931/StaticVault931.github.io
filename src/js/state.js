@@ -28,6 +28,7 @@ export const GENRES = [
   { id: 9648,  name: 'Mystery',     icon: 'search' },
   { id: 10764, name: 'Reality TV',  icon: 'videocam' },
   { id: 10749, name: 'Romance',     icon: 'favorite' },
+  { id: 10766, name: 'Science & Nature', icon: 'science' },
   { id: 878,   name: 'Sci-Fi',      icon: 'rocket_launch' },
   { id: 53,    name: 'Thriller',    icon: 'visibility' },
 ];
@@ -40,6 +41,7 @@ export const AGE_LEVELS = {
   'PG-13':  4, 'TV-14': 4,
   'R':      5, 'TV-MA': 5,
   'NC-17':  6,
+  'ALL':    7,
 };
 
 // All ratings in display order
@@ -51,6 +53,7 @@ export const ALL_RATINGS = [
   { r: 'PG-13',  level: 4, desc: 'Ages 13+ / TV-14' },
   { r: 'R',      level: 5, desc: 'Restricted / TV-MA' },
   { r: 'NC-17',  level: 6, desc: 'Adults only' },
+  { r: 'ALL',    level: 7, desc: 'No rating limit' },
 ];
 
 /* ── APP STATE ───────────────────────────────────────────────────── */
@@ -378,6 +381,13 @@ export function getTasteScore(item) {
   const controls = getDiscoveryControls();
   const tasteScale = 0.7 + controls.familiarity / 100 * 0.6;
   const taste = getActiveTasteState();
+  const ageLevel = AGE_LEVELS[state.ageRating] ?? 4;
+  if (!kidsModeActive() && ageLevel <= 3) {
+    const gentle = [10751, 16, 10762, 10402];
+    const mature = [27, 53, 80, 10752];
+    if ([...genres].some(id => gentle.includes(id))) score += ageLevel <= 2 ? 0.35 : 0.2;
+    if ([...genres].some(id => mature.includes(id))) score -= ageLevel <= 2 ? 0.6 : 0.3;
+  }
   if (!kidsModeActive()) {
     (state.prefGenres || []).forEach(g => { if (genres.has(+g)) score += 0.9; });
     (state.prefGenreDislikes || []).forEach(g => { if (genres.has(+g)) score -= 1.8; });

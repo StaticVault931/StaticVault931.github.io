@@ -14,6 +14,8 @@ const MAX_CONCURRENCY = 4;
 let active = 0;
 const waiting = [];
 const inFlight = new Map();
+let memoryCache = null;
+let cacheWriteTimer = null;
 
 function mediaType(item, fallback = 'movie') {
   const type = item?.type || item?.media_type || (item?._anime ? 'anime' : fallback);
@@ -21,8 +23,10 @@ function mediaType(item, fallback = 'movie') {
 }
 
 function cacheRead() {
-  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); }
-  catch { return {}; }
+  if (memoryCache) return memoryCache;
+  try { memoryCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); }
+  catch { memoryCache = {}; }
+  return memoryCache;
 }
 
 function cacheGet(key) {
@@ -31,12 +35,16 @@ function cacheGet(key) {
 }
 
 function cacheSet(key, value) {
-  try {
-    const cache = cacheRead();
-    cache[key] = value;
-    const entries = Object.entries(cache).sort((a, b) => b[1].checkedAt - a[1].checkedAt).slice(0, MAX_CACHE);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
-  } catch {}
+  const cache = cacheRead();
+  cache[key] = value;
+  clearTimeout(cacheWriteTimer);
+  cacheWriteTimer = setTimeout(() => {
+    try {
+      const entries = Object.entries(cache).sort((a, b) => b[1].checkedAt - a[1].checkedAt).slice(0, MAX_CACHE);
+      memoryCache = Object.fromEntries(entries);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(memoryCache));
+    } catch {}
+  }, 250);
 }
 
 async function withSlot(fn) {
@@ -120,16 +128,24 @@ export async function resolveContentSafety(item, context = {}) {
 
 export async function filterSafeItems(items, context = {}) {
   if (!context.kidsMode && !context.requireRating) return (items || []).filter(item => item?.id && !item.adult);
-  const checks = await Promise.all((items || []).map(async item => ({ item, result: await resolveContentSafety(item, context) })));
-  return checks.filter(entry => entry.result.allowed).map(entry => ({
-    ...entry.item,
-    certification: entry.result.rating,
-    _ratingSource: entry.result.source,
-    _safetyVerified: true,
-  }));
+  const source = items || [];
+  const safe = [];
+  const limit = Number.isFinite(context.limit) ? Math.max(1, context.limit) : Infinity;
+  for (let index = 0; index < source.length && safe.length < limit; index += MAX_CONCURRENCY) {
+    const checks = await Promise.all(source.slice(index, index + MAX_CONCURRENCY).map(async item => ({ item, result: await resolveContentSafety(item, context) })));
+    checks.filter(entry => entry.result.allowed).forEach(entry => safe.push({
+      ...entry.item,
+      certification: entry.result.rating,
+      _ratingSource: entry.result.source,
+      _safetyVerified: true,
+    }));
+  }
+  return safe.slice(0, limit);
 }
 
 export function clearContentSafetyCache() {
   try { localStorage.removeItem(CACHE_KEY); } catch {}
+  clearTimeout(cacheWriteTimer);
+  memoryCache = {};
   inFlight.clear();
 }

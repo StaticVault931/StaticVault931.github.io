@@ -3301,7 +3301,7 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
   }
   .ob-side .ob-chip .material-icons-round { font-size: .9rem; }
   #ob-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  #ob-ages { grid-template-columns: repeat(5, 1fr); }
+  #ob-ages { grid-template-columns: repeat(6, 1fr); }
   #ob-ages .ob-chip { padding: .38rem .2rem; font-size: .72rem; }
   .ob-side .ob-hint { margin-top: .45rem; }
   .ob-side .ob-label { margin-bottom: .5rem; }
@@ -3367,7 +3367,7 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
   .ob-side .ob-chips { grid-template-columns: repeat(3, 1fr); gap: .28rem; }
   .ob-side .ob-chip { font-size: .67rem; padding: .26rem .3rem; }
   .ob-side .ob-chip .material-icons-round { display: none; }
-  #ob-ages { grid-template-columns: repeat(5, 1fr); }
+  #ob-ages { grid-template-columns: repeat(6, 1fr); }
 }
 
 /* ═══ COMMIT 117 — Library presentation ══════════════════════════════ */
@@ -3433,6 +3433,8 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
    the fold. One even three-up row for anime + a slightly tighter rhythm
    brings every block back inside the viewport with zero internal scroll. */
 @media (min-width: 881px) {
+  .ob-cols { grid-template-columns: 350px minmax(0, 1fr); gap: 1.4rem; }
+  .ob-head.ob-head-grid { padding-left: calc(350px + 1.4rem); }
   #ob-anime-pref { grid-template-columns: repeat(3, 1fr); }
   .ob-side { gap: .6rem; }
   .ob-side .ob-block { padding: .6rem .75rem; }
@@ -3481,11 +3483,16 @@ body.sv-exp-dense-rows .sec-header { margin-bottom: .35rem; }
 }
 
 /* Real, reversible experiment variants. */
-body.sv-exp-equal-choices #genre-scroll,
-body.sv-exp-equal-choices #pref-genres,
-body.sv-exp-equal-choices .ob-side .ob-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
-body.sv-exp-equal-choices .genre-chip,
-body.sv-exp-equal-choices .ob-side .ob-chip { justify-content: center; width: 100%; }
+#genre-scroll,
+#pref-genres,
+.ob-side .ob-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+.genre-chip,
+.ob-side .ob-chip { justify-content: center; width: 100%; }
+body.sv-exp-raw-choices #genre-scroll,
+body.sv-exp-raw-choices #pref-genres,
+body.sv-exp-raw-choices .ob-side .ob-chips { display: flex; flex-wrap: wrap; }
+body.sv-exp-raw-choices .genre-chip,
+body.sv-exp-raw-choices .ob-side .ob-chip { width: auto; }
 @media (hover: hover) {
   body.sv-exp-row-focus #page-home:has(.section:hover) .section:not(:hover) { opacity: .56; }
   body.sv-exp-row-focus #page-home .section { transition: opacity .28s ease; }

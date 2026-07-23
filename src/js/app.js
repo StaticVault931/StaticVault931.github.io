@@ -266,6 +266,8 @@ const SV_SETTINGS = [
   { id: 'hideTabAnime',   label: 'Hide Anime Tab',        desc: 'Remove the Anime tab from the navigation bar',                           default: false, icon: 'hide_source', group: 'Content' },
   // Playback — hover trailers
   { id: 'automuteHoverTrailer', label: 'Automute Hover Trailers', desc: 'Mute hover card trailers by default (can unmute in the card)', default: false, icon: 'volume_off', group: 'Playback' },
+  { id: 'hoverPreviewGrowth', label: 'Growing Trailer Preview', desc: 'Choose whether a trailer preview slowly expands after 15 seconds', default: 'slow', icon: 'zoom_out_map', group: 'Playback', type: 'select', options: ['off','slow','instant'], optLabels: ['Off','Slow expansion','Expand instantly'], keywords: 'hover trailer preview grow expand animation zoom card' },
+  { id: 'hoverPreviewSize', label: 'Trailer Preview Size', desc: 'Choose how large an expanded hover trailer can become', default: 'maximum', icon: 'aspect_ratio', group: 'Playback', type: 'select', options: ['subtle','large','maximum'], optLabels: ['Subtle','Large','Maximum'], keywords: 'hover trailer preview maximum size zoom card' },
   // Mobile-only (shown only on small screens)
   { id: 'mobileHideHeader', label: 'Auto-Hide Top Bar',  desc: 'Hide the top bar when scrolling down for extra screen space — swipe up to bring it back', default: true,  icon: 'swipe_up',   group: 'Mobile', mobileOnly: true },
   { id: 'mobileIconNav',    label: 'Compact Bottom Nav', desc: 'Icons only in the bottom navigation — smaller and cleaner',                                default: false, icon: 'apps',       group: 'Mobile', mobileOnly: true },
@@ -1214,11 +1216,11 @@ const SV_EXPERIMENTS = [
     bodyClass: 'sv-exp-stats-preview',
   },
   {
-    id: 'equal-choice-chips',
-    label: 'Equal-Width Choice Chips',
-    desc: 'Locks genre and onboarding choices into aligned tracks instead of sizing each control to its label.',
+    id: 'raw-choice-chips',
+    label: 'Raw Choice Chip Widths',
+    desc: 'Restores label-width genre and onboarding choices for comparison with the aligned production layout.',
     added: '2026-07-22', commit: 136,
-    bodyClass: 'sv-exp-equal-choices',
+    bodyClass: 'sv-exp-raw-choices',
   },
   {
     id: 'row-focus',
@@ -1562,7 +1564,7 @@ async function maybeShowOnboarding({ force = false } = {}) {
     ['it', 'Italian'], ['pt', 'Portuguese'], ['ja', 'Japanese'], ['ko', 'Korean'],
     ['hi', 'Hindi'], ['zh', 'Chinese'],
   ];
-  const OB_AGES = [['G', 'G'], ['PG', 'PG'], ['PG-13', 'PG-13'], ['R', 'R'], ['NC-17', 'No limit']];
+  const OB_AGES = [['G', 'G'], ['PG', 'PG'], ['PG-13', 'PG-13'], ['R', 'R'], ['NC-17', 'NC-17'], ['ALL', 'No limit']];
   // [settingId, label, onValue, offValue] — applied instantly as preview
   const OB_A11Y = [
     ['motionLevel', 'Reduce motion', 'minimal', 'default'],
@@ -1945,7 +1947,7 @@ async function maybeShowOnboarding({ force = false } = {}) {
     kidsToggle.addEventListener('change', () => {
       setSetting('kidsMode', kidsToggle.checked);
       if (kidsToggle.checked) {
-        pickedAge = 'PG';
+        if ((AGE_LEVELS[pickedAge] ?? 4) > 3) pickedAge = 'PG';
         agesEl.querySelectorAll('.ob-chip').forEach(chip => chip.classList.toggle('picked', chip.dataset.age === pickedAge));
         ob._refreshForRating?.(pickedAge);
       }
@@ -2373,7 +2375,7 @@ async function maybeShowOnboarding({ force = false } = {}) {
       if (dislikedGenres.size) persist('prefGenreDislikes');
       state.prefLangs = [...pickedLangs];
       persist('prefLangs');
-      state.ageRating = getSetting('kidsMode') ? 'PG' : pickedAge;
+      state.ageRating = getSetting('kidsMode') && (AGE_LEVELS[pickedAge] ?? 4) > 3 ? 'PG' : pickedAge;
       persist('ageRating');
       likedTitles.forEach(item => {
         setReaction({ id: item.id, media_type: item.media_type, title: item.title || item.name, poster_path: item.poster_path || null, backdrop_path: item.backdrop_path || null, genre_ids: item.genre_ids || [], original_language: item.original_language || '' }, 'love');
@@ -2662,6 +2664,18 @@ async function loadHero(attempt = 0) {
     buildHeroDots();
     const startIdx = _getHeroStartIdx(state.heroItems.length);
     showHero(startIdx);
+    // Keep first paint immediate, then rotate among TMDB's highest-rated
+    // trusted artwork so repeat visits do not always show identical banners.
+    const artVariant = Number(sessionStorage.getItem('sv_hero_art_variant') || '0') + 1;
+    sessionStorage.setItem('sv_hero_art_variant', String(artVariant));
+    Promise.all(items.map((item, index) => fetchBestBackdrop(item.id, item.media_type || 'movie', artVariant + index)
+      .catch(() => null))).then(backdrops => {
+      if (state.heroItems !== items) return;
+      backdrops.forEach((backdrop, index) => {
+        if (backdrop?.file_path) items[index]._heroBackdropPath = backdrop.file_path;
+      });
+      showHero(state.heroIdx);
+    });
     clearInterval(state.heroTimer);
     state.heroTimer = setInterval(() => {
       showHero((state.heroIdx + 1) % state.heroItems.length);
@@ -2770,7 +2784,7 @@ function shouldShow(id) {
   }
 }
 
-/* Effective maturity level: the profile's age rating, hard-capped at G
+/* Effective maturity level: the profile's age rating, hard-capped at PG
    when Kid-Guided Mode is on. */
 function _effAgeLevel() {
   if (getSetting('kidsMode')) return Math.min(AGE_LEVELS[state.ageRating] ?? 3, 3);
@@ -2879,7 +2893,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
     .then(async items => {
       recordRowStat('loadTime', rowId, performance.now() - _t0);
       if (getSetting('kidsMode') && items?.length) {
-        items = await filterSafeItems(items, _safetyContext());
+        items = await filterSafeItems(items, { ..._safetyContext(), limit: 14 });
       }
       if (!items || !items.length) {
         if (attempt < _ROW_RETRY_DELAYS.length) {
@@ -2899,14 +2913,15 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
         return;
       }
       // Apply impression filter (hide over-shown content based on setting)
-      const impressionFiltered = filterByImpressions(items);
+      const impressionFiltered = filterByImpressions(_uniqueRowItems(items));
 
       // Dedup: skip items already shown in rows above so concurrent rows
       // show a real mix, not the same titles over and over.
       // RAW rows (pure data like Trending / Top 10) are exempt from being
       // filtered — their content IS the data — but they still REGISTER
       // their titles so every later row avoids repeating them.
-      const RAW_ROWS = rowId === 'row-trending' || rowId === 'row-top10';
+      const RAW_ROWS = rowId === 'row-trending';
+      const CHART_ROWS = RAW_ROWS || rowId === 'row-top10';
       // Cross-session dedup: only filter in maximum repeat tolerance mode
       const shownData = (!getSetting('kidsMode') && getSetting('repeatContent') === 'maximum') ? _getShownIds() : {};
       const deduped = RAW_ROWS
@@ -2919,16 +2934,14 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // If the fetch can't reach 10 unique titles, hide the row instead.
       const toRender = [...deduped];
       const have = new Set(toRender.map(mediaKey));
-      const backfill = (pool, allowSeen = false) => pool.forEach(m => {
+      const backfill = pool => pool.forEach(m => {
         const key = mediaKey(m);
-        if (m?.id && !have.has(key) && (allowSeen || !_homeItemSeen(m)) && toRender.length < _ROW_MAX) { have.add(key); toRender.push(m); }
+        if (m?.id && !have.has(key) && !_homeItemSeen(m) && toRender.length < _ROW_MAX) { have.add(key); toRender.push(m); }
       });
       if (toRender.length < 10) backfill(impressionFiltered);
       if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)));
-      // LAST RESORT: cross-row duplicates beat a missing row. The global
-      // claim was starving late rows — 20+ selected rows were dying at
-      // "<10 unique" because popular feeds overlap so heavily.
-      if (toRender.length < 10) backfill(items.filter(m => m?.id && _ageSafeItem(m) && _prefSafeItem(m)), true);
+      // Keep a thin row instead of repeating a title claimed above, but hide
+      // anything below six cards because it no longer reads as a real row.
       if (toRender.length < 6) {
         console.warn(`[SV Row] "${rowId}" only has ${toRender.length} items (<6) — hiding section`);
         recordRowStat('hiddenThin', rowId);
@@ -2940,7 +2953,7 @@ function _loadRow(rowId, secId, fetchFn, type, attempt = 0) {
       // PERSONAL ORDER: every non-chart row leads with the titles THIS
       // viewer is most likely to want (loved/liked genres up, skipped and
       // disliked patterns down) — charts keep their real-world order.
-      if (!RAW_ROWS && getSetting('personalizeContent')) {
+      if (!CHART_ROWS && getSetting('personalizeContent')) {
         toRender.sort((a, b) => getTasteScore(b) - getTasteScore(a));
       }
       toRender.slice(0, _ROW_MAX).forEach(m => _claimHomeItem(m));
@@ -3009,7 +3022,7 @@ function _getRowCache(rowId, allowStale = false) {
     const { items, ts } = JSON.parse(raw);
     if (Date.now() - ts > _ROW_CACHE_TTL && !allowStale) return null;
     if (Date.now() - ts > 7 * 86400000) { localStorage.removeItem(`sv_row_${rowId}`); return null; }
-    return items;
+    return _uniqueRowItems(items);
   } catch { return null; }
 }
 
@@ -3751,10 +3764,14 @@ async function _loadHomeRowsOnce() {
       const type = id.includes('anime') ? 'anime' : id.includes('tv') ? 'tv' : null;
       // Dedup against already-rendered rows to prevent same title showing twice
       const deduped = cached.filter(m => m.id && !_homeItemSeen(m));
-      const toRender = id === 'row-trending' ? cached : (deduped.length >= 4 ? deduped : cached);
-      toRender.forEach(m => _claimHomeItem(m));
-      renderRow(id, toRender, type, id === 'row-trending');
-      hadCache = true;
+      const toRender = id === 'row-trending' ? cached : deduped;
+      if (toRender.length >= 4) {
+        toRender.forEach(m => _claimHomeItem(m));
+        renderRow(id, toRender, type, id === 'row-trending');
+        hadCache = true;
+      } else {
+        el.innerHTML = skelCards(6);
+      }
     } else {
       el.innerHTML = skelCards(6);
       const sec = el.closest('.section');
@@ -3975,8 +3992,22 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
       page: (i % 4) + 1,
       ...(mediaType === 'movie' ? { certification_country: 'US', 'certification.lte': 'PG' } : {}),
     };
-    return { ...row, type: mediaType, fn: () => tmdb(endpoint, params).then(d =>
-      (d.results || []).map(x => ({ ...x, media_type: mediaType }))) };
+    return {
+      ...row,
+      type: mediaType,
+      fn: async () => {
+        // A single discover page often contains too few titles with a
+        // verifiable US family rating. Widen the candidate pool lazily, then
+        // let the centralized safety service fail closed before rendering.
+        const secondPage = params.page + 4;
+        const [primary, secondary] = await Promise.all([
+          tmdb(endpoint, params),
+          tmdb(endpoint, { ...params, page: secondPage }),
+        ]);
+        return _uniqueRowItems([...(primary.results || []), ...(secondary.results || [])]
+          .map(x => ({ ...x, media_type: mediaType })));
+      },
+    };
   }) : rowDefs;
 
   // Each row observes itself — visible ones load first, others load as you scroll
@@ -3997,8 +4028,17 @@ async function _loadHomeRowsFresh(showSkeletons = false) {
         fn: () => tmdb('/discover/movie', { with_keywords: '9672', sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: rp('row-true-stories') }).then(d => d.results || []) },
       { id: 'row-docs-picks', sec: 'sec-docs-picks', title: 'Documentaries Worth Your Time', icon: 'camera_roll', type: 'movie',
         fn: () => tmdb('/discover/movie', { with_genres: '99', sort_by: 'vote_average.desc', 'vote_count.gte': 150, page: rp('row-docs-picks') }).then(d => d.results || []) },
-      { id: 'row-quick-watch', sec: 'sec-quick-watch', title: 'Under 100 Minutes', icon: 'timer', type: 'movie',
-        fn: () => tmdb('/discover/movie', { 'with_runtime.lte': 100, 'with_runtime.gte': 60, sort_by: 'vote_average.desc', 'vote_count.gte': 400, page: rp('row-quick-watch') }).then(d => d.results || []) },
+      (() => {
+        const choices = [
+          { label: 'Quick Watch: Under 30 Minutes', min: 10, max: 30, votes: 20 },
+          { label: 'Class-Length Watch: Under 45 Minutes', min: 20, max: 45, votes: 35 },
+          { label: 'Movie Night: Under 100 Minutes', min: 60, max: 100, votes: 400 },
+        ];
+        const day = Math.floor(Date.now() / 86400000);
+        const selected = choices[(day + String(getActiveProfileId()).length) % choices.length];
+        return { id: 'row-quick-watch', sec: 'sec-quick-watch', title: selected.label, icon: 'timer', type: 'movie',
+          fn: () => tmdb('/discover/movie', { 'with_runtime.lte': selected.max, 'with_runtime.gte': selected.min, sort_by: 'vote_average.desc', 'vote_count.gte': selected.votes, page: rp('row-quick-watch') }).then(d => d.results || []) };
+      })(),
     ];
     EXTRA_DISCOVERY_ROWS.forEach(r => {
       if (!_rowSelected(r.id)) return;
@@ -4821,29 +4861,70 @@ function updateCyfStats() {
   set('cyf-stat-genres-n',  state.prefGenres?.length ?? 0);
 }
 
+function _uniqueRowItems(items) {
+  const ids = new Set();
+  const titles = new Set();
+  return (Array.isArray(items) ? items : []).filter(item => {
+    if (!item?.id) return false;
+    const id = mediaKey(item);
+    const title = _titleKey(item);
+    if (ids.has(id) || (title && titles.has(title))) return false;
+    ids.add(id);
+    if (title) titles.add(title);
+    return true;
+  });
+}
+
 function renderDiscoveryControls() {
   const controls = getDiscoveryControls();
-  ['familiarity', 'novelty', 'variety'].forEach(id => {
-    const input = document.getElementById(`cyf-${id}`);
-    const value = document.getElementById(`cyf-${id}-value`);
-    if (input) input.value = controls[id];
-    if (value) value.textContent = `${controls[id]}%`;
-    if (input && !input.dataset.wired) {
-      input.dataset.wired = '1';
-      input.addEventListener('input', () => {
-        const next = setDiscoveryControls({ [id]: +input.value });
-        if (value) value.textContent = `${next[id]}%`;
-        _clearRowCache();
-      });
-    }
+  const discovery = Math.round((controls.novelty + (100 - controls.familiarity)) / 2);
+  const discoveryInput = document.getElementById('cyf-discovery');
+  const discoveryValue = document.getElementById('cyf-discovery-value');
+  const varietyInput = document.getElementById('cyf-variety');
+  const varietyValue = document.getElementById('cyf-variety-value');
+  if (discoveryInput) discoveryInput.value = discovery;
+  if (discoveryValue) discoveryValue.textContent = `${discovery}%`;
+  if (varietyInput) varietyInput.value = controls.variety;
+  if (varietyValue) varietyValue.textContent = `${controls.variety}%`;
+  if (discoveryInput && !discoveryInput.dataset.wired) {
+    discoveryInput.dataset.wired = '1';
+    discoveryInput.addEventListener('input', () => {
+      const value = +discoveryInput.value;
+      setDiscoveryControls({ familiarity: 100 - value, novelty: value });
+      if (discoveryValue) discoveryValue.textContent = `${value}%`;
+      _clearRowCache();
+    });
+  }
+  if (varietyInput && !varietyInput.dataset.wired) {
+    varietyInput.dataset.wired = '1';
+    varietyInput.addEventListener('input', () => {
+      setDiscoveryControls({ variety: +varietyInput.value });
+      if (varietyValue) varietyValue.textContent = `${varietyInput.value}%`;
+      _clearRowCache();
+    });
+  }
+  document.querySelectorAll('[data-cyf-preset]').forEach(button => {
+    if (button.dataset.wired) return;
+    button.dataset.wired = '1';
+    button.addEventListener('click', () => {
+      const presets = {
+        familiar: { familiarity: 80, novelty: 20, variety: 45 },
+        balanced: { familiarity: 50, novelty: 50, variety: 65 },
+        adventurous: { familiarity: 20, novelty: 80, variety: 85 },
+      };
+      setDiscoveryControls(presets[button.dataset.cyfPreset] || presets.balanced);
+      renderDiscoveryControls();
+      _clearRowCache();
+      toast('Discovery balance updated', 'tune');
+    });
   });
   const signals = document.getElementById('cyf-algorithm-signals');
   if (!signals) return;
   const taste = getActiveTasteState();
   const genreNames = state.prefGenres.slice(0, 4).map(id => GENRES.find(genre => genre.id === +id)?.name).filter(Boolean);
   const labels = [
-    `${taste.loved?.length || 0} loved`, `${taste.liked?.length || 0} liked`, `${taste.disliked?.length || 0} hidden`,
-    `${Object.keys(taste.tasteSkips || {}).length} recent skips`, `${Object.keys(taste.trailerPreviews || {}).length} qualified trailer previews`,
+    `${taste.loved?.length || 0} strong favorites`, `${taste.liked?.length || 0} likes`, `${taste.disliked?.length || 0} hidden titles`,
+    `${Object.keys(taste.tasteSkips || {}).length} temporary skips`, `${Object.keys(taste.trailerPreviews || {}).length} meaningful trailer watches`,
     genreNames.length ? `Top genres: ${genreNames.join(', ')}` : 'Choose genres to strengthen your profile',
   ];
   signals.innerHTML = labels.map(text => `<span>${esc(text)}</span>`).join('');
@@ -5035,14 +5116,8 @@ function buildAgeRatingUI() {
   }).join('');
 
   container.querySelectorAll('.age-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (getSetting('kidsMode') && +btn.dataset.level > 3) return;
-      state.ageRating = btn.dataset.age;
-      persist('ageRating');
-      buildAgeRatingUI(); // re-render
-      buildRatingDescriptions();
-      _applyAgeBasedPreferences(btn.dataset.age); // auto-adjust content silently
-      window._prefsDirty = true;
+    btn.addEventListener('click', async () => {
+      await _setAgeRatingWithProtection(btn.dataset.age);
     });
   });
 }
@@ -5082,7 +5157,7 @@ function setSetting(id, val) {
   const saved = JSON.parse(localStorage.getItem('sv_settings') || '{}');
   if (id === 'kidsMode' && val && !saved.kidsMode) {
     localStorage.setItem('sv_pre_kids_age', state.ageRating || 'PG-13');
-    state.ageRating = 'PG';
+    if ((AGE_LEVELS[state.ageRating] ?? 4) > 3) state.ageRating = 'PG';
     persist('ageRating');
     toast('Kid-Guided only shows titles with a verified family rating. Titles with unclear ratings stay hidden for safety.', 'verified_user', { duration: 10000 });
   } else if (id === 'kidsMode' && !val && saved.kidsMode) {
@@ -5139,6 +5214,26 @@ async function configureKidsPin() {
   } catch (error) {
     toast(error.message || 'Could not create PIN', 'warning');
   }
+}
+
+async function _setAgeRatingWithProtection(rating) {
+  const level = AGE_LEVELS[rating];
+  if (level === undefined) return false;
+  if (getSetting('kidsMode')) {
+    if (level > 3) {
+      toast('Kid-Guided ratings stop at PG / TV-PG.', 'verified_user', { duration: 8000 });
+      return false;
+    }
+    if (hasKidsPin(getActiveProfileId()) && !await requestKidsPinUnlock('change this profile rating')) return false;
+  }
+  state.ageRating = rating;
+  persist('ageRating');
+  buildAgeRatingUI();
+  buildRatingDescriptions();
+  _applyAgeBasedPreferences(rating);
+  _clearRowCache();
+  window._prefsDirty = true;
+  return true;
 }
 
 function applySetting(id, val, { refresh = true } = {}) {
@@ -5240,7 +5335,19 @@ function applySetting(id, val, { refresh = true } = {}) {
     // Use setTimeout so initCardLogoObserver is guaranteed to be defined
     setTimeout(() => initCardLogoObserver(), 0);
   }
-  if (id === 'disableAgeFilter') { if (val && !getSetting('kidsMode')) { state.ageRating = 'NC-17'; persist('ageRating'); } }
+  if (id === 'disableAgeFilter' && !getSetting('kidsMode')) {
+    if (val) {
+      if (state.ageRating !== 'ALL') localStorage.setItem('sv_pre_unlimited_age', state.ageRating || 'PG-13');
+      state.ageRating = 'ALL';
+    } else if (state.ageRating === 'ALL') {
+      const previous = localStorage.getItem('sv_pre_unlimited_age');
+      state.ageRating = AGE_LEVELS[previous] !== undefined ? previous : 'PG-13';
+      localStorage.removeItem('sv_pre_unlimited_age');
+    }
+    persist('ageRating');
+    buildAgeRatingUI();
+    buildRatingDescriptions();
+  }
   if (id === 'disableSandbox') {
     const frame = document.getElementById('player-frame');
     if (frame) {
@@ -8663,19 +8770,31 @@ export async function openCollectionPage(collectionId, collectionName) {
     defaultCompact: false,
     fetchFn: async () => {
       const col = await tmdb(`/collection/${collectionId}`);
+      const resolvedPath = collectionPath(collectionId, col.name || collectionName);
+      history.replaceState({ collectionId }, '', resolvedPath);
       let movies = (col.parts || [])
         .sort((a,b) => (a.release_date||'') > (b.release_date||'') ? 1 : -1)
         .map(m => ({...m, media_type:'movie'}));
-      if (getSetting('kidsMode')) movies = await filterSafeItems(movies, _safetyContext());
-      const resolvedPath = collectionPath(collectionId, col.name || collectionName);
-      history.replaceState({ collectionId }, '', resolvedPath);
+      const kidsMode = getSetting('kidsMode');
+      if (kidsMode) movies = await filterSafeItems(movies, _safetyContext());
+      if (kidsMode && !movies.length) {
+        return {
+          kind: 'collection', collectionId: +collectionId, hideRelated: true,
+          name: 'Collection unavailable in Kid-Guided',
+          desc: 'No titles in this collection have a verified rating within this profile\'s limit.',
+          parent: 'Nothing unsafe was shown', backdropUrl: null, movies: [], tv: [],
+        };
+      }
       const collectionUrl = `${SITE_ORIGIN}${resolvedPath}`;
       const collectionTitle = `${col.name || collectionName} Movies in Order | StaticVault931`;
-      const collectionDescription = (col.overview ||
+      const collectionDescription = ((kidsMode ? 'Browse the verified family-rated titles available in this collection.' : col.overview) ||
         `Browse every movie in the ${col.name || collectionName}, compare release and recommended orders, and track your progress.`
       ).slice(0, 300);
-      const collectionImage = col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280') :
-        col.poster_path ? imgUrl(col.poster_path, 'w780') : null;
+      const safeArt = kidsMode ? movies.find(movie => movie.backdrop_path || movie.poster_path) : null;
+      const collectionImage = safeArt?.backdrop_path ? imgUrl(safeArt.backdrop_path, 'w1280')
+        : safeArt?.poster_path ? imgUrl(safeArt.poster_path, 'w780')
+          : col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280')
+            : col.poster_path ? imgUrl(col.poster_path, 'w780') : null;
 
       document.title = collectionTitle;
       document.querySelector('meta[name="description"]')?.setAttribute('content', collectionDescription);
@@ -8734,9 +8853,9 @@ export async function openCollectionPage(collectionId, collectionName) {
         kind: 'collection',
         collectionId: +collectionId,
         name: col.name || collectionName,
-        desc: col.overview || '',
+        desc: kidsMode ? collectionDescription : col.overview || '',
         parent: subtitle,
-        backdropUrl: col.backdrop_path ? imgUrl(col.backdrop_path, 'w1280') : null,
+        backdropUrl: collectionImage,
         movies,
         tv: [],
       };
@@ -8749,6 +8868,7 @@ function _closeCompanyOverlay() {
   const ov = document.getElementById('company-overlay');
   if (!ov?.classList.contains('open')) return;
   ov.classList.remove('open');
+  document.body.classList.remove('sv-company-open');
   document.body.style.overflow = '';
   if (parseCleanRoute(location.pathname)?.kind === 'collection') _restoreOverlayRoute();
 }
@@ -8760,6 +8880,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
   if (!ov) return;
   ov.dataset.kind = mode;
   ov.classList.add('open');
+  document.body.classList.add('sv-company-open');
   document.body.style.overflow = 'hidden';
 
   // Wire once
@@ -8882,13 +9003,21 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
       heroImg.src = data.backdropUrl; heroImg.style.display = '';
     }
 
-    const movies     = data.movies     || [];
-    const tv         = data.tv         || [];
-    const topMovies  = data.topMovies  || [];
-    const topTv      = data.topTv      || [];
-    const moreMovies = data.moreMovies || [];
-    const moreTv     = data.moreTv     || [];
-    const originals  = data.originals  || [];
+    let movies     = data.movies     || [];
+    let tv         = data.tv         || [];
+    let topMovies  = data.topMovies  || [];
+    let topTv      = data.topTv      || [];
+    let moreMovies = data.moreMovies || [];
+    let moreTv     = data.moreTv     || [];
+    let originals  = data.originals  || [];
+    if (getSetting('kidsMode')) {
+      [movies, tv, topMovies, topTv, moreMovies, moreTv, originals] = await Promise.all([
+        filterSafeItems(movies, _safetyContext()), filterSafeItems(tv, _safetyContext()),
+        filterSafeItems(topMovies, _safetyContext()), filterSafeItems(topTv, _safetyContext()),
+        filterSafeItems(moreMovies, _safetyContext()), filterSafeItems(moreTv, _safetyContext()),
+        filterSafeItems(originals, _safetyContext()),
+      ]);
+    }
     const all        = [...movies, ...tv];
     if (data.kind === 'collection' && collectionTools) {
       const watched = movies.filter(item => isWatched(item.id, 'movie')).length;
@@ -8904,7 +9033,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
 
       const makeRow = (rowId, icon, secTitle, items, type) => {
         if (!items.length) return '';
-        const cards = items.slice(0,20).map(m => makeCard(m, m.media_type || type)).join('');
+        const cards = items.map(m => makeCard(m, m.media_type || type)).join('');
         return `<div class="section">
           <div class="sec-header">
             <div class="sec-title">
@@ -8936,7 +9065,7 @@ async function _openCompanyOverlay({ name, subtitle, logoUrl, fetchFn, defaultCo
 
       if (data.kind === 'collection' && rows.length) {
         const timelineAvailable = hasTimelineOrder(data.collectionId);
-        const related = relatedCollections(data.collectionId);
+        const related = data.hideRelated ? [] : relatedCollections(data.collectionId);
         rowView.innerHTML = `<div class="collection-experience">
           <aside class="collection-sidebar">
             <p class="collection-side-label">Watch order</p>
@@ -11093,6 +11222,32 @@ function populateTestPanel() {
     tools.className = 'dev-panel-tools';
     tools.innerHTML = `<label><span class="material-icons-round">filter_alt</span><input id="dev-tool-filter" type="search" placeholder="Filter tools and experiments" aria-label="Filter developer tools"></label><button class="dev-btn dev-btn-sm" id="dev-collapse-all">Collapse all</button><button class="dev-btn dev-btn-sm" id="dev-reset-experiments">Reset experiments</button>`;
     panel.insertBefore(tools, groupHost);
+    const drillBar = document.createElement('div');
+    drillBar.className = 'dev-drill-bar';
+    drillBar.hidden = true;
+    drillBar.innerHTML = '<button type="button" class="dev-btn dev-btn-sm" id="dev-drill-back"><span class="material-icons-round">arrow_back</span>Back</button><strong id="dev-drill-title">Developer tools</strong>';
+    panel.insertBefore(drillBar, groupHost);
+    const leaveDrill = () => {
+      groupHost.classList.remove('dev-drill-active');
+      groupHost.querySelectorAll('.dev-group').forEach(group => group.classList.remove('dev-group-active'));
+      drillBar.hidden = true;
+    };
+    groupHost.querySelectorAll('.dev-group-summary').forEach(summary => {
+      summary.addEventListener('click', event => {
+        event.preventDefault();
+        const group = summary.closest('.dev-group');
+        groupHost.classList.add('dev-drill-active');
+        groupHost.querySelectorAll('.dev-group').forEach(item => item.classList.toggle('dev-group-active', item === group));
+        group.open = true;
+        drillBar.querySelector('#dev-drill-title').textContent = summary.querySelector('span')?.textContent || 'Developer tools';
+        drillBar.hidden = false;
+        group.querySelector('.dev-fold')?.querySelector('summary')?.focus();
+      });
+    });
+    drillBar.querySelector('#dev-drill-back')?.addEventListener('click', () => {
+      leaveDrill();
+      groupHost.querySelector('.dev-group-summary')?.focus();
+    });
     tools.querySelector('#dev-collapse-all')?.addEventListener('click', () => {
       panel.querySelectorAll('.dev-group, .dev-fold').forEach(details => { details.open = false; });
     });
@@ -11106,6 +11261,7 @@ function populateTestPanel() {
     });
     tools.querySelector('#dev-tool-filter')?.addEventListener('input', event => {
       const query = event.target.value.trim().toLowerCase();
+      if (query) leaveDrill();
       panel.querySelectorAll('.dev-section').forEach(sec => {
         const match = !query || sec.textContent.toLowerCase().includes(query);
         sec.hidden = !match;
@@ -11323,21 +11479,21 @@ function buildRatingDescriptions() {
     { r: 'PG-13',  label: 'Ages 13+',             desc: 'May be inappropriate for children under 13. Some strong language, violence. (Same as TV-14)' },
     { r: 'R',      label: 'Restricted',            desc: 'Under 17 requires parent/guardian. Strong language, violence, adult themes. (Same as TV-MA)' },
     { r: 'NC-17',  label: 'Adults Only',           desc: 'No one under 17. Explicit adult content.' },
+    { r: 'ALL',    label: 'No Rating Limit',       desc: 'Show any verified rating. Other safety and preference settings still apply.' },
   ];
   // Make each desc clickable to change rating
   el.innerHTML = descs.map(d => `
-    <div class="rating-desc${state.ageRating === d.r ? ' active' : ''}" data-age="${d.r}" style="cursor:pointer" title="Set to ${d.r}">
+    <div class="rating-desc${state.ageRating === d.r ? ' active' : ''}${getSetting('kidsMode') && AGE_LEVELS[d.r] > 3 ? ' rating-desc-disabled' : ''}" data-age="${d.r}" role="button" tabindex="${getSetting('kidsMode') && AGE_LEVELS[d.r] > 3 ? '-1' : '0'}" title="${getSetting('kidsMode') && AGE_LEVELS[d.r] > 3 ? 'Unavailable while Kid-Guided is on' : `Set to ${d.r}`}">
       <span class="rd-badge">${d.r}</span>
       <div><div class="rd-label">${d.label}</div><div class="rd-text">${d.desc}</div></div>
     </div>`).join('');
   el.querySelectorAll('.rating-desc[data-age]').forEach(card => {
-    card.addEventListener('click', () => {
-      state.ageRating = card.dataset.age;
-      persist('ageRating');
-      buildAgeRatingUI();
-      buildRatingDescriptions();
-      _applyAgeBasedPreferences(card.dataset.age);
-      window._prefsDirty = true;
+    const select = () => _setAgeRatingWithProtection(card.dataset.age);
+    card.addEventListener('click', select);
+    card.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      select();
     });
   });
 }
@@ -11826,8 +11982,14 @@ function _syncOverlayRowArrows(root) {
       right?.classList.toggle('hidden', !overflow || row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
       row.classList.toggle('row-fits', !overflow);
     };
+    if (row._svArrowSync) {
+      row._svArrowSync();
+      return;
+    }
+    row._svArrowSync = sync;
     row.addEventListener('scroll', sync, { passive: true });
-    new ResizeObserver(sync).observe(row);
+    row._svArrowObserver = new ResizeObserver(sync);
+    row._svArrowObserver.observe(row);
     sync();
   });
 }
@@ -11840,37 +12002,63 @@ function _stopHoverExpansion() {
   clearTimeout(_hoverExpandTimer);
   _hoverExpandTimer = null;
   const nc = document.getElementById('netflix-card');
-  if (nc) nc.classList.remove('long-preview');
+  if (nc) {
+    nc.classList.remove('long-preview');
+    nc.style.removeProperty('--hover-expand-scale');
+    nc.style.removeProperty('--hover-expand-duration');
+    nc.style.removeProperty('--hover-info-scale');
+    nc.style.removeProperty('--hover-info-width');
+    delete nc.dataset.expandBaseLeft;
+    delete nc.dataset.expandBaseTop;
+  }
+}
+
+function _maximizeHoverExpansion(card, { instant = false, forceMaximum = false } = {}) {
+  if (!_hoverActive || _hoverCurrentCard !== card) return;
+  const nc = document.getElementById('netflix-card');
+  if (!nc) return;
+  const rect = nc.getBoundingClientRect();
+  const baseWidth = nc.offsetWidth || rect.width;
+  const baseHeight = nc.offsetHeight || rect.height;
+  const baseLeft = Number(nc.dataset.expandBaseLeft ?? rect.left);
+  const baseTop = Number(nc.dataset.expandBaseTop ?? rect.top);
+  nc.dataset.expandBaseLeft = String(baseLeft);
+  nc.dataset.expandBaseTop = String(baseTop);
+  const size = forceMaximum ? 'maximum' : getSetting('hoverPreviewSize');
+  const requested = { subtle: 1.35, large: 1.7, maximum: 2 }[size] || 2;
+  const scale = Math.max(1, Math.min(requested, (window.innerWidth - 24) / baseWidth, (window.innerHeight - 78) / baseHeight));
+  const width = baseWidth * scale;
+  const height = baseHeight * scale;
+  const left = Math.max(12, Math.min(baseLeft - (width - baseWidth) / 2, window.innerWidth - width - 12));
+  const top = Math.max(66, Math.min(baseTop - (height - baseHeight) / 2, window.innerHeight - height - 8));
+  const infoScale = 1 / Math.sqrt(scale);
+  nc.style.setProperty('--hover-expand-duration', instant ? '0ms' : '80s');
+  nc.style.setProperty('--hover-info-scale', infoScale.toFixed(3));
+  nc.style.setProperty('--hover-info-width', `${(100 / infoScale).toFixed(2)}%`);
+  if (!nc.classList.contains('long-preview')) {
+    nc.style.setProperty('--hover-expand-scale', '1');
+    nc.style.left = `${baseLeft}px`;
+    nc.style.top = `${baseTop}px`;
+    nc.classList.add('long-preview');
+    nc.getBoundingClientRect();
+  }
+  requestAnimationFrame(() => {
+    if (!_hoverActive || _hoverCurrentCard !== card) return;
+    nc.style.setProperty('--hover-expand-scale', scale.toFixed(3));
+    nc.style.left = `${left}px`;
+    nc.style.top = `${top}px`;
+  });
 }
 
 function _startHoverExpansion(card) {
   const current = document.getElementById('netflix-card');
   if (_hoverExpandTimer || current?.classList.contains('long-preview')) return;
   _stopHoverExpansion();
+  const mode = getSetting('hoverPreviewGrowth');
+  if (mode === 'off') return;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches || matchMedia('(hover: none)').matches) return;
   _hoverExpandTimer = setTimeout(() => {
-    if (!_hoverActive || _hoverCurrentCard !== card) return;
-    const nc = document.getElementById('netflix-card');
-    if (!nc) return;
-    const rect = nc.getBoundingClientRect();
-    const scale = Math.max(1, Math.min(1.75, (window.innerWidth - 24) / rect.width, (window.innerHeight - 86) / rect.height));
-    const width = rect.width * scale;
-    const height = rect.height * scale;
-    const left = Math.max(12, Math.min(rect.left - (width - rect.width) / 2, window.innerWidth - width - 12));
-    const top = Math.max(70, Math.min(rect.top - (height - rect.height) / 2, window.innerHeight - height - 8));
-    // Establish an explicit 1x starting frame. Without this reset, a reused
-    // hover card can briefly inherit the previous title's scale and jump.
-    nc.style.setProperty('--hover-expand-scale', '1');
-    nc.style.left = `${rect.left}px`;
-    nc.style.top = `${rect.top}px`;
-    nc.classList.add('long-preview');
-    nc.getBoundingClientRect();
-    requestAnimationFrame(() => {
-      if (!_hoverActive || _hoverCurrentCard !== card) return;
-      nc.style.setProperty('--hover-expand-scale', scale.toFixed(3));
-      nc.style.left = `${left}px`;
-      nc.style.top = `${top}px`;
-    });
+    _maximizeHoverExpansion(card, { instant: mode === 'instant' });
   }, 15000);
 }
 function _syncNcMuteIcon() {
@@ -11996,7 +12184,7 @@ async function showNetflixCard(card) {
     : fetchRichDetails(id, type);
 
   // Upgrade backdrop in background — prefer English TMDB backdrop (has title text baked in)
-  fetchBestBackdrop(id, type).then(best => {
+  fetchBestBackdrop(id, type, 1).then(best => {
     if (!_hoverActive || _hoverCurrentCard !== card) return;
     if (best?.file_path && backdrop) {
       backdrop.src = `https://image.tmdb.org/t/p/w780${best.file_path}`;
@@ -12012,7 +12200,7 @@ async function showNetflixCard(card) {
 
   const _hoverTitle = card.dataset.title || '';
   const _hoverYear  = card.dataset.year  || '';
-  const trailerKey = await fetchTrailerKey(id, type, _hoverTitle, _hoverYear, card.dataset.lang || '');
+  const trailerKey = await fetchTrailerKey(id, type, _hoverTitle, _hoverYear, card.dataset.lang || '', 'hover');
 
   if (!_hoverActive || _hoverCurrentCard !== card) { frame.removeAttribute('src'); return; }
 
@@ -13009,7 +13197,7 @@ async function _playTrailerSlide(slide) {
     return;
   }
 
-  const key = await fetchTrailerKey(id, type, title, year);
+  const key = await fetchTrailerKey(id, type, title, year, '', 'watch');
   if (!key || key === '__none__') {
     console.warn(`[SV Clips] No trailer for "${title}" (${type}/${id})`);
     const slides = _clipsSlides();
@@ -13152,7 +13340,7 @@ function _preloadTrailerSlide(slide) {
   if (!iframe || (iframe.src && iframe.src.includes('youtube.com/embed'))) return;
   const id = +slide.dataset.id;
   const type = slide.dataset.type;
-  fetchTrailerKey(id, type, slide.dataset.title || '', slide.dataset.year || '').then(key => {
+  fetchTrailerKey(id, type, slide.dataset.title || '', slide.dataset.year || '', '', 'clips').then(key => {
     if (!key || key === '__none__' || !slide.isConnected) return;
     // Guard: slide may have become active while the key was being fetched
     if (iframe.src && iframe.src.includes('youtube.com/embed')) return;
@@ -13191,8 +13379,9 @@ function _unloadClipSlide(slide) {
 // Back-compat alias (used by dislike handler / dwell observer)
 function _pauseTrailerSlide(slide) { _unloadClipSlide(slide); }
 
-async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
-  let key = _hoverTrailerCache.get(id);
+async function fetchTrailerKey(id, type, title = '', year = '', origLang = '', surface = 'default') {
+  const cacheId = `${surface}:${type}:${id}:${origLang || 'auto'}`;
+  let key = _hoverTrailerCache.get(cacheId);
   if (key !== undefined) return key;
   try {
     const endpoint = type === 'anime' ? `tv/${id}` : `${type}/${id}`;
@@ -13213,10 +13402,13 @@ async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
       vids = [...vids, ...(data.results || [])];
     }
     // Use YouTube built-in trailers
-    const yt = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official) ||
-               vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
-               vids.find(v => v.site === 'YouTube' && v.type === 'Teaser') ||
-               vids.find(v => v.site === 'YouTube');
+    const youtube = vids.filter((video, index, all) => video.site === 'YouTube' && video.key && all.findIndex(item => item.key === video.key) === index);
+    const score = video => (video.official ? 100 : 0) + (video.type === 'Trailer' ? 40 : video.type === 'Teaser' ? 20 : 0) + (video.published_at ? Date.parse(video.published_at) / 1e13 : 0);
+    youtube.sort((a, b) => score(b) - score(a));
+    const variant = surface === 'clips' ? 1 : surface === 'watch' ? 2 : 0;
+    const trusted = youtube.filter(video => video.official && (video.type === 'Trailer' || video.type === 'Teaser'));
+    const pool = trusted.length > variant ? trusted : youtube;
+    const yt = pool[variant % Math.max(pool.length, 1)];
     if (yt) {
       key = yt.key;
     } else {
@@ -13227,7 +13419,7 @@ async function fetchTrailerKey(id, type, title = '', year = '', origLang = '') {
     key = '__none__';
     console.warn(`[SV Trailer] videos fetch failed for ${type}/${id}:`, err?.message || err);
   }
-  _hoverTrailerCache.set(id, key);
+  _hoverTrailerCache.set(cacheId, key);
   if (_hoverTrailerCache.size > 200) {
     const firstKeys = [..._hoverTrailerCache.keys()].slice(0, 100);
     firstKeys.forEach(k => _hoverTrailerCache.delete(k));
@@ -13370,6 +13562,13 @@ function initKeyboard() {
       document.getElementById('modal-overlay')?.classList.contains('open') ||
       document.getElementById('info-overlay')?.classList.contains('open');
     if (anyOverlayOpen) return;
+
+    // M immediately maximizes an active hover trailer without reloading it.
+    if ((e.key === 'm' || e.key === 'M') && _hoverActive && _hoverCurrentCard) {
+      e.preventDefault();
+      _maximizeHoverExpansion(_hoverCurrentCard, { instant: true, forceMaximum: true });
+      return;
+    }
 
     // "/" jumps to search and focuses the input
     if (e.key === '/') {

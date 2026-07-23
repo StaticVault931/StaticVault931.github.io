@@ -763,15 +763,29 @@ const SEARCH_TIPS = [
   'Filter Movies Only + ★8+ for critically acclaimed picks',
 ];
 
+const KIDS_SEARCH_TIPS = [
+  'Search "Bluey" to find a favorite family show',
+  'Search "Toy Story" to jump straight to a movie',
+  'Try :friendship to discover stories about good friends',
+  'Try :animals to find fun animal adventures',
+  'Try :space adventure to explore family-friendly sci-fi',
+  'Try ::a family goes on a magical journey to search by story clues',
+  'Use Filters, then Runtime, for a shorter movie or episode',
+  'Filter by Language to discover stories from around the world',
+];
+
 let _lastTipIdx = -1;
 export function rotateTip() {
   const inp = document.getElementById('search-input');
   if (!inp || inp.value) return;
-  // Pick a different tip each time
+  // Pick a different, age-appropriate tip each time.
+  let kidsMode = false;
+  try { kidsMode = !!JSON.parse(localStorage.getItem('sv_settings') || '{}').kidsMode; } catch {}
+  const tips = kidsMode ? KIDS_SEARCH_TIPS : SEARCH_TIPS;
   let idx;
-  do { idx = Math.floor(Math.random() * SEARCH_TIPS.length); } while (idx === _lastTipIdx && SEARCH_TIPS.length > 1);
+  do { idx = Math.floor(Math.random() * tips.length); } while (idx === _lastTipIdx && tips.length > 1);
   _lastTipIdx = idx;
-  const tip = SEARCH_TIPS[idx];
+  const tip = tips[idx];
   // Fade animation via class toggle
   inp.classList.remove('tip-fade-in');
   void inp.offsetWidth; // force reflow to restart animation
@@ -1484,7 +1498,10 @@ export async function doSearch(q) {
     try {
       const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
       if (settings.kidsMode) {
-        items = await filterSafeItems(items, { kidsMode: true, maxLevel: 3 });
+        items = await filterSafeItems(items, {
+          kidsMode: true,
+          maxLevel: Math.min(3, AGE_LEVELS[state.ageRating] ?? 3),
+        });
       }
       const lvl = { 'TV-Y': 0, 'TV-Y7': 1, 'G': 2, 'TV-G': 2, 'PG': 3, 'TV-PG': 3, 'PG-13': 4, 'TV-14': 4 }[state.ageRating];
       if (!settings.kidsMode && lvl !== undefined && lvl <= 4) {
@@ -1791,7 +1808,10 @@ async function fetchSearchPage(q, page) {
   let combined = await _filterByProvider([...all, ...dedupedPersonResults]);
   try {
     const settings = JSON.parse(localStorage.getItem('sv_settings') || '{}');
-    if (settings.kidsMode) combined = await filterSafeItems(combined, { kidsMode: true, maxLevel: 3 });
+    if (settings.kidsMode) combined = await filterSafeItems(combined, {
+      kidsMode: true,
+      maxLevel: Math.min(3, AGE_LEVELS[state.ageRating] ?? 3),
+    });
   } catch {}
   return combined;
 }

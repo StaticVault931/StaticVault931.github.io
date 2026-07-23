@@ -375,14 +375,21 @@
   border-radius: var(--r);
   overflow: hidden;
   background: var(--s2);
+  border: 1px solid rgba(255,255,255,.035);
+  animation: fadeIn .24s ease both;
 }
+.card-sk:nth-child(2n) { animation-delay: 35ms; }
+.card-sk:nth-child(3n) { animation-delay: 70ms; }
 .csk-poster {
   aspect-ratio: 16/9; width: 100%; border-radius: var(--r);
-  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background: linear-gradient(100deg, var(--s2) 22%, color-mix(in srgb, var(--s3) 82%, white 18%) 48%, var(--s2) 74%);
   background-size: 800px 100%;
-  animation: sk-shimmer 1.6s infinite linear;
+  animation: sk-shimmer 1.9s infinite linear;
 }
 .csk-body { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .card-sk, .csk-poster { animation: none; }
+}
 .csk-line {
   height: 9px; border-radius: 4px; margin-bottom: 4px;
   background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
@@ -1727,9 +1734,10 @@ body.test-slow-mode *, body.test-slow-mode *::before, body.test-slow-mode *::aft
 }
 #netflix-card.long-preview {
   transform-origin: top left;
-  transition: opacity .3s var(--ease), transform 20s cubic-bezier(.22,.61,.36,1), left 20s cubic-bezier(.22,.61,.36,1), top 20s cubic-bezier(.22,.61,.36,1);
+  transition: opacity .3s var(--ease), transform var(--hover-expand-duration, 80s) cubic-bezier(.22,.61,.36,1), left var(--hover-expand-duration, 80s) cubic-bezier(.22,.61,.36,1), top var(--hover-expand-duration, 80s) cubic-bezier(.22,.61,.36,1);
 }
 #netflix-card.visible.long-preview { transform: scale(var(--hover-expand-scale, 1)); }
+#netflix-card.long-preview .nc-info { transform-origin: top left; transform: scale(var(--hover-info-scale, 1)); width: var(--hover-info-width, 100%); }
 .info-collection-arrow[hidden] { display:none; }
 @media (prefers-reduced-motion: reduce), (hover: none) {
   #netflix-card.long-preview { transition: none; }
@@ -2623,6 +2631,8 @@ img[alt]::after {
 .rating-desc { cursor: pointer; transition: background .15s, border-color .15s; }
 .rating-desc:hover { background: rgba(255,255,255,.04); }
 .rating-desc.active { border-color: var(--red) !important; }
+.rating-desc-disabled { opacity: .42; cursor: not-allowed; }
+.rating-desc-disabled:hover { background: transparent; }
 
 /* ── AGE RATING BUTTONS — TVY/TVY7 ──────────────────────────────── */
 .age-btn { min-width: 56px; }
@@ -4085,8 +4095,9 @@ body.cal-open { overflow: hidden; }
 #netflix-card .nc-video-gradient { display: none; }
 
 /* Collection routes use the full overlay as a chronological franchise page. */
-#company-overlay[data-kind="collection"] { --card-w: clamp(190px, 16vw, 250px); }
-#company-overlay[data-kind="collection"] .company-hero { height: clamp(280px, 42vh, 460px); }
+#company-overlay[data-kind="collection"] { --card-w: clamp(180px, 14vw, 240px); }
+#company-overlay[data-kind="collection"] #company-panel { max-width:none; margin:0; padding:0 0 3rem; border-radius:0; }
+#company-overlay[data-kind="collection"] .company-hero { height: clamp(230px, 34vh, 370px); }
 #company-overlay[data-kind="collection"] .company-hero-content { padding-inline: clamp(1rem, 4vw, 4rem); }
 #company-overlay[data-kind="collection"] .company-name-big { font-size: clamp(2.2rem, 5vw, 4.4rem); }
 #company-overlay[data-kind="collection"] .company-desc { max-width: 820px; font-size: clamp(.82rem, 1.2vw, 1rem); }
@@ -4096,7 +4107,7 @@ body.cal-open { overflow: hidden; }
 .company-collection-tools[hidden] { display:none; }
 .collection-progress { width:min(220px,35vw); height:6px; overflow:hidden; border-radius:4px; background:rgba(255,255,255,.15); }
 .collection-progress i { display:block; height:100%; background:var(--red); }
-.collection-experience { display:grid; grid-template-columns:minmax(230px,290px) minmax(0,1fr); gap:clamp(1rem,3vw,2.5rem); padding:1rem clamp(1rem,4vw,4rem) 2rem; }
+.collection-experience { display:grid; grid-template-columns:minmax(220px,260px) minmax(0,1fr); gap:clamp(1rem,2.5vw,2rem); padding:1rem clamp(1rem,3vw,3rem) 2rem; }
 .collection-sidebar { align-self:start; position:sticky; top:68px; padding:1rem; border:1px solid var(--border2); border-radius:7px; background:var(--s1); }
 .collection-main { min-width:0; }
 #company-overlay[data-kind="collection"] .collection-main .section { padding:0; margin:0; }
@@ -4117,9 +4128,14 @@ body.cal-open { overflow: hidden; }
 .cyf-algorithm-head h3 { margin:0; font-size:1rem; }
 .cyf-algorithm-head p { margin:.25rem 0 0; color:var(--dim); font-size:.72rem; }
 .cyf-algorithm-head>.material-icons-round { color:var(--red); }
-.cyf-algorithm-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin-top:1rem; }
+.cyf-algorithm-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin-top:1rem; }
 .cyf-algorithm-controls label { display:grid; grid-template-columns:1fr auto; gap:.35rem; color:var(--muted); font-size:.7rem; font-weight:800; }
 .cyf-algorithm-controls input { grid-column:1/-1; width:100%; accent-color:var(--red); }
+.cyf-algorithm-controls small { grid-column:1/-1; display:flex; justify-content:space-between; color:var(--dim); font-size:.58rem; font-weight:600; }
+.cyf-algorithm-presets { display:flex; gap:.4rem; margin-top:.7rem; }
+.cyf-algorithm-presets button { min-height:32px; padding:.35rem .65rem; border:1px solid var(--border2); border-radius:5px; background:var(--s2); color:var(--muted); font:inherit; font-size:.66rem; font-weight:800; cursor:pointer; }
+.cyf-algorithm-presets button:hover,.cyf-algorithm-presets button:focus-visible { border-color:var(--red); color:var(--text); }
+body.sv-company-open #netflix-card { z-index:9200; }
 .cyf-algorithm-signals { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.85rem; }
 .cyf-algorithm-signals span { padding:.28rem .45rem; border:1px solid var(--border); border-radius:4px; color:var(--dim); font-size:.64rem; }
 .dev-inline-report { padding:.35rem 0; color:var(--dim); font-size:.65rem; line-height:1.45; }
@@ -4144,10 +4160,20 @@ body.cal-open { overflow: hidden; }
 .dev-group-body .dev-section { padding: .25rem .65rem; }
 .dev-group-body .dev-section + .dev-section { border-top: 1px solid var(--border2); }
 .dev-group-body .dev-fold-sum { padding: .45rem 0; }
+.dev-drill-bar { display:flex; align-items:center; gap:.65rem; min-height:42px; padding:.45rem .7rem; border-bottom:1px solid var(--border2); background:var(--s1); }
+.dev-drill-bar[hidden] { display:none; }
+.dev-drill-bar strong { font-size:.74rem; }
+.dev-drill-bar .material-icons-round { font-size:.9rem; vertical-align:-2px; }
+.dev-group-host.dev-drill-active { display:block; }
+.dev-group-host.dev-drill-active .dev-group:not(.dev-group-active) { display:none; }
+.dev-group-host.dev-drill-active .dev-group-active { width:100%; }
+.dev-group-host.dev-drill-active .dev-group-active > .dev-group-summary { display:none; }
+.dev-group-host.dev-drill-active .dev-group-active > .dev-group-body { border-top:0; }
 #dev-test-panel.dev-floating .dev-panel-tools { flex-wrap: wrap; }
 #dev-test-panel.dev-floating .dev-panel-tools label { flex-basis: 100%; }
 #dev-test-panel.dev-floating .dev-group-host { grid-template-columns: 1fr; padding: .45rem; gap: .4rem; }
 #dev-test-panel.dev-floating .dev-group-body .dev-section { padding: .2rem .55rem; }
+#dev-test-panel.dev-floating .dev-drill-bar { padding:.35rem .45rem; }
 @media (max-width: 760px) {
   .dev-group-host { grid-template-columns: 1fr; }
   .dev-panel-tools { flex-wrap: wrap; }

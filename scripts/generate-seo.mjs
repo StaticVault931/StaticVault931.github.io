@@ -102,6 +102,10 @@ function personRecords(records) {
 }
 
 function shell({ title, description, canonical, type = 'WebPage', image = '', noindex = false, items = [], parent = null }) {
+  const displayTitle = title.replace(/\s+\|\s+StaticVault931$/, '');
+  const imageAlt = type === 'Person' ? `Portrait of ${displayTitle}`
+    : type === 'Movie' || type === 'TVSeries' ? `Poster for ${displayTitle}`
+      : `${displayTitle} on StaticVault931`;
   const entityType = ['Movie', 'TVSeries', 'Person'].includes(type);
   const entityId = `${canonical}#entity`;
   const imageId = `${canonical}#primaryimage`;
@@ -111,7 +115,7 @@ function shell({ title, description, canonical, type = 'WebPage', image = '', no
     mainEntity: { '@id': entityId }, ...(image ? { primaryImageOfPage: { '@id': imageId } } : {}),
     isPartOf: { '@type': 'WebSite', name: 'StaticVault931', url: `${ORIGIN}/` },
   }, entity] : [entity];
-  if (image) graph.push({ '@type': 'ImageObject', '@id': imageId, url: image, contentUrl: image, caption: title, representativeOfPage: true });
+  if (image) graph.push({ '@type': 'ImageObject', '@id': imageId, url: image, contentUrl: image, caption: imageAlt, representativeOfPage: true });
   graph.push({
     '@type': 'BreadcrumbList',
     itemListElement: [
@@ -133,7 +137,7 @@ function shell({ title, description, canonical, type = 'WebPage', image = '', no
   const boot = `fetch('/index.html').then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(h=>{document.open();document.write(h.replace('<head>','<head><base href="/">'));document.close()}).catch(()=>{})`;
   const socialImage = image || `${ORIGIN}/assets/icons/favicon.png`;
   const parentCrumb = parent ? ` / <a href="${esc(parent.url)}">${esc(parent.name)}</a>` : '';
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="StaticVault931"><meta property="og:locale" content="en_US"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}"><meta property="og:image" content="${esc(socialImage)}"><meta property="og:image:alt" content="${esc(title)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@StaticQuasar931"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${esc(socialImage)}"><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a>${parentCrumb} / <span>${esc(title.replace(/\s+\|\s+StaticVault931$/, ''))}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(title)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}"><link rel="canonical" href="${esc(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="StaticVault931"><meta property="og:locale" content="en_US"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${esc(canonical)}"><meta property="og:image" content="${esc(socialImage)}"><meta property="og:image:alt" content="${esc(imageAlt)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@StaticQuasar931"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${esc(socialImage)}"><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')}</script><style>body{margin:0;background:#0b0b0d;color:#fff;font:16px system-ui;padding:8vw}main{max-width:780px;margin:auto}img{max-width:320px;width:100%;border-radius:6px}a{color:#ff737b}nav{margin-bottom:2rem}li{margin:.5rem 0}</style></head><body><main><nav aria-label="Breadcrumb"><a href="/">Home</a>${parentCrumb} / <span>${esc(displayTitle)}</span></nav><h1>${esc(title)}</h1>${image ? `<img src="${esc(image)}" alt="${esc(imageAlt)}">` : ''}<p>${esc(description)}</p>${list}<p><a href="${esc(canonical)}">Open in StaticVault931</a></p></main><script>${boot}</script></body></html>`;
   return serialize(parse(html));
 }
 
@@ -144,7 +148,7 @@ async function writeRoute(route, html) {
 }
 
 function sitemapXml(urls) {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(item => `  <url><loc>${esc(item.loc)}</loc><lastmod>${item.lastmod}</lastmod></url>`).join('\n')}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n${urls.map(item => `  <url><loc>${esc(item.loc)}</loc><lastmod>${item.lastmod}</lastmod>${item.image ? `<image:image><image:loc>${esc(item.image)}</image:loc><image:title>${esc(item.imageTitle || 'StaticVault931')}</image:title></image:image>` : ''}</url>`).join('\n')}\n</urlset>\n`;
 }
 
 function lastModified(paths) {
@@ -208,26 +212,27 @@ for (const item of titles) {
       ? { name: 'Anime', url: `${ORIGIN}/anime/` }
       : { name: 'TV Shows', url: `${ORIGIN}/tv/` };
   await writeRoute(route, shell({ title: `${item.name} | StaticVault931`, description, canonical, type: schemaType, image: item.image, parent }));
-  urlGroups.get(item.type === 'movie' ? 'movies' : item.type).push({ loc: canonical, lastmod });
+  urlGroups.get(item.type === 'movie' ? 'movies' : item.type).push({ loc: canonical, lastmod, image: item.image, imageTitle: item.name });
 }
 for (const person of people) {
   const route = `person/${person.id}-${person.slug}`;
   const canonical = `${ORIGIN}/${route}/`;
   const description = `Explore ${person.name}'s movies, television credits, collaborators, and related titles on StaticVault931.`;
   await writeRoute(route, shell({ title: `${person.name} | StaticVault931`, description, canonical, type: 'Person', image: person.image }));
-  urlGroups.get('people').push({ loc: canonical, lastmod });
+  urlGroups.get('people').push({ loc: canonical, lastmod, image: person.image, imageTitle: person.name });
 }
 const movieById = new Map(titles.filter(item => item.type === 'movie').map(item => [item.id, item]));
 for (const collection of collections) {
   const route = `collection/${collection.id}-${slug(collection.name)}`;
   const canonical = `${ORIGIN}/${route}/`;
   const members = collection.partIds.map(id => movieById.get(id)).filter(Boolean).map(itemLink);
+  const collectionImage = members.find(member => member.image)?.image || '';
   const description = `Explore ${collection.name} in release order, with movie details and related recommendations.`;
   await writeRoute(route, shell({
     title: `${collection.name} | StaticVault931`, description, canonical,
-    type: 'CollectionPage', items: members,
+    type: 'CollectionPage', items: members, image: collectionImage,
   }));
-  urlGroups.get('collections').push({ loc: canonical, lastmod });
+  urlGroups.get('collections').push({ loc: canonical, lastmod, image: collectionImage, imageTitle: collection.name });
 }
 for (const [id, name] of PROVIDERS) {
   const route = `provider/${id}-${slug(name)}`;

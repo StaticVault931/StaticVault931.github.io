@@ -5,7 +5,7 @@ export const IMG = 'https://image.tmdb.org/t/p/';
 export const ANILIST = 'https://graphql.anilist.co';
 
 // ── THIRD-PARTY API KEYS ─────────────────────────────────────────
-export const OMDB_KEY        = '9f3c997';
+export const OMDB_KEY        = ''; // disabled: supplied keys currently return Unauthorized
 export const FANART_KEY      = ''; // retired: invalid key and unreliable browser CORS
 export const WATCHMODE_KEY   = '8y2t5vgtSGi058Rk1JcI80mOgfANIpQic8zKB1zq';
 export const TVAPI_KEY       = ''; // retired: invalid legacy provider
@@ -176,11 +176,11 @@ function attachProvenance(data, provenance) {
 /* ── TMDB: Best English backdrop (title-card image with text) ──────── */
 // Prefers iso_639_1='en' backdrops (have title text), sorted by vote_average
 // Falls back to null-language backdrops if no English ones exist
-export async function fetchBestBackdrop(id, type) {
+export async function fetchBestBackdrop(id, type, variant = 0) {
   const mediaType = type === 'anime' ? 'tv' : type;
-  const key = cacheKey(`best_backdrop_${mediaType}_${id}`, {});
+  const key = cacheKey(`best_backdrop_v2_${mediaType}_${id}`, {});
   const cached = cacheGet(key);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) return Array.isArray(cached) ? cached[Math.abs(variant) % cached.length] || null : cached;
   try {
     // Fetch without language filter to get all language variants
     const u = new URL(`${TMDB_BASE}/${mediaType}/${id}/images`);
@@ -191,10 +191,12 @@ export async function fetchBestBackdrop(id, type) {
     const rank = (b) => (b.vote_average || 0) * 100 + (b.vote_count || 0) * 0.01;
     const enBds = bds.filter(b => b.iso_639_1 === 'en').sort((a, b) => rank(b) - rank(a));
     const nullBds = bds.filter(b => !b.iso_639_1).sort((a, b) => rank(b) - rank(a));
-    const best = enBds[0] || nullBds[0] || null;
-    const result = best ? { file_path: best.file_path, hasText: !!enBds[0] } : null;
-    cacheSet(key, result);
-    return result;
+    const candidates = [...enBds.slice(0, 3), ...nullBds.slice(0, 3)]
+      .filter((backdrop, index, all) => backdrop.file_path && all.findIndex(item => item.file_path === backdrop.file_path) === index)
+      .slice(0, 4)
+      .map(backdrop => ({ file_path: backdrop.file_path, hasText: backdrop.iso_639_1 === 'en' }));
+    cacheSet(key, candidates);
+    return candidates[Math.abs(variant) % candidates.length] || null;
   } catch { cacheSet(key, null); return null; }
 }
 

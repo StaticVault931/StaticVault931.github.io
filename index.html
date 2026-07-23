@@ -1081,9 +1081,13 @@
       <span class="material-icons-round" aria-hidden="true">psychology</span>
     </div>
     <div class="cyf-algorithm-controls">
-      <label>Familiarity <span id="cyf-familiarity-value">55%</span><input type="range" id="cyf-familiarity" min="0" max="100" step="5"></label>
-      <label>New discoveries <span id="cyf-novelty-value">50%</span><input type="range" id="cyf-novelty" min="0" max="100" step="5"></label>
+      <label>Discovery balance <span id="cyf-discovery-value">50%</span><input type="range" id="cyf-discovery" min="0" max="100" step="5" aria-describedby="cyf-discovery-help"><small id="cyf-discovery-help"><span>More familiar</span><span>More surprising</span></small></label>
       <label>Genre variety <span id="cyf-variety-value">65%</span><input type="range" id="cyf-variety" min="0" max="100" step="5"></label>
+    </div>
+    <div class="cyf-algorithm-presets" role="group" aria-label="Discovery presets">
+      <button type="button" data-cyf-preset="familiar">Comfort picks</button>
+      <button type="button" data-cyf-preset="balanced">Balanced</button>
+      <button type="button" data-cyf-preset="adventurous">Surprise me</button>
     </div>
     <div class="cyf-algorithm-signals" id="cyf-algorithm-signals"></div>
   </section>

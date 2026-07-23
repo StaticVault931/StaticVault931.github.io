@@ -49,10 +49,12 @@ export function hasTimelineOrder(collectionId) {
 
 export function relatedCollections(collectionId, limit = 6) {
   const current = COLLECTION_CATALOG.find(entry => entry.id === +collectionId);
-  if (!current) return COLLECTION_CATALOG.filter(entry => entry.id !== +collectionId).slice(0, limit);
+  if (!current) return [];
   const explicit = new Set(current.related || []);
   return COLLECTION_CATALOG.filter(entry => entry.id !== current.id).map(entry => ({
     ...entry,
+    overlap: entry.tags.filter(tag => current.tags.includes(tag)).length,
     score: (explicit.has(entry.id) ? 10 : 0) + entry.tags.filter(tag => current.tags.includes(tag)).length,
-  })).filter(entry => entry.score > 0).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit);
+  })).filter(entry => explicit.has(entry.id) || entry.overlap >= 2)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit);
 }

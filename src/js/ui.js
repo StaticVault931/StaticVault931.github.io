@@ -181,7 +181,21 @@ export function renderRow(rowId, items, typeOverride, numbered = false) {
   if (!el) return;
   if (!items || !items.length) { el.innerHTML = ''; return; }
 
-  el.innerHTML = items.map((m, i) => {
+  const seenIds = new Set();
+  const seenTitles = new Set();
+  const uniqueItems = items.filter(m => {
+    const type = typeOverride || (m.media_type === 'tv' ? 'tv' : m._anime ? 'anime' : 'movie');
+    const idKey = `${type}:${m.id}`;
+    const title = (m.title || m.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const year = String(m.release_date || m.first_air_date || '').slice(0, 4);
+    const titleKey = title ? `${type}:${title}:${year}` : '';
+    if (seenIds.has(idKey) || (titleKey && seenTitles.has(titleKey))) return false;
+    seenIds.add(idKey);
+    if (titleKey) seenTitles.add(titleKey);
+    return true;
+  });
+
+  el.innerHTML = uniqueItems.map((m, i) => {
     const t = typeOverride || (m.media_type === 'tv' ? 'tv' : m._anime ? 'anime' : 'movie');
     return makeCard(m, t, { numbered: numbered ? i + 1 : undefined });
   }).join('');
@@ -231,7 +245,7 @@ export function showHero(idx) {
   if (!m) return;
 
   const bg = document.getElementById('hero-bg');
-  if (bg) bg.style.backgroundImage = `url(${imgUrl(m.backdrop_path, 'w1280')})`;
+  if (bg) bg.style.backgroundImage = `url(${imgUrl(m._heroBackdropPath || m.backdrop_path, 'w1280')})`;
 
   const title = document.getElementById('hero-title');
   if (title) title.textContent = m.title || m.name || '';
